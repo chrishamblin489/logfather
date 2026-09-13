@@ -24,11 +24,15 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ### 2026-09-13
 
-- Date scan can be cancelled (Chris, 2026-09-13): the progress dialog
-  while the clip is scanned for the camera's date change reads
-  "Comparing displayed date to filename date..." and has a Cancel button;
-  cancelling leaves the sync line amber ("cancelled - the clock is read
-  from frame 1") and the clock checks start at frame 1.
+- Every stage can be cancelled (Chris, 2026-09-13): each progress dialog
+  in the Sync CCTV Time window has a Cancel button - the date scan
+  ("Comparing displayed date to filename date..."), the coarse and
+  frame-by-frame clock scans, and the readings table. Cancel stops the
+  run at that stage and the later stages are skipped (an amber
+  "cancelled" note on the sync line, "OCR: clock checks cancelled", or a
+  "(cancelled ...)" row in the table); step H still stores the boxes, and
+  Sync Time starts a fresh run. The flowchart carries this rule under the
+  steps.
 
 ### 2026-09-12
 

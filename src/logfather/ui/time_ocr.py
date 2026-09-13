@@ -1004,7 +1004,10 @@ class OcrVideoPlayer(QWidget):
         root_layout.addLayout(right_layout)
         self.setLayout(root_layout)
 
-        self.sync_btn.clicked.connect(self._analyze_first_10s)
+        self.sync_btn.clicked.connect(self._on_sync_clicked)
+        # Cancel on any stage's progress dialog stops the run there; the
+        # later stages are skipped (Chris, 2026-09-13).
+        self._run_cancelled = False
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._next_frame)
@@ -1040,6 +1043,7 @@ class OcrVideoPlayer(QWidget):
         ("G", "Date or Time box moved? Wait two seconds, then start again from A", "loop"),
         ("H", "Store the new Date and Time box locations", None),
     )
+    HELP_CANCEL = "Cancel on any progress dialog stops the run at that step (the later steps are skipped); H still stores the boxes. Sync Time starts again."
 
     def _show_help_flowchart(self) -> None:
         dlg = QDialog(self)
@@ -1058,7 +1062,7 @@ class OcrVideoPlayer(QWidget):
         skips to F, and G loops back to A."""
         width, box_h, gap = 620, 46, 22
         rows = len(self.HELP_STEPS)
-        height = 30 + rows * (box_h + gap) + 20
+        height = 30 + rows * (box_h + gap) + 20 + 44  # + the cancel note
         pm = QPixmap(width, height)
         pm.fill(QColor("#0d1116"))
         painter = QPainter(pm)
@@ -1111,6 +1115,14 @@ class OcrVideoPlayer(QWidget):
         painter.drawLine(left, (g_top + g_bottom) // 2, x_left, (g_top + g_bottom) // 2)
         painter.drawLine(x_left, (g_top + g_bottom) // 2, x_left, (a_top + a_bottom) // 2)
         painter.drawLine(x_left, (a_top + a_bottom) // 2, left - 2, (a_top + a_bottom) // 2)
+        # The cancel rule under the steps (Chris, 2026-09-13)
+        _hx, _ht, h_bottom = centres[7]
+        note = QRect(left, h_bottom + 14, box_w, 40)
+        painter.setPen(QPen(QColor("#f0ad4e"), 1))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRoundedRect(note, 6, 6)
+        painter.setPen(QColor("#f0ad4e"))
+        painter.drawText(note.adjusted(10, 0, -10, 0), Qt.AlignVCenter | Qt.AlignLeft | Qt.TextWordWrap, self.HELP_CANCEL)
         painter.end()
         return pm
 
@@ -1425,7 +1437,7 @@ class OcrVideoPlayer(QWidget):
             self.ocr_history.addItem(QListWidgetItem("(clip too short for a check)"))
             return
         step = max(1, int(round(self.fps * OCR_SYNC_COARSE_STEP_SECONDS)))
-        progress = QProgressDialog(f"Reading the first {OCR_TABLE_SECONDS} s, then a drift check every {OCR_TABLE_INTERVAL_SECONDS} s...", None, 0, len(spans), self)
+        progress = QProgressDialog(f"Reading the first {OCR_TABLE_SECONDS} s, then a drift check every {OCR_TABLE_INTERVAL_SECONDS} s...", "Cancel", 0, len(spans), self)
         progress.setWindowTitle("Readings")
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
@@ -1436,6 +1448,8 @@ class OcrVideoPlayer(QWidget):
             if frame_idx in cache:
                 return cache[frame_idx]
             QApplication.processEvents()
+            if progress.wasCanceled():
+                raise _Aborted()
             text = None
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
             ret, frame = self.cap.read()
@@ -1450,8 +1464,12 @@ class OcrVideoPlayer(QWidget):
             return text
 
         misses = 0
+        cancelled = False
         try:
             for i, (span_start, span_end, every) in enumerate(spans):
+                if progress.wasCanceled():
+                    cancelled = True
+                    break
                 progress.setValue(i)
                 QApplication.processEvents()
                 boundaries = find_second_boundaries(read_text, span_start, span_end, step)
@@ -1466,8 +1484,13 @@ class OcrVideoPlayer(QWidget):
                     fps = boundaries[j + 1][0] - frame_idx if j + 1 < len(boundaries) else None
                     self._readings.append((frame_idx, text, fps))
                     self.ocr_history.addItem(QListWidgetItem(f"{frame_idx + 1:>7}  {text:<10}  {fps if fps is not None else '':>3}"))
+        except _Aborted:
+            cancelled = True
         finally:
             progress.close()
+        if cancelled:
+            self._run_cancelled = True
+            self.ocr_history.addItem(QListWidgetItem("(cancelled - press Sync Time to read the rest)"))
         if misses:
             self.ocr_history.addItem(QListWidgetItem(f"({misses} of {len(spans)} checks could not read a second change)"))
         self._highlight_reading(self.current_frame)
@@ -1545,7 +1568,7 @@ class OcrVideoPlayer(QWidget):
             return
         self._check_cctv_date(self._frame_or_first(self._last_frame))
         self._rerender()
-        self._analyze_first_10s()
+        self._analyze_first_10s()  # skipped after a Cancel in the date step
         self._store_box_locations()
 
     def _store_box_locations(self) -> None:
@@ -1594,7 +1617,8 @@ class OcrVideoPlayer(QWidget):
         G. a moved date or time box waits two seconds and reruns from A;
         H. the date and time box locations are stored.
         """
-        # A + B: frame 1, the date box as placed
+        # A + B: frame 1, the date box as placed. A new run: nothing cancelled yet.
+        self._run_cancelled = False
         first = self._first_frame()
         if first is None:
             first = frame_bgr
@@ -1666,6 +1690,7 @@ class OcrVideoPlayer(QWidget):
             cancelled = progress.wasCanceled()
             progress.close()
         if cancelled:
+            self._run_cancelled = True
             self.date_sync_label.setText("Camera date sync: cancelled - the clock is read from frame 1")
             self.date_sync_label.setStyleSheet("color: #f0ad4e;")
             self.date_sync_label.setToolTip("The date scan was cancelled; drag the date box or reopen the clip to run it again")
@@ -1822,13 +1847,22 @@ class OcrVideoPlayer(QWidget):
         self._rerender()
         self._rescale_synced_date_preview()
 
+    def _on_sync_clicked(self) -> None:
+        """The Sync Time button: a fresh run of the clock checks."""
+        self._run_cancelled = False
+        self._analyze_first_10s()
+
     def _analyze_first_10s(self):
         """Step F: the clock checks, then the readings table, then back to
-        the frame that was on screen."""
+        the frame that was on screen. Skipped after a Cancel earlier in
+        the run; a Cancel inside it skips what follows."""
+        if self._run_cancelled:
+            return
         self._run_sync_analysis()
         if self._closing or self.cap is None:
             return
-        self._build_readings_table()
+        if not self._run_cancelled:
+            self._build_readings_table()
         self._read_and_show(self.current_frame)
 
     def _run_sync_analysis(self):
@@ -1889,6 +1923,16 @@ class OcrVideoPlayer(QWidget):
         if ret and frame is not None:
             roi = self._current_roi(frame.shape[1], frame.shape[0])
 
+        def _cancelled() -> bool:
+            if self._run_cancelled:
+                self.offset_label.setText("Offset: cancelled")
+                self.ocr_label.setText("OCR: clock checks cancelled")
+                return True
+            return False
+
+        def _mark_cancelled() -> None:
+            self._run_cancelled = True
+
         samples: list[tuple[int, float, datetime, str]] = []
         if roi is not None:
             samples = _find_second_boundary_samples_for_cap(
@@ -1901,7 +1945,10 @@ class OcrVideoPlayer(QWidget):
                 parent=self,
                 progress_label=f"Scanning first {fast_seconds}s (coarse)...",
                 start_frame=start_frame,
+                on_cancel=_mark_cancelled,
             )
+            if _cancelled():
+                return
         best_start = _pick_best_start(samples) if samples else None
         if best_start is None:
             samples = self._collect_ocr_samples(
@@ -1909,6 +1956,8 @@ class OcrVideoPlayer(QWidget):
                 seconds=fast_seconds,
                 progress_label=f"Analyzing first {fast_seconds}s...",
             )
+            if _cancelled():
+                return
             best_start = _pick_best_start(samples)
         if best_start is None and fallback_seconds > fast_seconds:
             if roi is not None:
@@ -1922,7 +1971,10 @@ class OcrVideoPlayer(QWidget):
                     parent=self,
                     progress_label=f"Scanning first {fallback_seconds}s (coarse)...",
                     start_frame=start_frame,
+                    on_cancel=_mark_cancelled,
                 )
+                if _cancelled():
+                    return
                 best_start = _pick_best_start(samples) if samples else None
         if best_start is None and fallback_seconds > fast_seconds:
             samples = self._collect_ocr_samples(
@@ -1930,6 +1982,8 @@ class OcrVideoPlayer(QWidget):
                 seconds=fallback_seconds,
                 progress_label=f"Analyzing first {fallback_seconds}s...",
             )
+            if _cancelled():
+                return
             if not samples:
                 self.offset_label.setText("Offset: no valid OCR samples")
                 return
@@ -1979,12 +2033,15 @@ class OcrVideoPlayer(QWidget):
         if filename_dt is None:
             return []
         samples: list[tuple[int, float, datetime, str]] = []
-        progress = QProgressDialog(progress_label, None, 0, max_frames, self)
+        progress = QProgressDialog(progress_label, "Cancel", 0, max_frames, self)
         progress.setWindowTitle("OCR Analysis")
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
         progress.setValue(0)
         for frame_idx in range(start_frame, min(self.frame_count, start_frame + max_frames), step):
+            if progress.wasCanceled():
+                self._run_cancelled = True
+                break
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
             ret, frame = self.cap.read()
             if not ret or frame is None:
@@ -2560,6 +2617,7 @@ def _collect_ocr_samples_for_cap(
     parent: QWidget | None,
     progress_label: str,
     should_abort=None,
+    on_cancel=None,
 
     start_frame: int = 0,) -> list[tuple[int, float, datetime, str]]:
     if frame_count <= 0 or fps <= 0:
@@ -2574,7 +2632,7 @@ def _collect_ocr_samples_for_cap(
     samples: list[tuple[int, float, datetime, str]] = []
     progress = None
     if parent is not None:
-        progress = QProgressDialog(progress_label, None, 0, max_frames, parent)
+        progress = QProgressDialog(progress_label, "Cancel", 0, max_frames, parent)
         progress.setWindowTitle("OCR Analysis")
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
@@ -2582,6 +2640,10 @@ def _collect_ocr_samples_for_cap(
     start_frame = max(0, int(start_frame))
     for frame_idx in range(start_frame, min(frame_count, start_frame + max_frames)):
         if should_abort is not None and should_abort():
+            break
+        if progress is not None and progress.wasCanceled():
+            if on_cancel is not None:
+                on_cancel()
             break
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
         ret, frame = cap.read()
@@ -2640,8 +2702,9 @@ def _find_second_boundary_samples_for_cap(
     parent: QWidget | None,
     progress_label: str,
     should_abort=None,
-
-    start_frame: int = 0,) -> list[tuple[int, float, datetime, str]]:
+    on_cancel=None,
+    start_frame: int = 0,
+) -> list[tuple[int, float, datetime, str]]:
     if frame_count <= 0 or fps <= 0:
         return []
     max_frame_idx = int(math.ceil(seconds * fps))
@@ -2662,15 +2725,24 @@ def _find_second_boundary_samples_for_cap(
 
     progress = None
     if parent is not None:
-        progress = QProgressDialog(progress_label, None, 0, len(frame_indices), parent)
+        progress = QProgressDialog(progress_label, "Cancel", 0, len(frame_indices), parent)
         progress.setWindowTitle("OCR Analysis")
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
         progress.setValue(0)
 
+    def _stop() -> bool:
+        if should_abort is not None and should_abort():
+            return True
+        if progress is not None and progress.wasCanceled():
+            if on_cancel is not None:
+                on_cancel()
+            return True
+        return False
+
     prev: tuple[int, float, datetime, str] | None = None
     for idx, frame_idx in enumerate(frame_indices):
-        if should_abort is not None and should_abort():
+        if _stop():
             break
         sample = _ocr_sample_for_frame(cap, frame_idx, fps, base_dt, roi)
         if progress:
@@ -2690,7 +2762,7 @@ def _find_second_boundary_samples_for_cap(
                         end = max(prev[0], sample[0])
                         boundary_sample = None
                         for frame_scan in range(start, end + 1):
-                            if should_abort is not None and should_abort():
+                            if _stop():
                                 break
                             scanned = _ocr_sample_for_frame(
                                 cap,
