@@ -390,10 +390,11 @@ class MainWindow(QWidget):
         self.track_toggle.setCheckable(True)
         self.track_toggle.setChecked(True)
         self.track_toggle.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.track_toggle.toggled.connect(self._overlay_controller.set_tracking_enabled)
+        self.track_toggle.toggled.connect(self._on_track_toggled)
         # Track cannot be selected until the conveyor has been calibrated
-        # for the system (Chris, 2026-09-13); it follows the calibration
-        # as systems change and when the Conveyor dialog saves.
+        # for the system (Chris, 2026-09-13): ticking it without one asks
+        # whether to calibrate now. It follows the calibration as systems
+        # change and when the Conveyor dialog saves.
         self._track_wanted = True
         self._overlay_controller.calibration_ready.connect(self._apply_track_availability)
         self._apply_track_availability(self._overlay_controller.has_calibration())
@@ -1831,24 +1832,44 @@ class MainWindow(QWidget):
     def _should_show_overview(self) -> bool:
         return self.overview_btn.isChecked()
 
+    def _on_track_toggled(self, checked: bool) -> None:
+        """Track only draws with a conveyor calibration. Ticking it without
+        one unticks it again and offers the Conveyor dialog."""
+        if checked and not self._overlay_controller.has_calibration():
+            btn = self.track_toggle
+            btn.blockSignals(True)
+            btn.setChecked(False)
+            btn.blockSignals(False)
+            self._track_wanted = True  # tick it once a calibration lands
+            answer = QMessageBox.warning(
+                self,
+                "Conveyor not calibrated",
+                "Products cannot be tracked on this system yet: the conveyor has not been "
+                "calibrated, so there is no tracking line for the overlays to follow.\n\n"
+                "Do you want to calibrate the conveyor now?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes,
+            )
+            if answer == QMessageBox.Yes:
+                self._overlay_controller.open_calibration_dialog()
+            return
+        self._track_wanted = checked
+        self._overlay_controller.set_tracking_enabled(checked)
+
     def _apply_track_availability(self, ready: bool) -> None:
-        """Enable Track only with a conveyor calibration. While disabled it
-        is unticked so nothing is drawn; the user's tick comes back once
-        the conveyor is calibrated."""
+        """Track follows the calibration: without one it is unticked (so
+        nothing is drawn) and its tooltip says why; the user's tick comes
+        back once the conveyor is calibrated."""
         btn = self.track_toggle
         if ready:
-            btn.setEnabled(True)
             btn.setToolTip("Draw the tracked products on the picture")
             if self._track_wanted and not btn.isChecked():
                 btn.setChecked(True)
             return
-        if btn.isEnabled():
-            self._track_wanted = btn.isChecked()
         btn.blockSignals(True)
         btn.setChecked(False)
         btn.blockSignals(False)
         self._overlay_controller.set_tracking_enabled(False)
-        btn.setEnabled(False)
         btn.setToolTip("Calibrate the conveyor first (the Conveyor button) to track products")
 
     def _update_viewer_tool_visibility(self):

@@ -25,10 +25,12 @@ Living record of agreed functionality: what is open, and what has shipped
 ### 2026-09-13
 
 - Track needs a conveyor calibration (Chris, 2026-09-13): the Track
-  button in the top bar is greyed out, unticked and tooltipped
-  "Calibrate the conveyor first" until the current system has a tracking
-  line saved from the Conveyor dialog; it comes back (ticked as it was)
-  as soon as one is saved or a calibrated system is selected.
+  button in the top bar stays unticked (tooltip "Calibrate the conveyor
+  first") while the current system has no tracking line. Ticking it
+  then unticks it again and shows a warning ending "Do you want to
+  calibrate the conveyor now?" - Yes opens the Conveyor dialog. Once a
+  calibration is saved, or a calibrated system is selected, Track ticks
+  itself and draws.
 - PikPak replay chart zoom buttons (Chris, 2026-09-13): round - and +
   icons to the left of the View button stretch or contract the timeline
   about the middle of the view (text sizes and bar heights are
