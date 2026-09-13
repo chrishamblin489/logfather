@@ -34,8 +34,8 @@ Living record of agreed functionality: what is open, and what has shipped
 - PikPak replay chart zoom buttons (Chris, 2026-09-13): round - and +
   icons to the left of the View button stretch or contract the timeline
   about the middle of the view (text sizes and bar heights are
-  unchanged). Hold to repeat. 24 px circles holding the glyph a 30 px
-  icon had (an 18 px bar, 4 px thick; Chris, 2026-09-13). The plain
+  unchanged). Hold to repeat. 24 px circles with the plain 24 px glyph
+  (Chris, 2026-09-13). The plain
   mouse wheel over the chart now zooms
   about the cursor the same way; Shift+wheel still scrolls along the
   day and Ctrl+wheel scrolls up and down (plain wheel scrolled up and
