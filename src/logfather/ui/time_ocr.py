@@ -1649,7 +1649,8 @@ class OcrVideoPlayer(QWidget):
             return
         frame_h, frame_w = first.shape[:2]
         date_roi = self._current_date_roi(frame_w, frame_h)
-        progress = QProgressDialog("Checking each frame for the camera's date change...", None, 0, max(1, self.frame_count), self)
+        # Wording and a Cancel button (Chris, 2026-09-13).
+        progress = QProgressDialog("Comparing displayed date to filename date...", "Cancel", 0, max(1, self.frame_count), self)
         progress.setWindowTitle("Camera date")
         progress.setWindowModality(Qt.WindowModal)
         progress.setMinimumDuration(0)
@@ -1660,9 +1661,16 @@ class OcrVideoPlayer(QWidget):
             QApplication.processEvents()
 
         try:
-            change = find_date_change_frame(self.cap, self.fps, self.frame_count, date_roi, on_progress=_on_progress)
+            change = find_date_change_frame(self.cap, self.fps, self.frame_count, date_roi, should_abort=progress.wasCanceled, on_progress=_on_progress)
         finally:
+            cancelled = progress.wasCanceled()
             progress.close()
+        if cancelled:
+            self.date_sync_label.setText("Camera date sync: cancelled - the clock is read from frame 1")
+            self.date_sync_label.setStyleSheet("color: #f0ad4e;")
+            self.date_sync_label.setToolTip("The date scan was cancelled; drag the date box or reopen the clip to run it again")
+            self.date_sync_label.show()
+            return
         initial = self.cctv_date.strftime("%d/%m/%Y") if self.cctv_date else "unreadable"
         if change is None:
             self.date_sync_label.setText(f"Camera date sync: none - the date stayed {initial} for the whole clip")

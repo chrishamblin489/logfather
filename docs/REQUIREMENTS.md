@@ -22,6 +22,14 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ## Shipped
 
+### 2026-09-13
+
+- Date scan can be cancelled (Chris, 2026-09-13): the progress dialog
+  while the clip is scanned for the camera's date change reads
+  "Comparing displayed date to filename date..." and has a Cancel button;
+  cancelling leaves the sync line amber ("cancelled - the clock is read
+  from frame 1") and the clock checks start at frame 1.
+
 ### 2026-09-12
 
 - Sync CCTV Time tidy-up (Chris, 2026-09-12): the Tesseract path, Offset,
