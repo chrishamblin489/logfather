@@ -9,9 +9,11 @@ from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from logfather.ui import theme
 
 
-def zoom_glyph_icon(kind: str, size: int = 24) -> QIcon:
+def zoom_glyph_icon(kind: str, size: int = 24, *, span: float = 0.60, thickness: float = 0.14) -> QIcon:
     """A plus or minus drawn symmetrically about the icon centre (Chris,
-    2026-09-05: the glyph must sit exactly in the middle of the circle)."""
+    2026-09-05: the glyph must sit exactly in the middle of the circle).
+    `span` is the bar length and `thickness` the bar width, both as a
+    fraction of `size` (the replay chart's buttons use a fuller glyph)."""
     pm = QPixmap(size, size)
     pm.fill(Qt.transparent)
     painter = QPainter(pm)
@@ -19,10 +21,11 @@ def zoom_glyph_icon(kind: str, size: int = 24) -> QIcon:
     painter.setPen(Qt.NoPen)
     painter.setBrush(QColor(theme.TEXT_BRIGHT))
     s = float(size)
-    bar = s * 0.14
-    painter.drawRect(QRectF(s * 0.20, (s - bar) / 2, s * 0.60, bar))
+    bar = s * thickness
+    length = s * span
+    painter.drawRect(QRectF((s - length) / 2, (s - bar) / 2, length, bar))
     if kind == "plus":
-        painter.drawRect(QRectF((s - bar) / 2, s * 0.20, bar, s * 0.60))
+        painter.drawRect(QRectF((s - bar) / 2, (s - length) / 2, bar, length))
     painter.end()
     return QIcon(pm)
 

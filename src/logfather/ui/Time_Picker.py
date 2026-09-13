@@ -243,15 +243,17 @@ class TimePicker(QWidget):
             ("plus", "Stretch the timeline (the mouse wheel also zooms)", 1.25),
         ):
             zb = QToolButton(self.view)
-            zb.setIcon(zoom_glyph_icon(glyph, 40))  # much bigger glyphs (Chris, 2026-09-13)
-            zb.setIconSize(QSize(30, 30))
-            zb.setFixedSize(38, 38)
+            # A 24 px circle with the glyph the 30 px icon had (an 18 px bar,
+            # 4 px thick), Chris, 2026-09-13.
+            zb.setIcon(zoom_glyph_icon(glyph, 24, span=0.75, thickness=0.175))
+            zb.setIconSize(QSize(22, 22))
+            zb.setFixedSize(24, 24)
             zb.setCursor(Qt.PointingHandCursor)
             zb.setToolTip(tip)
             zb.setAutoRepeat(True)
             zb.setAutoRepeatInterval(160)
             zb.setStyleSheet(
-                "QToolButton { background: rgba(0, 0, 0, 150); border: 1px solid rgba(255, 255, 255, 70); border-radius: 19px; }"
+                "QToolButton { background: rgba(0, 0, 0, 150); border: 1px solid rgba(255, 255, 255, 70); border-radius: 12px; padding: 0; }"
                 "QToolButton:hover { background: rgba(0, 0, 0, 210); }"
             )
             zb.clicked.connect(lambda _checked=False, f=factor: self._zoom_about(f, None))
