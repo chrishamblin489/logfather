@@ -24,6 +24,10 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ### 2026-09-13
 
+- PikPak replay chart zoom buttons (Chris, 2026-09-13): round - and +
+  icons to the left of the View button stretch or contract the timeline
+  about the middle of the view (the same pixels-per-minute zoom as
+  Ctrl+wheel; text sizes and bar heights are unchanged). Hold to repeat.
 - Every stage can be cancelled (Chris, 2026-09-13): each progress dialog
   in the Sync CCTV Time window has a Cancel button - the date scan
   ("Comparing displayed date to filename date..."), the coarse and

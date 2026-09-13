@@ -10,10 +10,11 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable, Iterable, Optional, Dict, Tuple, List
 
-from PySide6.QtCore import Qt, Signal, QEvent, QThread, QRectF, QPointF, QTimer
+from PySide6.QtCore import Qt, Signal, QEvent, QThread, QRectF, QPointF, QTimer, QSize
 
 from logfather.ui.qt_worker import JobSlot
 from logfather.ui import theme
+from logfather.ui.icons import zoom_glyph_icon
 from logfather.ui.overview_signals import SignalBoxes, COMPACT_BOX_STYLE, COMPACT_FONT_PX, add_label_backdrop, CollapsibleGroupBox
 from logfather.data import grafana_client
 from logfather.data.elastic_schema import robot_id_from_folder
@@ -233,6 +234,28 @@ class TimePicker(QWidget):
         self._bars_menu = QMenu(self._bars_menu_btn)
         self._bars_menu.aboutToShow.connect(self._rebuild_bars_menu)
         self._bars_menu_btn.setMenu(self._bars_menu)
+        # + and - to the left of View (Chris, 2026-09-13): stretch or
+        # contract the timeline about the middle of the view. Only the
+        # pixels-per-minute scale changes; text and bar heights stay.
+        self._zoom_btns: list[QToolButton] = []
+        for glyph, tip, factor in (
+            ("minus", "Contract the timeline (Ctrl+wheel also zooms)", 1 / 1.25),
+            ("plus", "Stretch the timeline (Ctrl+wheel also zooms)", 1.25),
+        ):
+            zb = QToolButton(self.view)
+            zb.setIcon(zoom_glyph_icon(glyph, 16))
+            zb.setIconSize(QSize(14, 14))
+            zb.setFixedSize(24, 24)
+            zb.setCursor(Qt.PointingHandCursor)
+            zb.setToolTip(tip)
+            zb.setAutoRepeat(True)
+            zb.setAutoRepeatInterval(160)
+            zb.setStyleSheet(
+                "QToolButton { background: rgba(0, 0, 0, 150); border: 1px solid rgba(255, 255, 255, 70); border-radius: 12px; }"
+                "QToolButton:hover { background: rgba(0, 0, 0, 210); }"
+            )
+            zb.clicked.connect(lambda _checked=False, f=factor: self._zoom_about(f, None))
+            self._zoom_btns.append(zb)
         self.view.installEventFilter(self)
         self._place_bars_menu_btn()
 
@@ -1143,6 +1166,12 @@ class TimePicker(QWidget):
         btn.adjustSize()
         btn.move(max(0, self.view.viewport().width() - btn.width() - 6), 6)
         btn.raise_()
+        x = btn.x() - 6
+        for zb in reversed(getattr(self, "_zoom_btns", [])):
+            x -= zb.width()
+            zb.move(max(0, x), 6 + (btn.height() - zb.height()) // 2)
+            zb.raise_()
+            x -= 4
 
     def _rebuild_bars_menu(self) -> None:
         """One tick per bar: the static rows, Telemetry, then the condition
