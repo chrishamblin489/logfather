@@ -1845,7 +1845,7 @@ class MainWindow(QWidget):
                 self,
                 "Conveyor not calibrated",
                 "Products cannot be tracked on this system yet: the conveyor has not been "
-                "calibrated, so there is no tracking line for the overlays to follow.\n\n"
+                "calibrated.\n\n"
                 "Do you want to calibrate the conveyor now?",
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.Yes,
