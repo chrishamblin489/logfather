@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Signal
 
 from logfather.core.timeline_model import ensure_utc
 from logfather.data.conveyor_calibration import ConveyorCalibration, load_calibration
@@ -115,6 +115,10 @@ def compute_gap_target_ids(events: list, threshold: float) -> tuple[set[str], se
 
 
 class TargetOverlayController(QObject):
+    # True when the current system has a conveyor calibration (a tracking
+    # line); the Track button is only usable then (Chris, 2026-09-13).
+    calibration_ready = Signal(bool)
+
     def __init__(
         self,
         viewer,
@@ -232,11 +236,15 @@ class TargetOverlayController(QObject):
 
     # ---- conveyor calibration -------------------------------------------
 
+    def has_calibration(self) -> bool:
+        return bool(self._conveyor_cal.has_tracking_line())
+
     def reload_calibration(self) -> None:
         sid = self._calibration_system_id_provider()
         self._conveyor_cal = load_calibration(sid)
         print(f"[cal] loaded calibration for '{sid}', "
               f"{'tracking line ready' if self._conveyor_cal.has_tracking_line() else 'no tracking line'}")
+        self.calibration_ready.emit(self.has_calibration())
 
     def open_calibration_dialog(self) -> None:
         if self._cal_dialog is not None:
@@ -355,6 +363,7 @@ class TargetOverlayController(QObject):
 
     def _on_calibration_saved(self, cal: ConveyorCalibration) -> None:
         self._conveyor_cal = cal
+        self.calibration_ready.emit(self.has_calibration())
         if self._last_playhead_dt:
             self._push_conveyor_overlays(self._last_playhead_dt)
 

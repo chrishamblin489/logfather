@@ -391,6 +391,12 @@ class MainWindow(QWidget):
         self.track_toggle.setChecked(True)
         self.track_toggle.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.track_toggle.toggled.connect(self._overlay_controller.set_tracking_enabled)
+        # Track cannot be selected until the conveyor has been calibrated
+        # for the system (Chris, 2026-09-13); it follows the calibration
+        # as systems change and when the Conveyor dialog saves.
+        self._track_wanted = True
+        self._overlay_controller.calibration_ready.connect(self._apply_track_availability)
+        self._apply_track_availability(self._overlay_controller.has_calibration())
 
         # Data window: fleet data inventory (Chris, 2026-09-05). Not mode
         # gated - it is about the whole fleet.
@@ -1824,6 +1830,26 @@ class MainWindow(QWidget):
 
     def _should_show_overview(self) -> bool:
         return self.overview_btn.isChecked()
+
+    def _apply_track_availability(self, ready: bool) -> None:
+        """Enable Track only with a conveyor calibration. While disabled it
+        is unticked so nothing is drawn; the user's tick comes back once
+        the conveyor is calibrated."""
+        btn = self.track_toggle
+        if ready:
+            btn.setEnabled(True)
+            btn.setToolTip("Draw the tracked products on the picture")
+            if self._track_wanted and not btn.isChecked():
+                btn.setChecked(True)
+            return
+        if btn.isEnabled():
+            self._track_wanted = btn.isChecked()
+        btn.blockSignals(True)
+        btn.setChecked(False)
+        btn.blockSignals(False)
+        self._overlay_controller.set_tracking_enabled(False)
+        btn.setEnabled(False)
+        btn.setToolTip("Calibrate the conveyor first (the Conveyor button) to track products")
 
     def _update_viewer_tool_visibility(self):
         """Calibrate/Track/Targets belong to viewer mode WITH a clip
