@@ -239,19 +239,19 @@ class TimePicker(QWidget):
         # pixels-per-minute scale changes; text and bar heights stay.
         self._zoom_btns: list[QToolButton] = []
         for glyph, tip, factor in (
-            ("minus", "Contract the timeline (Ctrl+wheel also zooms)", 1 / 1.25),
-            ("plus", "Stretch the timeline (Ctrl+wheel also zooms)", 1.25),
+            ("minus", "Contract the timeline (the mouse wheel also zooms)", 1 / 1.25),
+            ("plus", "Stretch the timeline (the mouse wheel also zooms)", 1.25),
         ):
             zb = QToolButton(self.view)
-            zb.setIcon(zoom_glyph_icon(glyph, 16))
-            zb.setIconSize(QSize(14, 14))
-            zb.setFixedSize(24, 24)
+            zb.setIcon(zoom_glyph_icon(glyph, 40))  # much bigger glyphs (Chris, 2026-09-13)
+            zb.setIconSize(QSize(30, 30))
+            zb.setFixedSize(38, 38)
             zb.setCursor(Qt.PointingHandCursor)
             zb.setToolTip(tip)
             zb.setAutoRepeat(True)
             zb.setAutoRepeatInterval(160)
             zb.setStyleSheet(
-                "QToolButton { background: rgba(0, 0, 0, 150); border: 1px solid rgba(255, 255, 255, 70); border-radius: 12px; }"
+                "QToolButton { background: rgba(0, 0, 0, 150); border: 1px solid rgba(255, 255, 255, 70); border-radius: 19px; }"
                 "QToolButton:hover { background: rgba(0, 0, 0, 210); }"
             )
             zb.clicked.connect(lambda _checked=False, f=factor: self._zoom_about(f, None))
@@ -1249,13 +1249,15 @@ class TimePicker(QWidget):
 
     # ---- wheel: scroll along the day, Ctrl to zoom (Chris, 2026-09-10) ----
     def _handle_wheel(self, event) -> bool:
-        """Plain wheel scrolls up and down (Chris, 2026-09-10), Shift+wheel
-        scrolls left and right along the day, Ctrl+wheel zooms about the cursor."""
+        """Plain wheel zooms about the cursor, the same as the + and -
+        buttons (Chris, 2026-09-13; it scrolled up and down before).
+        Shift+wheel scrolls left and right along the day, Ctrl+wheel
+        scrolls up and down."""
         delta = event.angleDelta().y() or event.angleDelta().x()
         if not delta:
             return False
         mods = event.modifiers()
-        if mods & Qt.ControlModifier:
+        if not (mods & (Qt.ControlModifier | Qt.ShiftModifier)):
             pos = self._event_viewport_pos(event)
             self._zoom_about(1.25 if delta > 0 else 1 / 1.25, pos)
             return True
