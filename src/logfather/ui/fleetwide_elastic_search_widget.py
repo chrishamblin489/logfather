@@ -190,7 +190,7 @@ class FleetwideGraph(QWidget):
                 if operating_height > 0:
                     painter.fillRect(
                         QRectF(center_x - bar_width / 2, plot.bottom() - operating_height, bar_width, operating_height),
-                        QColor("#e74c3c"),
+                        QColor(theme.LEGEND_OPERATION),
                     )
                 if non_operating_height > 0:
                     painter.fillRect(

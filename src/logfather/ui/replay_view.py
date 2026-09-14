@@ -654,7 +654,7 @@ class ReplayView(QWidget):
         self.view_menu_btn.setCursor(Qt.PointingHandCursor)
         self.view_menu_btn.setToolTip("Sync tools, overlays, info text and the clip counters")
         self.view_menu_btn.setStyleSheet(
-            "QToolButton { background: rgba(0, 0, 0, 150); color: #ecf0f4; border: 1px solid rgba(255, 255, 255, 70);"
+            f"QToolButton {{ background: rgba(0, 0, 0, 150); color: {theme.TEXT_BRIGHT}; border: 1px solid rgba(255, 255, 255, 70);"
             " border-radius: 4px; padding: 2px 8px; font-size: 12px; }"
             "QToolButton:hover { background: rgba(0, 0, 0, 210); }"
             "QToolButton::menu-indicator { image: none; width: 0px; }"

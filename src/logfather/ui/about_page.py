@@ -395,7 +395,7 @@ class AboutDialog(QDialog):
                 self._link(f"src/logfather/{m.strip()}", m.strip()) for m in modules.split(",")
             )
             rows.append(
-                f'<p style="margin: 8px 0;"><span style="color:#ecf0f4; font-weight:bold; font-size:14px;">{screen}</span>'
+                f'<p style="margin: 8px 0;"><span style="color:{theme.TEXT_BRIGHT}; font-weight:bold; font-size:14px;">{screen}</span>'
                 f'<br/><span style="color:#b8c4d0;">{what}</span>'
                 f'<br/><span style="color:#9fb0c0;">Code: {links}</span></p>'
             )
@@ -419,7 +419,7 @@ class AboutDialog(QDialog):
         ]
         for group, blurb, entries in FILE_GROUPS:
             parts.append(
-                f'<h3 style="color:#ecf0f4; margin: 14px 0 2px 0;">{group}</h3>'
+                f'<h3 style="color:{theme.TEXT_BRIGHT}; margin: 14px 0 2px 0;">{group}</h3>'
                 f'<p style="color:#9fb0c0; margin: 0 0 6px 0;">{blurb}</p>'
             )
             for name, repo_path, summary in entries:

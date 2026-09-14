@@ -13,6 +13,7 @@ from typing import Callable, Iterable, Optional, Dict, Tuple, List
 from PySide6.QtCore import Qt, Signal, QEvent, QRectF, QPointF, QTimer, QSize
 
 from logfather.ui.qt_worker import JobSlot
+from logfather.ui import theme
 from logfather.ui.icons import zoom_glyph_icon
 from logfather.ui.data_boxes import DataBoxes, COMPACT_BOX_STYLE, COMPACT_FONT_PX, add_label_backdrop, CollapsibleGroupBox
 from logfather.data import grafana_client
@@ -223,7 +224,7 @@ class ReplayTimeline(QWidget):
         self._view_menu_btn.setCursor(Qt.PointingHandCursor)
         self._view_menu_btn.setToolTip("Show or hide the bars on the timeline")
         self._view_menu_btn.setStyleSheet(
-            "QToolButton { background: rgba(0, 0, 0, 150); color: #ecf0f4; border: 1px solid rgba(255, 255, 255, 70);"
+            f"QToolButton {{ background: rgba(0, 0, 0, 150); color: {theme.TEXT_BRIGHT}; border: 1px solid rgba(255, 255, 255, 70);"
             " border-radius: 4px; padding: 2px 8px; font-size: 12px; }"
             "QToolButton:hover { background: rgba(0, 0, 0, 210); }"
             "QToolButton::menu-indicator { image: none; width: 0px; }"
@@ -265,7 +266,7 @@ class ReplayTimeline(QWidget):
         # _drag_candidate, hide_thumbnail_preview, _fit_text.
         self.settings = None  # set by the main window
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet("color: #9aa0a6;")
+        self.status_label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
         self._drag_candidate = None
         # Errors box (Chris, 2026-09-10): one line per condition with the
         # day's total and a tick to show or hide its row. A row is shown by
@@ -1479,7 +1480,7 @@ class ReplayTimeline(QWidget):
         minute = max(0.0, min(24 * 60, (play_dt - self._day_start).total_seconds() / 60.0))
         x = minute * self._ppm
         if self._playhead_line is None:
-            pen = QPen(QColor("#2ecc71"))
+            pen = QPen(QColor(theme.SUCCESS_BRIGHT))
             pen.setWidth(2)
             self._playhead_line = self.scene.addLine(x, self._scale_y, x, self._line_bottom(), pen)
             self._playhead_line.setZValue(3)
@@ -1493,7 +1494,7 @@ class ReplayTimeline(QWidget):
             font.setPointSize(8)
             font.setBold(True)
             self._playhead_label = self.scene.addText(text, font)
-            self._playhead_label.setDefaultTextColor(QColor("#2ecc71"))
+            self._playhead_label.setDefaultTextColor(QColor(theme.SUCCESS_BRIGHT))
             self._playhead_label.setZValue(8)
             self._playhead_label.setAcceptedMouseButtons(Qt.NoButton)
             add_label_backdrop(self._playhead_label)

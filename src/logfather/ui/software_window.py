@@ -175,7 +175,7 @@ class _TimelineWidget(QWidget):
                         painter.setPen(QPen(QColor(theme.BG_DEEP)))
                     painter.drawRect(bar)
                     if fm_small.horizontalAdvance(label) + 8 <= bar.width():
-                        painter.setPen(QColor("#0d1116"))
+                        painter.setPen(QColor(theme.BG))
                         painter.drawText(bar.adjusted(4, 0, -4, 0), Qt.AlignLeft | Qt.AlignVCenter, label)
             y += LANE_H * len(PACKAGES) + BLOCK_GAP
         painter.end()

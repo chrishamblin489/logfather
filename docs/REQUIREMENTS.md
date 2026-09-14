@@ -24,6 +24,21 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ### 2026-09-14
 
+- Review items 1-3 done (Chris, 2026-09-14): (1) 74 unused imports, 54
+  of the 57 self-probes in the replay view, the grep-verified dead code
+  (SettingsDialog, the radar TargetScopeWidget module, dead methods and
+  constants) and the two dormant subsystems (the pick-rate heat strip and
+  the hidden yellow log-marker bar with the marker chain that only fed it)
+  removed - about 1,000 lines, no behaviour change except two wasted
+  timeline redraws per clip open; (2) one OCR clock-sync engine
+  (`estimate_offset` with `SyncHooks`) shared by the Sync CCTV Time window
+  and the automatic sync, replacing the window's duplicated copies - the
+  window now uses the better mid-clip verify rule (at least two seconds
+  after the sync frame) and its progress bars count from the sync frame;
+  11 new engine tests; (3) the status colours (amber warning, soft red,
+  the OCR box green and purple, bright and muted text) are theme tokens
+  instead of literals across the ui; the per-track telemetry palettes and
+  the icons' illustration colours stay literal on purpose.
 - Code review and renames (Chris, 2026-09-14): modules, classes and
   controls renamed to what the screen calls them (replay_view / ReplayView,
   replay_timeline / ReplayTimeline, data_boxes / DataBoxes,

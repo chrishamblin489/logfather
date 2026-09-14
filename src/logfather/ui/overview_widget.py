@@ -2324,7 +2324,7 @@ class OverviewWidget(QWidget):
                 rect = QRectF(x1, y + 8, max(1.5, x2 - x1), max(6, row_height - 16))
                 manual_band = QGraphicsRectItem(rect)
                 manual_band.setPen(QPen(Qt.NoPen))
-                manual_band.setBrush(QBrush(QColor("#f0ad4e")))
+                manual_band.setBrush(QBrush(QColor(theme.WARNING)))
                 manual_band.setToolTip("Manual mode")
                 manual_band.setZValue(3)
                 self.scene.addItem(manual_band)
@@ -2339,7 +2339,7 @@ class OverviewWidget(QWidget):
                     x1 = timeline_x + ((start_dt - window_start).total_seconds() / total_seconds) * timeline_width
                     x2 = timeline_x + ((end_dt - window_start).total_seconds() / total_seconds) * timeline_width
                     rect = QRectF(x1, y + 8, max(1.5, x2 - x1), max(6, row_height - 16))
-                    color = QColor("#7cc77b") if faded_segment.get("kind") == "sku" else QColor("#f0ad4e")
+                    color = QColor("#7cc77b") if faded_segment.get("kind") == "sku" else QColor(theme.WARNING)
                     color.setAlpha(90)
                     faded_band = QGraphicsRectItem(rect)
                     faded_band.setPen(QPen(Qt.NoPen))
@@ -2381,8 +2381,8 @@ class OverviewWidget(QWidget):
                 status_text = "Downloading" if state.phase == "downloading" else "Waiting"
             status_color = {
                 "Running": QColor("#7cc77b"),
-                "Manual": QColor("#f0ad4e"),
-                "Stopped": QColor("#ff7a70"),
+                "Manual": QColor(theme.WARNING),
+                "Stopped": QColor(theme.DANGER_SOFT),
                 "Idle": QColor("#9aa9b5"),
             }.get(status_text, QColor("#9aa9b5"))
             status_item = self.scene.addText(status_text)
