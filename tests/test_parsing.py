@@ -24,6 +24,41 @@ class TestExtractRobotId:
         assert elastic_loader._extract_robot_id(Path("Z:/public/Spare003")) == "35-2300-003"
 
 
+class TestResolveRobotId:
+    """The robot id a fetch queries, resolved once on the UI thread
+    (review item 10): the picker's override wins, else the folder."""
+
+    @staticmethod
+    def _resolve(root, override):
+        from logfather.data.elastic_schema import resolve_robot_id
+        return resolve_robot_id(root, override)
+
+    def test_override_wins_over_the_folder(self):
+        assert self._resolve(Path("Z:/public/PikPak012"), "35-2300-SIM") == "35-2300-SIM"
+
+    def test_override_without_a_folder(self):
+        assert self._resolve(None, "35-2300-SIM") == "35-2300-SIM"
+
+    def test_folder_id_when_no_override(self):
+        assert self._resolve(Path("Z:/public/PikPak012"), None) == "35-2300-012"
+
+    def test_folder_given_as_a_string(self):
+        assert self._resolve("Z:/public/PikPak012", None) == "35-2300-012"
+
+    def test_empty_override_counts_as_none(self):
+        assert self._resolve(Path("Z:/public/PikPak012"), "") == "35-2300-012"
+
+    def test_neither_is_none(self):
+        assert self._resolve(None, None) is None
+        assert self._resolve(None, "") is None
+
+    def test_underivable_folder_is_none(self):
+        # The timeline loads a "." root in the override case; without an
+        # override nothing is derivable from it.
+        assert self._resolve(Path("."), None) is None
+        assert self._resolve(Path("Z:/public/PikPak"), None) is None
+
+
 class TestExtractHitRobotId:
     def test_prefers_leap_robot_id(self):
         doc = {"leap_robot_id": "35-2300-010", "system_id": "35-2300-999"}

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 ROBOT_ID_PREFIX = "35-2300-"
 
@@ -53,6 +54,24 @@ def robot_id_from_folder(folder_name: str) -> str | None:
     if not m:
         return None
     return f"{ROBOT_ID_PREFIX}{m.group(1)}"
+
+
+def resolve_robot_id(pikpak_root: Path | str | None, override: str | None) -> str | None:
+    """The robot id a fetch should query: the date picker's system-id
+    override when one is set (the SIM Logs mode's ``35-2300-SIM``), else
+    the id derived from the PikPak folder name, else None.
+
+    Resolved ONCE, on the UI thread, at the moment a fetch is requested,
+    and passed down to the fetch as an explicit ``robot_id`` argument. It
+    used to be a module global in elastic_loader read by the worker
+    threads, so a fetch for PikPak A could silently query robot B when the
+    picker changed mid-flight (review item 10, 2026-09-14).
+    """
+    if override:
+        return str(override)
+    if pikpak_root is None:
+        return None
+    return robot_id_from_folder(Path(pikpak_root).name)
 
 
 def identity_filter(robot_ids: list[str]) -> dict:
