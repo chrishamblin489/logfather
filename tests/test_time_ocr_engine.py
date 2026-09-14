@@ -11,7 +11,7 @@ from logfather.ui.time_ocr import (
     Roi,
     RoiSettings,
     _combine_date_and_time,
-    _estimate_start_from_samples,
+    pick_best_start,
     _estimate_start_from_transitions,
     _is_valid_time_text,
     _normalize_ocr_text,
@@ -148,13 +148,13 @@ def test_transitions_ignore_jumps_and_repeats_and_wrap_at_midnight():
 
 def test_start_from_samples_prefers_transitions_then_falls_back_to_the_median():
     with_boundary = [_sample(0, 0.0, "06:54:16"), _sample(10, 0.4, "06:54:17")]
-    assert _estimate_start_from_samples(with_boundary, BASE) == BASE + timedelta(seconds=0.6)
+    assert pick_best_start(with_boundary) == BASE + timedelta(seconds=0.6)
     flat = [_sample(0, 0.0, "06:54:16"), _sample(5, 0.2, "06:54:16"), _sample(10, 0.4, "06:54:16")]
-    assert _estimate_start_from_samples(flat, BASE) == BASE - timedelta(seconds=0.2)
+    assert pick_best_start(flat) == BASE - timedelta(seconds=0.2)
 
 
 def test_start_from_samples_with_nothing_read_is_none():
-    assert _estimate_start_from_samples([], BASE) is None
+    assert pick_best_start([]) is None
 
 
 # ---- the crop preprocessing -----------------------------------------------
@@ -329,3 +329,158 @@ def test_find_second_boundaries_ignores_skips_and_misreads():
         return "00:00:05"  # the clock jumped, not a tick
 
     assert find_second_boundaries(read_text, 0, 74, 5) == [(25, "00:00:01")]
+
+
+# ---- the shared engine (estimate_offset) --------------------------------------
+# The same four-stage estimate runs the Sync CCTV Time window and the
+# automatic sync. Tesseract is replaced by an injected read_clock over a
+# fake capture whose "frames" carry their own index.
+
+from logfather.ui.time_ocr import (  # noqa: E402
+    OCR_SYNC_CANCELLED,
+    OCR_SYNC_FALLBACK_SECONDS,
+    OCR_SYNC_FAST_SECONDS,
+    OCR_SYNC_NO_SAMPLES,
+    SyncHooks,
+    _verify_frame_offset_for_cap,
+    analyze_video_offset,
+    estimate_offset,
+)
+
+FPS = 25.0
+
+
+class FakeCap:
+    """cv2.VideoCapture's set/read, over frames that are just their index."""
+
+    def __init__(self, frame_count: int):
+        self.frame_count = frame_count
+        self.pos = 0
+        self.reads: list[int] = []
+
+    def set(self, _prop, value):
+        self.pos = int(value)
+
+    def read(self):
+        if self.pos >= self.frame_count:
+            return False, None
+        self.reads.append(self.pos)
+        frame = np.array([self.pos])
+        self.pos += 1
+        return True, frame
+
+
+def _clock(true_start: datetime, unreadable=()):
+    """A burnt-in clock for a clip that really started at true_start."""
+
+    def read_clock(frame):
+        idx = int(frame[0])
+        if idx in unreadable:
+            return ""
+        return (true_start + timedelta(seconds=idx / FPS)).strftime("%H:%M:%S")
+
+    return read_clock
+
+
+def _stages():
+    labels: list[str] = []
+    return labels, SyncHooks(on_stage=labels.append)
+
+
+def test_pick_best_start_disregards_a_misread_without_a_boundary(capsys):
+    flat = [_sample(0, 0.0, "06:54:16"), _sample(5, 0.2, "06:54:16"), _sample(10, 0.4, "06:54:16"),
+            _sample(15, 0.6, "06:54:46")]  # a 1 read as 4: thirty seconds off
+    assert pick_best_start(flat) == BASE - timedelta(seconds=0.2)
+    assert "disregarded sample 06:54:46" in capsys.readouterr().out
+
+
+def test_estimate_offset_finds_the_boundary_in_the_coarse_scan():
+    cap = FakeCap(2000)
+    labels, hooks = _stages()
+    outcome = estimate_offset(cap, FPS, 2000, roi=None, base_dt=BASE,
+                              hooks=hooks, read_clock=_clock(BASE + timedelta(seconds=0.6)))
+    assert outcome.reason == "" and outcome.result is not None
+    assert outcome.result.video_start_dt == BASE + timedelta(seconds=0.6)
+    assert outcome.result.offset_seconds == pytest.approx(0.6)
+    assert outcome.result.frame_offset == 0
+    assert labels == [f"scanning clock (coarse, first {OCR_SYNC_FAST_SECONDS}s)", "verifying frame offset"]
+    # one coarse pass and a short walk, not every frame of the first second
+    assert len([f for f in cap.reads if f < 25]) < 15
+
+
+def test_estimate_offset_falls_through_the_stages_when_the_start_is_unreadable():
+    true_start = BASE + timedelta(seconds=0.6)
+    shown: list[int] = []
+    labels: list[str] = []
+    hooks = SyncHooks(on_stage=labels.append, on_frame=lambda idx, frame: shown.append(idx))
+    cap = FakeCap(2000)
+    outcome = estimate_offset(cap, FPS, 2000, roi=None, base_dt=BASE, hooks=hooks,
+                              read_clock=_clock(true_start, unreadable=range(0, 30)))
+    assert outcome.result is not None and outcome.result.video_start_dt == true_start
+    fast, fallback = OCR_SYNC_FAST_SECONDS, OCR_SYNC_FALLBACK_SECONDS
+    assert labels == [
+        f"scanning clock (coarse, first {fast}s)",
+        f"reading clock every frame (first {fast}s)",
+        f"scanning clock (coarse, first {fallback}s)",
+        "verifying frame offset",
+    ]
+    # only the per-frame scan shows its frames, in order, from the start
+    assert shown == list(range(0, 26))
+
+
+def test_estimate_offset_with_nothing_readable_reports_no_samples():
+    labels, hooks = _stages()
+    outcome = estimate_offset(FakeCap(2000), FPS, 2000, roi=None, base_dt=BASE, hooks=hooks,
+                              read_clock=lambda frame: "")
+    assert outcome.result is None and outcome.reason == OCR_SYNC_NO_SAMPLES
+    assert len(labels) == 4 and "verifying frame offset" not in labels
+
+
+def test_estimate_offset_stops_when_asked_and_reports_cancelled():
+    reads = 0
+
+    def read_clock(frame):
+        nonlocal reads
+        reads += 1
+        return ""
+
+    labels: list[str] = []
+    hooks = SyncHooks(on_stage=labels.append, should_abort=lambda: reads >= 3)
+    outcome = estimate_offset(FakeCap(2000), FPS, 2000, roi=None, base_dt=BASE, hooks=hooks, read_clock=read_clock)
+    assert outcome.result is None and outcome.reason == OCR_SYNC_CANCELLED
+    assert reads == 3 and len(labels) == 1
+
+
+def test_estimate_offset_reads_from_the_start_frame_on_the_synced_date():
+    # the camera synced at frame 300 and the clock only reads from there
+    true_start = BASE + timedelta(seconds=0.6)
+    cap = FakeCap(20000)
+    outcome = estimate_offset(cap, FPS, 20000, roi=None, base_dt=BASE, start_frame=300,
+                              read_clock=_clock(true_start, unreadable=range(0, 300)))
+    assert outcome.result is not None and outcome.result.video_start_dt == true_start
+    assert min(cap.reads) == 300
+
+
+def test_verify_frame_offset_checks_at_least_two_seconds_past_the_start_frame():
+    # frame_count // 2 is 500, but a late start frame pushes the check past it
+    _offset, report = _verify_frame_offset_for_cap(FakeCap(1000), FPS, 1000, BASE, _clock(BASE), start_frame=600)
+    assert report[0][0].startswith("Verifying around mid-frame 650 ")
+    _offset, report = _verify_frame_offset_for_cap(FakeCap(1000), FPS, 1000, BASE, _clock(BASE), start_frame=0)
+    assert report[0][0].startswith("Verifying around mid-frame 500 ")
+    # never past the last frame
+    _offset, report = _verify_frame_offset_for_cap(FakeCap(100), FPS, 100, BASE, _clock(BASE), start_frame=90)
+    assert report[0][0].startswith("Verifying around mid-frame 99 ")
+
+
+@pytest.mark.parametrize("frames_ahead", [-1, 0, 2])
+def test_verify_frame_offset_follows_a_clock_that_runs_frames_ahead(frames_ahead):
+    clock = _clock(BASE + timedelta(seconds=frames_ahead / FPS))
+    offset, report = _verify_frame_offset_for_cap(FakeCap(1000), FPS, 1000, BASE, clock)
+    assert offset == frames_ahead
+    assert report[-1] == (f"Chosen offset: {frames_ahead:+d} frame(s)", "info")
+
+
+def test_analyze_video_offset_keeps_the_signature_replay_view_calls():
+    import inspect
+    params = inspect.signature(analyze_video_offset).parameters
+    assert list(params) == ["video_path", "settings_path", "settings_key", "parent", "should_abort", "on_stage", "start_frame"]

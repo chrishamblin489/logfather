@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from time import perf_counter
 import json
@@ -8,7 +8,7 @@ import math
 import re
 import os
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 import sys
 
 from logfather.paths import bundle_root
@@ -50,6 +50,15 @@ except Exception:  # pragma: no cover - optional dependency
 OCR_SYNC_FAST_SECONDS = 1
 OCR_SYNC_FALLBACK_SECONDS = 3
 OCR_SYNC_COARSE_STEP_SECONDS = 0.2
+# A second boundary whose implied clip start is further than this from the
+# median boundary's is a misread and is disregarded.
+OCR_TRANSITION_INLIER_SECONDS = 1.0
+# With no boundary, every reading implies a start; those further than this
+# from the median reading's are disregarded.
+OCR_SAMPLE_INLIER_SECONDS = 2.0
+# The frame offsets tried when the estimate is checked against the clock
+# around mid-clip.
+OCR_VERIFY_CANDIDATE_OFFSETS = (-2, -1, 0, 1, 2)
 # The readings table (Chris, 2026-09-12): every second change in the first
 # OCR_TABLE_SECONDS after the sync frame, then one drift check every
 # OCR_TABLE_INTERVAL_SECONDS through the rest of the clip; a drift check
@@ -1866,6 +1875,10 @@ class SyncCctvTimeWindow(QWidget):
         self._read_and_show(self.current_frame)
 
     def _run_sync_analysis(self):
+        """The clock checks: estimate_offset from the frame the camera's
+        date synced on, with hooks that show each frame of the per-frame
+        scans, put a Cancel-able progress dialog over every scan, and set
+        the offset label with the outcome."""
         if self.cap is None:
             return
         if not self.ocr_enabled_checkbox.isChecked():
@@ -1880,217 +1893,61 @@ class SyncCctvTimeWindow(QWidget):
         if filename_dt is None:
             self.offset_label.setText("Offset: filename time not found")
             return
-        def _pick_best_start(samples: list[tuple[int, float, datetime, str]]) -> datetime | None:
-            transition_result = self._estimate_start_from_transitions(samples)
-            if transition_result is None:
-                inferred = []
-                for _frame_idx, video_t, ocr_dt, ocr_text in samples:
-                    inferred_start = ocr_dt - timedelta(seconds=video_t)
-                    inferred.append((inferred_start, ocr_text))
-                inferred.sort(key=lambda item: item[0])
-                if not inferred:
-                    return None  # no usable OCR samples (e.g. clock unreadable)
-                median_start = inferred[len(inferred) // 2][0]
-                inliers = [
-                    item for item in inferred
-                    if abs((item[0] - median_start).total_seconds()) <= 2.0
-                ]
-                if not inliers:
-                    return None
-                outliers = [item for item in inferred if item not in inliers]
-                if outliers:
-                    for outlier_start, outlier_text in outliers:
-                        delta = (outlier_start - median_start).total_seconds()
-                        print(f"[ocr] disregarded sample {outlier_text} (offset {delta:+.2f}s)", flush=True)
-                return inliers[len(inliers) // 2][0]
-            best_start, median_start, outliers = transition_result
-            if outliers:
-                for outlier_start, outlier_text in outliers:
-                    delta = (outlier_start - median_start).total_seconds()
-                    print(f"[ocr] disregarded transition {outlier_text} (offset {delta:+.2f}s)", flush=True)
-            return best_start
-
-        fast_seconds = OCR_SYNC_FAST_SECONDS
-        fallback_seconds = OCR_SYNC_FALLBACK_SECONDS
         # Read the clock from the frame where the camera's date synced, on
         # the date it synced to (Chris, 2026-09-12).
         start_frame = int(self.date_sync_frame or 0)
         if self.cctv_synced_date is not None:
             filename_dt = filename_dt.replace(year=self.cctv_synced_date.year, month=self.cctv_synced_date.month, day=self.cctv_synced_date.day)
-        roi = None
         self.cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         ret, frame = self.cap.read()
-        if ret and frame is not None:
-            roi = self._current_roi(frame.shape[1], frame.shape[0])
-
-        def _cancelled() -> bool:
-            if self._run_cancelled:
-                self.offset_label.setText("Offset: cancelled")
-                self.ocr_label.setText("OCR: clock checks cancelled")
-                return True
-            return False
-
-        def _mark_cancelled() -> None:
-            self._run_cancelled = True
-
-        samples: list[tuple[int, float, datetime, str]] = []
-        if roi is not None:
-            samples = _find_second_boundary_samples_for_cap(
-                self.cap,
-                self.fps,
-                self.frame_count,
-                seconds=fast_seconds,
-                base_dt=filename_dt,
-                roi=roi,
-                parent=self,
-                progress_label=f"Scanning first {fast_seconds}s (coarse)...",
-                start_frame=start_frame,
-                on_cancel=_mark_cancelled,
-            )
-            if _cancelled():
-                return
-        best_start = _pick_best_start(samples) if samples else None
-        if best_start is None:
-            samples = self._collect_ocr_samples(
-                start_frame=start_frame,
-                seconds=fast_seconds,
-                progress_label=f"Analyzing first {fast_seconds}s...",
-            )
-            if _cancelled():
-                return
-            best_start = _pick_best_start(samples)
-        if best_start is None and fallback_seconds > fast_seconds:
-            if roi is not None:
-                samples = _find_second_boundary_samples_for_cap(
-                    self.cap,
-                    self.fps,
-                    self.frame_count,
-                    seconds=fallback_seconds,
-                    base_dt=filename_dt,
-                    roi=roi,
-                    parent=self,
-                    progress_label=f"Scanning first {fallback_seconds}s (coarse)...",
-                    start_frame=start_frame,
-                    on_cancel=_mark_cancelled,
-                )
-                if _cancelled():
-                    return
-                best_start = _pick_best_start(samples) if samples else None
-        if best_start is None and fallback_seconds > fast_seconds:
-            samples = self._collect_ocr_samples(
-                start_frame=start_frame,
-                seconds=fallback_seconds,
-                progress_label=f"Analyzing first {fallback_seconds}s...",
-            )
-            if _cancelled():
-                return
-            if not samples:
-                self.offset_label.setText("Offset: no valid OCR samples")
-                return
-            best_start = _pick_best_start(samples)
-        if best_start is None:
-            self.offset_label.setText("Offset: no consistent OCR samples")
+        if not ret or frame is None:
+            frame = self._first_frame()
+        if frame is None:
+            self.offset_label.setText(f"Offset: {OCR_SYNC_NO_SAMPLES}")
             return
-        offset = best_start - filename_dt
-        self.estimated_start_dt = best_start
-        self.time_frame_offset, report = self._verify_frame_offset(best_start)
-        self.offset_label.setText(
-            f"Offset: {offset.total_seconds():+.2f}s vs filename"
+        roi = self._current_roi(frame.shape[1], frame.shape[0])
+        hooks = SyncHooks(on_frame=self._show_scan_frame, on_cancel=self._mark_run_cancelled, parent=self)
+        outcome = estimate_offset(
+            self.cap, self.fps, self.frame_count,
+            roi=roi, base_dt=filename_dt, start_frame=start_frame, hooks=hooks,
         )
+        if self._run_cancelled or outcome.reason == OCR_SYNC_CANCELLED:
+            self.offset_label.setText("Offset: cancelled")
+            self.ocr_label.setText("OCR: clock checks cancelled")
+            return
+        result = outcome.result
+        if result is None:
+            self.offset_label.setText(f"Offset: {outcome.reason}")
+            return
+        best_start = result.video_start_dt
+        offset_seconds = result.offset_seconds
+        self.estimated_start_dt = best_start
+        self.time_frame_offset = result.frame_offset
+        self.offset_label.setText(f"Offset: {offset_seconds:+.2f}s vs filename")
         self.ocr_enabled_checkbox.setChecked(False)
         if callable(self._on_offset_approved):
             def _notify():
-                self._on_offset_approved(
-                    best_start,
-                    offset.total_seconds(),
-                    int(self.time_frame_offset),
-                )
+                self._on_offset_approved(best_start, offset_seconds, int(self.time_frame_offset))
             QTimer.singleShot(0, _notify)
-        self.offset_label.setText(
-            f"Offset applied: {offset.total_seconds():+.2f}s vs filename"
-        )
+        self.offset_label.setText(f"Offset applied: {offset_seconds:+.2f}s vs filename")
 
-    def _collect_ocr_samples(
-        self,
-        *,
-        seconds: int,
-        progress_label: str,
-        start_frame: int = 0,
-    ) -> list[tuple[int, float, datetime, str]]:
-        if self.cap is None or self.fps <= 0 or self.frame_count <= 0:
-            return []
-        roi = None
-        max_frame_idx = int(math.ceil(seconds * self.fps))
-        if max_frame_idx < 0:
-            return []
-        max_frame_idx = min(self.frame_count - 1, max_frame_idx)
-        max_frames = max_frame_idx + 1
-        if max_frames <= 0:
-            return []
-        step = 1
-        start_frame = max(0, int(start_frame))
-        filename_dt = self._parse_filename_datetime()
-        if filename_dt is None:
-            return []
-        samples: list[tuple[int, float, datetime, str]] = []
-        progress = QProgressDialog(progress_label, "Cancel", 0, max_frames, self)
-        progress.setWindowTitle("OCR Analysis")
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
-        for frame_idx in range(start_frame, min(self.frame_count, start_frame + max_frames), step):
-            if progress.wasCanceled():
-                self._run_cancelled = True
-                break
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
-            ret, frame = self.cap.read()
-            if not ret or frame is None:
-                continue
-            self.current_frame = frame_idx
-            self._show_frame(frame)
-            self._update_status()
-            self._sync_slider(frame_idx)
-            progress.setValue(frame_idx + 1)
-            QApplication.processEvents()
-            if roi is None:
-                roi = self._current_roi(frame.shape[1], frame.shape[0])
-            try:
-                raw_text = ocr_time_from_frame(frame, roi=roi)
-            except Exception:
-                continue
-            text = _normalize_ocr_text(raw_text)
-            if not _is_valid_time_text(text):
-                continue
-            ocr_dt = self._combine_date_and_time(filename_dt, text)
-            if self.fps > 0:
-                video_t = frame_idx / self.fps
-            else:
-                pos_msec = self.cap.get(cv2.CAP_PROP_POS_MSEC)
-                video_t = pos_msec / 1000.0 if pos_msec and pos_msec > 0 else 0.0
-            samples.append((frame_idx, video_t, ocr_dt, text))
-        progress.setValue(max_frames)
-        progress.close()
-        return samples
+    def _show_scan_frame(self, frame_idx: int, frame: np.ndarray) -> None:
+        """estimate_offset's on_frame hook: show the frame the per-frame
+        scan is reading, with the slider and status following it."""
+        self.current_frame = frame_idx
+        self._show_frame(frame)
+        self._update_status()
+        self._sync_slider(frame_idx)
+
+    def _mark_run_cancelled(self) -> None:
+        """estimate_offset's on_cancel hook: Cancel on a scan's progress
+        dialog stops the run there; the later steps are skipped."""
+        self._run_cancelled = True
 
     def _parse_filename_datetime(self) -> datetime | None:
-        if self.filename_dt is not None:
-            return self.filename_dt
-        if self.current_video_path:
-            name = Path(self.current_video_path).name
-        else:
-            return None
-        match = re.search(r"(\d{14})", name)
-        if not match:
-            return None
-        self.filename_dt = datetime.strptime(match.group(1), "%Y%m%d%H%M%S")
+        if self.filename_dt is None and self.current_video_path:
+            self.filename_dt = parse_filename_datetime(self.current_video_path)
         return self.filename_dt
-
-    def _combine_date_and_time(self, base_dt: datetime, time_text: str) -> datetime:
-        hour, minute, second = (int(part) for part in time_text.split(":"))
-        candidate = base_dt.replace(hour=hour, minute=minute, second=second, microsecond=0)
-        if candidate < base_dt and (base_dt - candidate) > timedelta(hours=12):
-            candidate += timedelta(days=1)
-        return candidate
 
     def _offset_seconds(self) -> float:
         if self.fps > 0:
@@ -2121,123 +1978,6 @@ class SyncCctvTimeWindow(QWidget):
             ms = rem % 1000
             actual_dt = None
         return total_ms, hours, minutes, seconds, ms, actual_dt
-
-
-    def _time_text_to_seconds(self, time_text: str) -> int | None:
-        try:
-            hour, minute, second = (int(part) for part in time_text.split(":"))
-        except ValueError:
-            return None
-        if not (0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59):
-            return None
-        return hour * 3600 + minute * 60 + second
-
-    def _estimate_start_from_transitions(
-        self,
-        samples: list[tuple[int, float, datetime, str]],
-    ) -> tuple[datetime, datetime, list[tuple[datetime, str]]] | None:
-        if len(samples) < 2:
-            return None
-        transitions = []
-        for idx in range(1, len(samples)):
-            prev_frame, prev_t, prev_dt, prev_text = samples[idx - 1]
-            curr_frame, curr_t, curr_dt, curr_text = samples[idx]
-            if prev_text == curr_text:
-                continue
-            prev_secs = self._time_text_to_seconds(prev_text)
-            curr_secs = self._time_text_to_seconds(curr_text)
-            if prev_secs is None or curr_secs is None:
-                continue
-            if curr_secs != (prev_secs + 1) % 86400:
-                continue
-            boundary_video_t = curr_t
-            boundary_ocr_dt = curr_dt
-            inferred_start = boundary_ocr_dt - timedelta(seconds=boundary_video_t)
-            transitions.append((inferred_start, curr_text))
-        if not transitions:
-            return None
-        transitions.sort(key=lambda item: item[0])
-        median_start = transitions[len(transitions) // 2][0]
-        inliers = [
-            item for item in transitions
-            if abs((item[0] - median_start).total_seconds()) <= 1.0
-        ]
-        if not inliers:
-            return None
-        outliers = [item for item in transitions if item not in inliers]
-        best_start = inliers[len(inliers) // 2][0]
-        return best_start, median_start, outliers
-
-    def _verify_frame_offset(
-        self,
-        estimated_start: datetime,
-    ) -> tuple[int, list[tuple[str, str]]]:
-        if self.cap is None or self.fps <= 0 or self.frame_count <= 0:
-            return 0, [("Unable to verify frame offset (no video/fps).", "info")]
-        mid_frame = self.frame_count // 2
-        mid_dt = estimated_start + timedelta(seconds=mid_frame / self.fps)
-        target_second = mid_dt.replace(microsecond=0)
-        target_seconds = (target_second - estimated_start).total_seconds()
-        candidates = [-2, -1, 0, 1, 2]
-        best_offset = 0
-        best_score = -1
-        lines: list[tuple[str, str]] = [
-            (
-                f"Verifying around mid-frame {mid_frame} "
-                f"({target_second.strftime('%H:%M:%S')})",
-                "info",
-            ),
-        ]
-
-        for offset in candidates:
-            boundary_frame = int(math.ceil(target_seconds * self.fps - offset))
-            frames = [
-                max(0, boundary_frame - 1),
-                max(0, min(self.frame_count - 1, boundary_frame)),
-                max(0, min(self.frame_count - 1, boundary_frame + 1)),
-            ]
-            score = 0
-            lines.append((f"Offset {offset:+d} frames:", "info"))
-            for frame_idx in frames:
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
-                ret, frame = self.cap.read()
-                if not ret or frame is None:
-                    lines.append((f"  frame {frame_idx + 1}: read failed", "miss"))
-                    continue
-                roi = self._current_roi(frame.shape[1], frame.shape[0])
-                try:
-                    raw_text = ocr_time_from_frame(frame, roi=roi)
-                except Exception as exc:
-                    lines.append((f"  frame {frame_idx + 1}: OCR error {exc}", "miss"))
-                    continue
-                ocr_text = _normalize_ocr_text(raw_text)
-                calc_dt = estimated_start + timedelta(
-                    seconds=(frame_idx + offset) / self.fps
-                )
-                calc_text = calc_dt.strftime("%H:%M:%S")
-                matched = ocr_text == calc_text
-                if matched:
-                    score += 1
-                lines.append(
-                    (
-                        f"  frame {frame_idx + 1}: OCR={ocr_text or '(blank)'} "
-                        f"calc={calc_text} {'OK' if matched else 'MISS'}",
-                        "ok" if matched else "miss",
-                    )
-                )
-            lines.append(("", "info"))
-            if score > best_score:
-                best_score = score
-                best_offset = offset
-
-        lines.append((f"Chosen offset: {best_offset:+d} frame(s)", "info"))
-        return best_offset, lines
-
-    def _show_verification_dialog(
-        self,
-        report: list[tuple[str, str]],
-    ) -> bool:
-        return show_verification_dialog(self, report)
 
 
 @dataclass(frozen=True)
@@ -2404,6 +2144,75 @@ def find_date_change_frame(cap, fps: float, frame_count: int, date_roi: Roi, *, 
         return None
 
 
+@dataclass(frozen=True)
+class SyncHooks:
+    """How estimate_offset talks to whoever runs it; every field is
+    optional. The automatic sync (a worker thread) passes should_abort and
+    on_stage. The Sync CCTV Time window passes parent - each scan then
+    gets a progress dialog with Cancel over it - on_cancel, told when that
+    Cancel is pressed, and on_frame, told each frame the per-frame scans
+    read so it can show it (the coarse scans show nothing)."""
+
+    on_stage: Callable[[str], None] | None = None
+    on_frame: Callable[[int, np.ndarray], None] | None = None
+    should_abort: Callable[[], bool] | None = None
+    on_cancel: Callable[[], None] | None = None
+    parent: QWidget | None = None
+
+
+# estimate_offset's reasons for having no result, worded for the window's
+# Offset label.
+OCR_SYNC_CANCELLED = "cancelled"
+OCR_SYNC_NO_SAMPLES = "no valid OCR samples"
+
+
+@dataclass(frozen=True)
+class OcrSyncOutcome:
+    """estimate_offset's answer: the result, or the OCR_SYNC_* reason
+    there is none."""
+
+    result: OcrOffsetResult | None
+    reason: str = ""
+
+
+class _ScanProgress:
+    """One scan's progress dialog with Cancel, shown over hooks.parent when
+    there is one. stop() also polls hooks.should_abort, so a headless run
+    is interrupted the same way; a Cancel is reported once to
+    hooks.on_cancel."""
+
+    def __init__(self, hooks: SyncHooks, label: str, maximum: int):
+        self._hooks = hooks
+        self._maximum = int(maximum)
+        self._dialog = None
+        if hooks.parent is not None:
+            dialog = QProgressDialog(label, "Cancel", 0, self._maximum, hooks.parent)
+            dialog.setWindowTitle("OCR Analysis")
+            dialog.setWindowModality(Qt.WindowModal)
+            dialog.setMinimumDuration(0)
+            dialog.setValue(0)
+            self._dialog = dialog
+
+    def stop(self) -> bool:
+        if self._hooks.should_abort is not None and self._hooks.should_abort():
+            return True
+        if self._dialog is not None and self._dialog.wasCanceled():
+            if self._hooks.on_cancel is not None:
+                self._hooks.on_cancel()
+            return True
+        return False
+
+    def advance(self, done: int) -> None:
+        if self._dialog is not None:
+            self._dialog.setValue(int(done))
+            QApplication.processEvents()
+
+    def close(self) -> None:
+        if self._dialog is not None:
+            self._dialog.setValue(self._maximum)
+            self._dialog.close()
+
+
 def analyze_video_offset(
     video_path: str | Path,
     *,
@@ -2414,20 +2223,13 @@ def analyze_video_offset(
     on_stage=None,
     start_frame: int = 0,
 ) -> OcrOffsetResult | None:
-    """`should_abort` (callable -> bool) is polled between frames so a
-    worker-thread run can be interrupted quickly (e.g. at app shutdown);
-    aborted runs return None. `on_stage` (callable(str)) is told when each
-    analysis stage begins, for progress UI."""
-    t_total = perf_counter()
-
-    def _stage(label: str) -> float:
-        if on_stage is not None:
-            try:
-                on_stage(label)
-            except Exception:
-                pass
-        return perf_counter()
-
+    """The automatic sync over a clip on disk: the boxes saved for
+    `settings_key`, the camera's date sync when a date box is saved, then
+    estimate_offset. `should_abort` (callable -> bool) is polled between
+    frames so a worker-thread run can be interrupted quickly (e.g. at app
+    shutdown); aborted runs return None. `on_stage` (callable(str)) is
+    told when each analysis stage begins, for progress UI."""
+    hooks = SyncHooks(on_stage=on_stage, should_abort=should_abort, parent=parent)
     _ensure_tesseract()
     base_dt = parse_filename_datetime(video_path)
     if base_dt is None:
@@ -2462,9 +2264,6 @@ def analyze_video_offset(
     )
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-    def _aborted() -> bool:
-        return should_abort is not None and should_abort()
-
     # The camera may sync its date some way into the clip (Chris,
     # 2026-09-12); when a date box is saved, find that frame first and
     # read the clock only from there, on the synced date.
@@ -2472,7 +2271,7 @@ def analyze_video_offset(
     if settings_path and settings_key:
         date_settings = load_roi_settings(settings_path, settings_key, section="date_roi_by_key")
     if date_settings is not None:
-        t_stage = _stage("checking the camera date")
+        t_stage = _tell_stage(hooks, "checking the camera date")
         date_roi = Roi.top_center_time(
             frame.shape[1], frame.shape[0],
             width_ratio=date_settings.width_ratio, height_ratio=date_settings.height_ratio,
@@ -2485,330 +2284,294 @@ def analyze_video_offset(
             base_dt = base_dt.replace(year=new_date.year, month=new_date.month, day=new_date.day)
             print(f"[ocr] camera date {initial_date} -> {new_date} at frame {change_frame} ({change_frame / fps:.1f}s); clock read from there", flush=True)
         print(f"[ocr] date check: {(perf_counter() - t_stage) * 1000:.0f}ms", flush=True)
-        if _aborted():
+        if should_abort is not None and should_abort():
             cap.release()
             return None
-    start_frame = max(0, min(int(start_frame), max(0, frame_count - 1)))
 
+    outcome = estimate_offset(
+        cap, fps, frame_count,
+        roi=roi, base_dt=base_dt, start_frame=start_frame, hooks=hooks,
+    )
+    cap.release()
+    return outcome.result
+
+
+def _tell_stage(hooks: SyncHooks, label: str) -> float:
+    """Tell hooks.on_stage a stage is starting; returns its start time."""
+    if hooks.on_stage is not None:
+        try:
+            hooks.on_stage(label)
+        except Exception:
+            pass
+    return perf_counter()
+
+
+def estimate_offset(
+    cap,
+    fps: float,
+    frame_count: int,
+    *,
+    roi: Roi,
+    base_dt: datetime,
+    start_frame: int = 0,
+    hooks: SyncHooks | None = None,
+    read_clock=None,
+) -> OcrSyncOutcome:
+    """The clock sync shared by the Sync CCTV Time window and the
+    automatic sync. From `start_frame`, four stages, each run only when
+    the one before found nothing: a coarse scan for a second boundary over
+    the first OCR_SYNC_FAST_SECONDS, a read of every frame over the same,
+    then both again over OCR_SYNC_FALLBACK_SECONDS. The estimate is then
+    checked against the clock around mid-clip for the frame offset.
+    `base_dt` is the filename time on the date the camera shows.
+    `read_clock(frame) -> str` reads the clock text off a frame; it
+    defaults to Tesseract over `roi`, and tests inject a fake."""
+    hooks = hooks or SyncHooks()
+    if read_clock is None:
+        def read_clock(frame):
+            return ocr_time_from_frame(frame, roi=roi)
+    t_total = perf_counter()
+    cancelled = False
+
+    def _mark_cancelled() -> None:
+        nonlocal cancelled
+        cancelled = True
+        if hooks.on_cancel is not None:
+            hooks.on_cancel()
+
+    scan_hooks = replace(hooks, on_cancel=_mark_cancelled)
+
+    def _stopped() -> bool:
+        return cancelled or (hooks.should_abort is not None and hooks.should_abort())
+
+    start_frame = max(0, min(int(start_frame), max(0, frame_count - 1)))
     fast_seconds = OCR_SYNC_FAST_SECONDS
     fallback_seconds = OCR_SYNC_FALLBACK_SECONDS
-    t_stage = _stage(f"scanning clock (coarse, first {fast_seconds}s)")
-    samples = _find_second_boundary_samples_for_cap(
-        cap,
-        fps,
-        frame_count,
-        seconds=fast_seconds,
-        base_dt=base_dt,
-        roi=roi,
-        parent=parent,
-        progress_label=f"Scanning first {fast_seconds}s (coarse)...",
-        should_abort=should_abort,
-        start_frame=start_frame,
-    )
-    best_start = _estimate_start_from_samples(samples, base_dt)
-    print(
-        f"[ocr] coarse scan {fast_seconds}s: {(perf_counter() - t_stage) * 1000:.0f}ms "
-        f"samples={len(samples)} found={best_start is not None}",
-        flush=True,
-    )
-    if best_start is None and not _aborted():
-        t_stage = _stage(f"reading clock every frame (first {fast_seconds}s)")
-        samples = _collect_ocr_samples_for_cap(
-            cap,
-            fps,
-            frame_count,
-            seconds=fast_seconds,
-            base_dt=base_dt,
-            roi=roi,
-            parent=parent,
-            progress_label=f"Analyzing first {fast_seconds}s...",
-            should_abort=should_abort,
-            start_frame=start_frame,
-        )
-        best_start = _estimate_start_from_samples(samples, base_dt)
+    stages = [("coarse", fast_seconds), ("dense", fast_seconds)]
+    if fallback_seconds > fast_seconds:
+        stages += [("coarse", fallback_seconds), ("dense", fallback_seconds)]
+    best_start = None
+    samples: list[tuple[int, float, datetime, str]] = []
+    for kind, seconds in stages:
+        if kind == "coarse":
+            t_stage = _tell_stage(hooks, f"scanning clock (coarse, first {seconds}s)")
+            samples = _find_second_boundary_samples_for_cap(
+                cap, fps, frame_count, seconds=seconds, base_dt=base_dt,
+                read_clock=read_clock, start_frame=start_frame, hooks=scan_hooks,
+            )
+        else:
+            t_stage = _tell_stage(hooks, f"reading clock every frame (first {seconds}s)")
+            samples = _collect_ocr_samples_for_cap(
+                cap, fps, frame_count, seconds=seconds, base_dt=base_dt,
+                read_clock=read_clock, start_frame=start_frame, hooks=scan_hooks,
+            )
+        best_start = pick_best_start(samples)
         print(
-            f"[ocr] dense scan {fast_seconds}s: {(perf_counter() - t_stage) * 1000:.0f}ms "
+            f"[ocr] {kind} scan {seconds}s: {(perf_counter() - t_stage) * 1000:.0f}ms "
             f"samples={len(samples)} found={best_start is not None}",
             flush=True,
         )
-    if best_start is None and fallback_seconds > fast_seconds and not _aborted():
-        t_stage = _stage(f"scanning clock (coarse, first {fallback_seconds}s)")
-        samples = _find_second_boundary_samples_for_cap(
-            cap,
-            fps,
-            frame_count,
-            seconds=fallback_seconds,
-            base_dt=base_dt,
-            roi=roi,
-            parent=parent,
-            progress_label=f"Scanning first {fallback_seconds}s (coarse)...",
-            should_abort=should_abort,
-            start_frame=start_frame,
-        )
-        best_start = _estimate_start_from_samples(samples, base_dt)
-        print(
-            f"[ocr] coarse scan {fallback_seconds}s: {(perf_counter() - t_stage) * 1000:.0f}ms "
-            f"samples={len(samples)} found={best_start is not None}",
-            flush=True,
-        )
-    if best_start is None and fallback_seconds > fast_seconds and not _aborted():
-        t_stage = _stage(f"reading clock every frame (first {fallback_seconds}s)")
-        samples = _collect_ocr_samples_for_cap(
-            cap,
-            fps,
-            frame_count,
-            seconds=fallback_seconds,
-            base_dt=base_dt,
-            roi=roi,
-            parent=parent,
-            progress_label=f"Analyzing first {fallback_seconds}s...",
-            should_abort=should_abort,
-            start_frame=start_frame,
-        )
-        best_start = _estimate_start_from_samples(samples, base_dt)
-        print(
-            f"[ocr] dense scan {fallback_seconds}s: {(perf_counter() - t_stage) * 1000:.0f}ms "
-            f"samples={len(samples)} found={best_start is not None}",
-            flush=True,
-        )
-    if best_start is None or _aborted():
-        cap.release()
-        print(
-            f"[ocr] analyze total: {(perf_counter() - t_total) * 1000:.0f}ms (no result)",
-            flush=True,
-        )
-        return None
+        if best_start is not None or _stopped():
+            break
+    if _stopped():
+        print(f"[ocr] analyze total: {(perf_counter() - t_total) * 1000:.0f}ms (cancelled)", flush=True)
+        return OcrSyncOutcome(None, OCR_SYNC_CANCELLED)
+    if best_start is None:
+        print(f"[ocr] analyze total: {(perf_counter() - t_total) * 1000:.0f}ms (no result)", flush=True)
+        return OcrSyncOutcome(None, OCR_SYNC_NO_SAMPLES)
 
     offset_seconds = (best_start - base_dt).total_seconds()
-    t_stage = _stage("verifying frame offset")
+    t_stage = _tell_stage(hooks, "verifying frame offset")
     frame_offset, report = _verify_frame_offset_for_cap(
-        cap,
-        fps,
-        frame_count,
-        best_start,
-        roi, start_frame=start_frame)
-    print(
-        f"[ocr] verify: {(perf_counter() - t_stage) * 1000:.0f}ms",
-        flush=True,
+        cap, fps, frame_count, best_start, read_clock, start_frame=start_frame,
     )
+    print(f"[ocr] verify: {(perf_counter() - t_stage) * 1000:.0f}ms", flush=True)
     print(
         f"[ocr] analyze total: {(perf_counter() - t_total) * 1000:.0f}ms "
         f"(offset={offset_seconds:+.3f}s frames={frame_offset})",
         flush=True,
     )
-    cap.release()
-    result = OcrOffsetResult(
+    return OcrSyncOutcome(OcrOffsetResult(
         video_start_dt=best_start,
         offset_seconds=offset_seconds,
         frame_offset=frame_offset,
         report=report,
-    )
-    return result
+    ))
 
 
-def _collect_ocr_samples_for_cap(
-    cap: cv2.VideoCapture,
-    fps: float,
-    frame_count: int,
-    *,
-    seconds: int,
-    base_dt: datetime,
-    roi: Roi,
-    parent: QWidget | None,
-    progress_label: str,
-    should_abort=None,
-    on_cancel=None,
-
-    start_frame: int = 0,) -> list[tuple[int, float, datetime, str]]:
+def _scan_span(fps: float, frame_count: int, seconds: int, start_frame: int) -> tuple[int, int] | None:
+    """(first, last) frame of a scan over `seconds` from `start_frame`,
+    clipped to the clip; None when there is nothing to scan."""
     if frame_count <= 0 or fps <= 0:
-        return []
-    max_frame_idx = int(math.ceil(seconds * fps))
+        return None
+    max_frame_idx = min(frame_count - 1, int(math.ceil(seconds * fps)))
     if max_frame_idx < 0:
-        return []
-    max_frame_idx = min(frame_count - 1, max_frame_idx)
-    max_frames = max_frame_idx + 1
-    if max_frames <= 0:
-        return []
-    samples: list[tuple[int, float, datetime, str]] = []
-    progress = None
-    if parent is not None:
-        progress = QProgressDialog(progress_label, "Cancel", 0, max_frames, parent)
-        progress.setWindowTitle("OCR Analysis")
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
+        return None
     start_frame = max(0, int(start_frame))
-    for frame_idx in range(start_frame, min(frame_count, start_frame + max_frames)):
-        if should_abort is not None and should_abort():
-            break
-        if progress is not None and progress.wasCanceled():
-            if on_cancel is not None:
-                on_cancel()
-            break
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
-        ret, frame = cap.read()
-        if not ret or frame is None:
-            continue
-        try:
-            raw_text = ocr_time_from_frame(frame, roi=roi)
-        except Exception:
-            continue
-        text = _normalize_ocr_text(raw_text)
-        if not _is_valid_time_text(text):
-            continue
-        ocr_dt = _combine_date_and_time(base_dt, text)
-        video_t = frame_idx / fps
-        samples.append((frame_idx, video_t, ocr_dt, text))
-        if progress:
-            progress.setValue(frame_idx + 1)
-            QApplication.processEvents()
-    if progress:
-        progress.setValue(max_frames)
-        progress.close()
-    return samples
+    return start_frame, min(frame_count - 1, start_frame + max_frame_idx)
 
 
-def _ocr_sample_for_frame(
-    cap: cv2.VideoCapture,
+def _sample_from_frame(
     frame_idx: int,
+    frame: np.ndarray,
     fps: float,
     base_dt: datetime,
-    roi: Roi,
+    read_clock,
 ) -> tuple[int, float, datetime, str] | None:
-    cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
-    ret, frame = cap.read()
-    if not ret or frame is None:
-        return None
+    """(frame, video seconds, clock datetime, clock text) when the frame's
+    clock reads as a valid HH:MM:SS; None otherwise."""
     try:
-        raw_text = ocr_time_from_frame(frame, roi=roi)
+        raw_text = read_clock(frame)
     except Exception:
         return None
     text = _normalize_ocr_text(raw_text)
     if not _is_valid_time_text(text):
         return None
-    ocr_dt = _combine_date_and_time(base_dt, text)
-    video_t = frame_idx / fps
-    return frame_idx, video_t, ocr_dt, text
+    return frame_idx, frame_idx / fps, _combine_date_and_time(base_dt, text), text
 
 
-def _find_second_boundary_samples_for_cap(
-    cap: cv2.VideoCapture,
+def _ocr_sample_for_frame(
+    cap,
+    frame_idx: int,
+    fps: float,
+    base_dt: datetime,
+    read_clock,
+) -> tuple[int, float, datetime, str] | None:
+    cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
+    ret, frame = cap.read()
+    if not ret or frame is None:
+        return None
+    return _sample_from_frame(frame_idx, frame, fps, base_dt, read_clock)
+
+
+def _collect_ocr_samples_for_cap(
+    cap,
     fps: float,
     frame_count: int,
     *,
     seconds: int,
     base_dt: datetime,
-    roi: Roi,
-    parent: QWidget | None,
-    progress_label: str,
-    should_abort=None,
-    on_cancel=None,
+    read_clock,
     start_frame: int = 0,
+    hooks: SyncHooks,
 ) -> list[tuple[int, float, datetime, str]]:
-    if frame_count <= 0 or fps <= 0:
+    """The per-frame scan: the clock read on every frame over `seconds`
+    from `start_frame`. Each frame read goes to hooks.on_frame before its
+    OCR, so the window shows it while Tesseract works."""
+    span = _scan_span(fps, frame_count, seconds, start_frame)
+    if span is None:
         return []
-    max_frame_idx = int(math.ceil(seconds * fps))
-    if max_frame_idx < 0:
-        return []
-    max_frame_idx = min(frame_count - 1, max_frame_idx)
-    if max_frame_idx <= 0:
-        return []
+    first, last = span
+    samples: list[tuple[int, float, datetime, str]] = []
+    progress = _ScanProgress(hooks, f"Analyzing first {seconds}s...", last - first + 1)
+    for frame_idx in range(first, last + 1):
+        if progress.stop():
+            break
+        cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            continue
+        if hooks.on_frame is not None:
+            hooks.on_frame(frame_idx, frame)
+        progress.advance(frame_idx - first + 1)
+        sample = _sample_from_frame(frame_idx, frame, fps, base_dt, read_clock)
+        if sample is not None:
+            samples.append(sample)
+    progress.close()
+    return samples
 
-    step = max(1, int(round(fps * OCR_SYNC_COARSE_STEP_SECONDS)))
-    start_frame = max(0, int(start_frame))
-    last = min(frame_count - 1, start_frame + max_frame_idx)
-    if last <= start_frame:
+
+def _find_second_boundary_samples_for_cap(
+    cap,
+    fps: float,
+    frame_count: int,
+    *,
+    seconds: int,
+    base_dt: datetime,
+    read_clock,
+    start_frame: int = 0,
+    hooks: SyncHooks,
+) -> list[tuple[int, float, datetime, str]]:
+    """The coarse scan: the clock read every OCR_SYNC_COARSE_STEP_SECONDS
+    over `seconds` from `start_frame` until it ticks to the next second,
+    then every frame between those two reads for the first frame of the
+    new second. Returns [the read before, that first frame], or [] when
+    the clock never ticked."""
+    span = _scan_span(fps, frame_count, seconds, start_frame)
+    if span is None:
         return []
-    frame_indices = list(range(start_frame, last + 1, step))
+    first, last = span
+    if last <= first:
+        return []
+    step = max(1, int(round(fps * OCR_SYNC_COARSE_STEP_SECONDS)))
+    frame_indices = list(range(first, last + 1, step))
     if frame_indices[-1] != last:
         frame_indices.append(last)
 
-    progress = None
-    if parent is not None:
-        progress = QProgressDialog(progress_label, "Cancel", 0, len(frame_indices), parent)
-        progress.setWindowTitle("OCR Analysis")
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
-
-    def _stop() -> bool:
-        if should_abort is not None and should_abort():
-            return True
-        if progress is not None and progress.wasCanceled():
-            if on_cancel is not None:
-                on_cancel()
-            return True
-        return False
-
+    progress = _ScanProgress(hooks, f"Scanning first {seconds}s (coarse)...", len(frame_indices))
+    found: list[tuple[int, float, datetime, str]] = []
     prev: tuple[int, float, datetime, str] | None = None
     for idx, frame_idx in enumerate(frame_indices):
-        if _stop():
+        if progress.stop():
             break
-        sample = _ocr_sample_for_frame(cap, frame_idx, fps, base_dt, roi)
-        if progress:
-            progress.setValue(idx + 1)
-            QApplication.processEvents()
+        sample = _ocr_sample_for_frame(cap, frame_idx, fps, base_dt, read_clock)
+        progress.advance(idx + 1)
         if sample is None:
             continue
-        if prev is not None:
-            prev_text = prev[3]
-            curr_text = sample[3]
-            if prev_text != curr_text:
-                prev_secs = _time_text_to_seconds(prev_text)
-                curr_secs = _time_text_to_seconds(curr_text)
-                if prev_secs is not None and curr_secs is not None:
-                    if curr_secs == (prev_secs + 1) % 86400:
-                        start = min(prev[0], sample[0])
-                        end = max(prev[0], sample[0])
-                        boundary_sample = None
-                        for frame_scan in range(start, end + 1):
-                            if _stop():
-                                break
-                            scanned = _ocr_sample_for_frame(
-                                cap,
-                                frame_scan,
-                                fps,
-                                base_dt,
-                                roi,
-                            )
-                            if scanned and scanned[3] == curr_text:
-                                boundary_sample = scanned
-                                break
-                        if boundary_sample is None:
-                            boundary_sample = sample
-                        if progress:
-                            progress.setValue(len(frame_indices))
-                            progress.close()
-                        return [prev, boundary_sample]
+        if prev is not None and _is_next_second(prev[3], sample[3]):
+            boundary_sample = sample
+            for frame_scan in range(prev[0], sample[0] + 1):
+                if progress.stop():
+                    break
+                scanned = _ocr_sample_for_frame(cap, frame_scan, fps, base_dt, read_clock)
+                if scanned and scanned[3] == sample[3]:
+                    boundary_sample = scanned
+                    break
+            found = [prev, boundary_sample]
+            break
         prev = sample
-
-    if progress:
-        progress.setValue(len(frame_indices))
-        progress.close()
-    return []
+    progress.close()
+    return found
 
 
-def _estimate_start_from_samples(
-    samples: list[tuple[int, float, datetime, str]],
-    base_dt: datetime,
-) -> datetime | None:
+def _is_next_second(prev_text: str, curr_text: str) -> bool:
+    """True when the clock ticked exactly one second from prev_text to
+    curr_text (wrapping at midnight)."""
+    prev_secs = _time_text_to_seconds(prev_text)
+    curr_secs = _time_text_to_seconds(curr_text)
+    if prev_secs is None or curr_secs is None:
+        return False
+    return curr_secs == (prev_secs + 1) % 86400
+
+
+def pick_best_start(samples: list[tuple[int, float, datetime, str]]) -> datetime | None:
+    """The clip's start time voted from OCR samples: the median second
+    boundary when the samples hold one, else the median of the starts the
+    readings imply. Misreads outside the inlier tolerance are printed and
+    disregarded. None when nothing usable was read (the caller moves on to
+    the next stage, 2026-09-12)."""
     transition = _estimate_start_from_transitions(samples)
     if transition is not None:
-        return transition[0]
+        best_start, median_start, outliers = transition
+        for outlier_start, outlier_text in outliers:
+            delta = (outlier_start - median_start).total_seconds()
+            print(f"[ocr] disregarded transition {outlier_text} (offset {delta:+.2f}s)", flush=True)
+        return best_start
     if not samples:
-        return None  # nothing read: the caller moves on to the next stage (2026-09-12)
-    inferred = []
-    for frame_idx, video_t, ocr_dt, ocr_text in samples:
-        inferred.append((ocr_dt - timedelta(seconds=video_t), ocr_text))
-    inferred.sort(key=lambda item: item[0])
-    median_start = inferred[len(inferred) // 2][0]
-    inliers = [
-        item for item in inferred
-        if abs((item[0] - median_start).total_seconds()) <= 2.0
-    ]
-    if not inliers:
         return None
-    return inliers[len(inliers) // 2][0]
+    inferred = sorted(
+        ((ocr_dt - timedelta(seconds=video_t), ocr_text) for _frame_idx, video_t, ocr_dt, ocr_text in samples),
+        key=lambda item: item[0],
+    )
+    median_start = inferred[len(inferred) // 2][0]
+    inliers = []
+    for start, text in inferred:
+        delta = (start - median_start).total_seconds()
+        if abs(delta) <= OCR_SAMPLE_INLIER_SECONDS:
+            inliers.append(start)
+        else:
+            print(f"[ocr] disregarded sample {text} (offset {delta:+.2f}s)", flush=True)
+    return inliers[len(inliers) // 2]
 
 
 def _time_text_to_seconds(time_text: str) -> int | None:
@@ -2824,54 +2587,48 @@ def _time_text_to_seconds(time_text: str) -> int | None:
 def _estimate_start_from_transitions(
     samples: list[tuple[int, float, datetime, str]],
 ) -> tuple[datetime, datetime, list[tuple[datetime, str]]] | None:
+    """(best start, median start, outliers) from the second boundaries in
+    consecutive samples; None when there is no boundary."""
     if len(samples) < 2:
         return None
     transitions = []
     for idx in range(1, len(samples)):
-        _prev_frame, prev_t, prev_dt, prev_text = samples[idx - 1]
+        _prev_frame, _prev_t, _prev_dt, prev_text = samples[idx - 1]
         _curr_frame, curr_t, curr_dt, curr_text = samples[idx]
-        if prev_text == curr_text:
-            continue
-        prev_secs = _time_text_to_seconds(prev_text)
-        curr_secs = _time_text_to_seconds(curr_text)
-        if prev_secs is None or curr_secs is None:
-            continue
-        if curr_secs != (prev_secs + 1) % 86400:
-            continue
-        boundary_video_t = curr_t
-        boundary_ocr_dt = curr_dt
-        inferred_start = boundary_ocr_dt - timedelta(seconds=boundary_video_t)
-        transitions.append((inferred_start, curr_text))
+        if _is_next_second(prev_text, curr_text):
+            transitions.append((curr_dt - timedelta(seconds=curr_t), curr_text))
     if not transitions:
         return None
     transitions.sort(key=lambda item: item[0])
     median_start = transitions[len(transitions) // 2][0]
     inliers = [
         item for item in transitions
-        if abs((item[0] - median_start).total_seconds()) <= 1.0
+        if abs((item[0] - median_start).total_seconds()) <= OCR_TRANSITION_INLIER_SECONDS
     ]
-    if not inliers:
-        return None
     outliers = [item for item in transitions if item not in inliers]
     best_start = inliers[len(inliers) // 2][0]
     return best_start, median_start, outliers
 
 
 def _verify_frame_offset_for_cap(
-    cap: cv2.VideoCapture,
+    cap,
     fps: float,
     frame_count: int,
     estimated_start: datetime,
-    roi: Roi,
-
-    start_frame: int = 0,) -> tuple[int, list[tuple[str, str]]]:
+    read_clock,
+    start_frame: int = 0,
+) -> tuple[int, list[tuple[str, str]]]:
+    """Check the estimate against the clock around a second boundary
+    near mid-clip - at least two seconds past `start_frame`, so the
+    camera has had time to settle - trying each of
+    OCR_VERIFY_CANDIDATE_OFFSETS and keeping the frame offset whose
+    calculated clock matches the most reads. Returns it with a report."""
     if fps <= 0 or frame_count <= 0:
         return 0, [("Unable to verify frame offset (no video/fps).", "info")]
     mid_frame = min(frame_count - 1, max(frame_count // 2, int(start_frame) + int(fps * 2)))
     mid_dt = estimated_start + timedelta(seconds=mid_frame / fps)
     target_second = mid_dt.replace(microsecond=0)
     target_seconds = (target_second - estimated_start).total_seconds()
-    candidates = [-2, -1, 0, 1, 2]
     best_offset = 0
     best_score = -1
     lines: list[tuple[str, str]] = [
@@ -2881,7 +2638,7 @@ def _verify_frame_offset_for_cap(
             "info",
         ),
     ]
-    for offset in candidates:
+    for offset in OCR_VERIFY_CANDIDATE_OFFSETS:
         boundary_frame = int(math.ceil(target_seconds * fps - offset))
         frames = [
             max(0, boundary_frame - 1),
@@ -2897,7 +2654,7 @@ def _verify_frame_offset_for_cap(
                 lines.append((f"  frame {frame_idx + 1}: read failed", "miss"))
                 continue
             try:
-                raw_text = ocr_time_from_frame(frame, roi=roi)
+                raw_text = read_clock(frame)
             except Exception as exc:
                 lines.append((f"  frame {frame_idx + 1}: OCR error {exc}", "miss"))
                 continue
