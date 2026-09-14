@@ -1,146 +1,226 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 880" font-family="Segoe UI, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 960" width="1180" height="960" font-family="Segoe UI, Arial, sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#7d92a8"/>
     </marker>
   </defs>
+  <rect x="0" y="0" width="1180" height="960" fill="#12181f"/>
 
-  <rect x="0" y="0" width="1180" height="880" fill="#12181f"/>
+  <!-- ===== band 1: what you see ===== -->
+  <rect x="30" y="20" width="1120" height="300" rx="10" fill="#181f28" stroke="#2c3946"/>
+  <text x="50" y="46" fill="#8fa3b8" font-size="13" font-weight="bold" letter-spacing="2">WHAT YOU SEE  (src/logfather/ui)</text>
 
-  <!-- ======== band backgrounds ======== -->
-  <rect x="30" y="30" width="1120" height="290" rx="10" fill="#181f28" stroke="#2c3946"/>
-  <text x="50" y="58" fill="#8fa3b8" font-size="13" font-weight="bold" letter-spacing="2">WHAT YOU SEE</text>
+  <!-- the three modes -->
+  <g>
+    <rect x="50" y="62" width="330" height="78" rx="8" fill="#1f2a36" stroke="#5e9bff" stroke-width="1.5"/>
+    <text x="65" y="86" fill="#ecf0f4" font-size="15" font-weight="bold">Overview</text>
+    <text x="65" y="106" fill="#b8c4d0" font-size="11">overview_widget.py + data_boxes.py</text>
+    <text x="65" y="124" fill="#8fa3b8" font-size="11">one row per PikPak: runs, manual, stops, CCTV; Data strips</text>
 
-  <rect x="30" y="490" width="1120" height="210" rx="10" fill="#181f28" stroke="#2c3946"/>
-  <text x="50" y="518" fill="#8fa3b8" font-size="13" font-weight="bold" letter-spacing="2">DATA PLUMBING</text>
+    <rect x="425" y="62" width="330" height="78" rx="8" fill="#1f2a36" stroke="#5e9bff" stroke-width="1.5"/>
+    <text x="440" y="86" fill="#ecf0f4" font-size="15" font-weight="bold">PikPak Replay</text>
+    <text x="440" y="106" fill="#b8c4d0" font-size="11">replay_view.py + replay_timeline.py + annotated_video_widget.py</text>
+    <text x="440" y="124" fill="#8fa3b8" font-size="11">clip + logs, timeline chart, Targets; Drift, Sync, Conveyor, Track</text>
 
-  <rect x="30" y="730" width="1120" height="120" rx="10" fill="#181f28" stroke="#2c3946"/>
-  <text x="50" y="756" fill="#8fa3b8" font-size="13" font-weight="bold" letter-spacing="2">OUTSIDE WORLD</text>
+    <rect x="800" y="62" width="330" height="78" rx="8" fill="#1f2a36" stroke="#5e9bff" stroke-width="1.5"/>
+    <text x="815" y="86" fill="#ecf0f4" font-size="15" font-weight="bold">Search</text>
+    <text x="815" y="106" fill="#b8c4d0" font-size="11">fleetwide_elastic_search_widget.py</text>
+    <text x="815" y="124" fill="#8fa3b8" font-size="11">saved Elastic searches over every PikPak and a day range</text>
+  </g>
 
-  <!-- ======== arrows (under boxes where possible) ======== -->
+  <!-- the windows -->
+  <text x="50" y="170" fill="#8fa3b8" font-size="11" font-weight="bold">WINDOWS OPENED FROM THE TOP BAR AND THE GEAR</text>
+  <g font-size="11">
+    <rect x="50" y="180" width="200" height="56" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="60" y="199" fill="#ecf0f4" font-weight="bold">Sync CCTV Time</text>
+    <text x="60" y="215" fill="#b8c4d0">time_ocr.py</text>
+    <text x="60" y="229" fill="#8fa3b8">camera clock read by OCR, steps A-H</text>
+
+    <rect x="262" y="180" width="200" height="56" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="272" y="199" fill="#ecf0f4" font-weight="bold">Conveyor</text>
+    <text x="272" y="215" fill="#b8c4d0">conveyor_calibration_dialog.py</text>
+    <text x="272" y="229" fill="#8fa3b8">two-click tracking line for Track</text>
+
+    <rect x="474" y="180" width="200" height="56" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="484" y="199" fill="#ecf0f4" font-weight="bold">Errors / Stops</text>
+    <text x="484" y="215" fill="#b8c4d0">errors_stops_window.py</text>
+    <text x="484" y="229" fill="#8fa3b8">stops and errors per day, clustered</text>
+
+    <rect x="686" y="180" width="200" height="56" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="696" y="199" fill="#ecf0f4" font-weight="bold">Software</text>
+    <text x="696" y="215" fill="#b8c4d0">software_window.py</text>
+    <text x="696" y="229" fill="#8fa3b8">versions and commits per PikPak</text>
+
+    <rect x="898" y="180" width="232" height="56" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="908" y="199" fill="#ecf0f4" font-weight="bold">Data</text>
+    <text x="908" y="215" fill="#b8c4d0">data_inventory_dialog.py + ? catalogues</text>
+    <text x="908" y="229" fill="#8fa3b8">Elastic, Grafana and CCTV volume per day</text>
+
+    <rect x="50" y="246" width="200" height="56" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="60" y="265" fill="#ecf0f4" font-weight="bold">Stop report</text>
+    <text x="60" y="281" fill="#b8c4d0">stop_report.py</text>
+    <text x="60" y="295" fill="#8fa3b8">every stop with a thumbnail</text>
+
+    <rect x="262" y="246" width="200" height="56" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="272" y="265" fill="#ecf0f4" font-weight="bold">Settings / Data sources</text>
+    <text x="272" y="281" fill="#b8c4d0">settings_dialog.py, data_sources_dialog.py</text>
+    <text x="272" y="295" fill="#8fa3b8">connections, presets, layout, testers</text>
+
+    <rect x="474" y="246" width="200" height="56" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="484" y="265" fill="#ecf0f4" font-weight="bold">Targets panel</text>
+    <text x="484" y="281" fill="#b8c4d0">target_buffer_widget.py</text>
+    <text x="484" y="295" fill="#8fa3b8">the robot's pick queue as the clip plays</text>
+
+    <rect x="686" y="246" width="200" height="56" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="696" y="265" fill="#ecf0f4" font-weight="bold">Date picker</text>
+    <text x="696" y="281" fill="#b8c4d0">Date_Picker_frontend.py, day_popup.py</text>
+    <text x="696" y="295" fill="#8fa3b8">PikPak by customer, days with footage</text>
+
+    <rect x="898" y="246" width="232" height="56" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="908" y="265" fill="#ecf0f4" font-weight="bold">About</text>
+    <text x="908" y="281" fill="#b8c4d0">about_page.py</text>
+    <text x="908" y="295" fill="#8fa3b8">this schematic and every module described</text>
+  </g>
+
+  <!-- ===== band 2: the hub ===== -->
+  <rect x="30" y="340" width="1120" height="110" rx="10" fill="#181f28" stroke="#2c3946"/>
+  <text x="50" y="366" fill="#8fa3b8" font-size="13" font-weight="bold" letter-spacing="2">THE HUB AND THE SHARED PIECES  (src/logfather/ui)</text>
+  <g font-size="11">
+    <rect x="50" y="378" width="330" height="60" rx="8" fill="#24435f" stroke="#5e9bff" stroke-width="1.5"/>
+    <text x="65" y="399" fill="#ecf0f4" font-size="14" font-weight="bold">Main_Window.py - the hub</text>
+    <text x="65" y="416" fill="#b8c4d0">mode stack, top bar, splitters, session resume,</text>
+    <text x="65" y="430" fill="#b8c4d0">clip opening and prefetch, Overview-to-clip jumps</text>
+
+    <rect x="400" y="378" width="230" height="60" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="410" y="397" fill="#ecf0f4" font-weight="bold">target_overlay_controller.py</text>
+    <text x="410" y="413" fill="#b8c4d0">pick queue, gaps, calibration,</text>
+    <text x="410" y="427" fill="#b8c4d0">the product overlays Track draws</text>
+
+    <rect x="650" y="378" width="230" height="60" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="660" y="397" fill="#ecf0f4" font-weight="bold">qt_worker.py  gear_menu.py</text>
+    <text x="660" y="413" fill="#b8c4d0">Job / JobSlot background work;</text>
+    <text x="660" y="427" fill="#b8c4d0">the gear dropdown every window shares</text>
+
+    <rect x="900" y="378" width="230" height="60" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="910" y="397" fill="#ecf0f4" font-weight="bold">theme.py  icons.py  charts.py</text>
+    <text x="910" y="413" fill="#b8c4d0">colour tokens and stylesheets, painted</text>
+    <text x="910" y="427" fill="#b8c4d0">icons, day charts, day_selection, pulse</text>
+  </g>
+
+  <!-- ===== band 3: data ===== -->
+  <rect x="30" y="470" width="1120" height="200" rx="10" fill="#181f28" stroke="#2c3946"/>
+  <text x="50" y="496" fill="#8fa3b8" font-size="13" font-weight="bold" letter-spacing="2">DATA  (src/logfather/data)  - servers, caches and stores; no GUI</text>
+  <g font-size="11">
+    <rect x="50" y="508" width="330" height="70" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="60" y="527" fill="#ecf0f4" font-weight="bold">Elastic</text>
+    <text x="60" y="543" fill="#b8c4d0">elastic_client.py  elastic_schema.py  elastic_loader.py</text>
+    <text x="60" y="557" fill="#8fa3b8">HTTP + pagination; Argus 1 vs 2 schema; queries and the day cache</text>
+    <text x="60" y="571" fill="#8fa3b8">(past days never expire - bump EVENTS_CACHE_SCHEMA_VERSION)</text>
+
+    <rect x="400" y="508" width="360" height="70" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="410" y="527" fill="#ecf0f4" font-weight="bold">Built on Elastic</text>
+    <text x="410" y="543" fill="#b8c4d0">errors_stops.py  software_history.py  data_inventory.py</text>
+    <text x="410" y="557" fill="#b8c4d0">event_counts.py  pick_rate.py  elastic_catalog.py</text>
+    <text x="410" y="571" fill="#b8c4d0">target_buffer_loader.py (the pick queue from log lines)</text>
+
+    <rect x="780" y="508" width="350" height="70" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="790" y="527" fill="#ecf0f4" font-weight="bold">Grafana / Prometheus</text>
+    <text x="790" y="543" fill="#b8c4d0">grafana_client.py  grafana_inventory.py  grafana_catalog.py</text>
+    <text x="790" y="557" fill="#b8c4d0">telemetry_loader.py (six PromQL queries per PikPak-day,</text>
+    <text x="790" y="571" fill="#b8c4d0">plus the fleet signals for the Data strips)</text>
+
+    <rect x="50" y="590" width="530" height="66" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="60" y="609" fill="#ecf0f4" font-weight="bold">Caches</text>
+    <text x="60" y="625" fill="#b8c4d0">clip_cache.py (clips copied from the share, prefetch, prune)</text>
+    <text x="60" y="639" fill="#b8c4d0">day_listing_cache.py  overview_event_cache.py</text>
+    <text x="60" y="653" fill="#8fa3b8">%LOCALAPPDATA%\VideoLogViewer\cache</text>
+
+    <rect x="600" y="590" width="530" height="66" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="610" y="609" fill="#ecf0f4" font-weight="bold">Stores</text>
+    <text x="610" y="625" fill="#b8c4d0">settings_store.py (~/.cctv_picker_settings.json)  ui_state_store.py</text>
+    <text x="610" y="639" fill="#b8c4d0">ocr_offset_store.py (per camera, atomic)  conveyor_calibration.py</text>
+    <text x="610" y="653" fill="#8fa3b8">secrets stay in the home-dir JSON, never in the repo</text>
+  </g>
+
+  <!-- ===== band 4: core ===== -->
+  <rect x="30" y="690" width="1120" height="110" rx="10" fill="#181f28" stroke="#2c3946"/>
+  <text x="50" y="716" fill="#8fa3b8" font-size="13" font-weight="bold" letter-spacing="2">CORE  (src/logfather/core)  - pure logic, no Qt, no network; all unit-tested</text>
+  <g font-size="11">
+    <rect x="50" y="728" width="260" height="58" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="60" y="747" fill="#ecf0f4" font-weight="bold">Time</text>
+    <text x="60" y="763" fill="#b8c4d0">timeline_model.py  time_alignment.py</text>
+    <text x="60" y="777" fill="#8fa3b8">clips, days, tz; video / event / wall clock</text>
+
+    <rect x="330" y="728" width="260" height="58" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="340" y="747" fill="#ecf0f4" font-weight="bold">Logs</text>
+    <text x="340" y="763" fill="#b8c4d0">log_events.py  sku_timeline.py</text>
+    <text x="340" y="777" fill="#8fa3b8">rows to events; SKU / manual bands</text>
+
+    <rect x="610" y="728" width="260" height="58" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="620" y="747" fill="#ecf0f4" font-weight="bold">Telemetry</text>
+    <text x="620" y="763" fill="#b8c4d0">telemetry.py  grafana.py</text>
+    <text x="620" y="777" fill="#8fa3b8">metric specs and tracks; dashboard JSON</text>
+
+    <rect x="890" y="728" width="240" height="58" rx="6" fill="#151b22" stroke="#3d4c5a"/>
+    <text x="900" y="747" fill="#ecf0f4" font-weight="bold">Video and app</text>
+    <text x="900" y="763" fill="#b8c4d0">frame_analysis.py  app_version.py</text>
+    <text x="900" y="777" fill="#8fa3b8">diff / flow views; build and update check</text>
+  </g>
+
+  <!-- ===== band 5: outside world ===== -->
+  <rect x="30" y="820" width="1120" height="120" rx="10" fill="#181f28" stroke="#2c3946"/>
+  <text x="50" y="846" fill="#8fa3b8" font-size="13" font-weight="bold" letter-spacing="2">OUTSIDE WORLD</text>
+  <g font-size="11">
+    <rect x="50" y="858" width="200" height="66" rx="6" fill="#0d1116" stroke="#3d4c5a"/>
+    <text x="60" y="877" fill="#ecf0f4" font-weight="bold">Elastic Cloud</text>
+    <text x="60" y="893" fill="#b8c4d0">logstash-*, pikpak, pikpak-*</text>
+    <text x="60" y="907" fill="#8fa3b8">robot logs, state changes, errors</text>
+
+    <rect x="270" y="858" width="200" height="66" rx="6" fill="#0d1116" stroke="#3d4c5a"/>
+    <text x="280" y="877" fill="#ecf0f4" font-weight="bold">Grafana Cloud</text>
+    <text x="280" y="893" fill="#b8c4d0">Prometheus (grafanacloud-prom)</text>
+    <text x="280" y="907" fill="#8fa3b8">temperatures, currents, picks</text>
+
+    <rect x="490" y="858" width="200" height="66" rx="6" fill="#0d1116" stroke="#3d4c5a"/>
+    <text x="500" y="877" fill="#ecf0f4" font-weight="bold">CCTV share (Z:/public)</text>
+    <text x="500" y="893" fill="#b8c4d0">PikPakNNN/YYYY/MM/DD/*.mp4</text>
+    <text x="500" y="907" fill="#8fa3b8">+ AdditionalCCTV; 30-day retention</text>
+
+    <rect x="710" y="858" width="200" height="66" rx="6" fill="#0d1116" stroke="#3d4c5a"/>
+    <text x="720" y="877" fill="#ecf0f4" font-weight="bold">Home-dir JSON</text>
+    <text x="720" y="893" fill="#b8c4d0">settings, ui_state, OCR boxes,</text>
+    <text x="720" y="907" fill="#8fa3b8">offsets, belt calibrations</text>
+
+    <rect x="930" y="858" width="200" height="66" rx="6" fill="#0d1116" stroke="#3d4c5a"/>
+    <text x="940" y="877" fill="#ecf0f4" font-weight="bold">GitHub</text>
+    <text x="940" y="893" fill="#b8c4d0">chrishamblin489/logfather</text>
+    <text x="940" y="907" fill="#8fa3b8">update check, the links on this page</text>
+  </g>
+
+  <!-- ===== arrows: the main flows ===== -->
   <g stroke="#5c6f82" stroke-width="1.5" fill="none">
-    <!-- UI to hub -->
-    <path d="M 157 144 L 460 372" marker-end="url(#arrow)"/>
-    <path d="M 397 144 L 512 372" marker-end="url(#arrow)"/>
-    <path d="M 665 144 L 612 372" marker-end="url(#arrow)"/>
-    <path d="M 965 144 L 702 372" marker-end="url(#arrow)"/>
-    <path d="M 300 264 Q 380 330 452 378" marker-end="url(#arrow)"/>
-    <path d="M 700 264 L 648 372" marker-end="url(#arrow)"/>
-    <path d="M 900 264 Q 800 330 730 372" marker-end="url(#arrow)"/>
-    <!-- calibration dialog straight down to belt model -->
-    <path d="M 985 264 L 985 528" marker-end="url(#arrow)"/>
+    <!-- screens to the hub -->
+    <path d="M 215 140 L 215 378" marker-end="url(#arrow)"/>
+    <path d="M 590 140 L 300 378" marker-end="url(#arrow)"/>
+    <path d="M 965 140 L 380 392" marker-end="url(#arrow)"/>
     <!-- hub to data -->
-    <path d="M 520 442 L 220 528" marker-end="url(#arrow)"/>
-    <path d="M 575 442 L 460 528" marker-end="url(#arrow)"/>
-    <path d="M 680 442 L 870 528" marker-end="url(#arrow)"/>
-    <!-- UI direct to data (skirting the hub) -->
-    <path d="M 330 144 L 277 230 L 210 528" marker-end="url(#arrow)"/>
-    <path d="M 600 144 L 585 230 L 255 528" marker-end="url(#arrow)"/>
-    <path d="M 770 144 L 812 230 L 722 528" marker-end="url(#arrow)"/>
-    <path d="M 157 264 L 157 528" marker-end="url(#arrow)"/>
-    <path d="M 350 264 L 285 528" marker-end="url(#arrow)"/>
-    <!-- data internal -->
-    <path d="M 332 560 L 305 560" marker-end="url(#arrow)"/>
-    <!-- data to outside -->
-    <path d="M 175 594 L 175 762" marker-end="url(#arrow)"/>
-    <path d="M 260 594 L 690 762" marker-end="url(#arrow)"/>
-    <path d="M 560 682 L 945 762" marker-end="url(#arrow)"/>
-    <path d="M 985 594 L 1005 762" marker-end="url(#arrow)"/>
-    <!-- share to cache -->
-    <path d="M 572 795 L 597 795" marker-end="url(#arrow)"/>
+    <path d="M 215 438 L 215 508" marker-end="url(#arrow)"/>
+    <path d="M 515 438 L 580 508" marker-end="url(#arrow)"/>
+    <!-- data to core -->
+    <path d="M 180 656 L 180 728" marker-end="url(#arrow)"/>
+    <path d="M 470 578 L 470 728" marker-end="url(#arrow)"/>
+    <path d="M 955 578 L 740 728" marker-end="url(#arrow)"/>
+    <!-- data to the outside -->
+    <path d="M 150 656 L 150 858" marker-end="url(#arrow)"/>
+    <path d="M 955 656 L 370 858" marker-end="url(#arrow)"/>
+    <path d="M 315 656 L 590 858" marker-end="url(#arrow)"/>
+    <path d="M 865 656 L 810 858" marker-end="url(#arrow)"/>
   </g>
-  <g fill="#8fa3b8" font-size="11">
-    <text x="255" y="255">day picked</text>
-    <text x="425" y="290">click-through</text>
-    <text x="675" y="300">open clip / playhead</text>
-    <text x="300" y="480">Elastic queries</text>
-    <text x="742" y="480">OCR clock sync</text>
-    <text x="140" y="690">HTTPS</text>
-    <text x="455" y="740">clips copied on open</text>
+  <g fill="#7d92a8" font-size="10">
+    <text x="222" y="270">signals</text>
+    <text x="222" y="480">queries</text>
+    <text x="100" y="700">models</text>
+    <text x="160" y="760" transform="rotate(0)"> </text>
   </g>
-
-  <!-- ======== UI boxes ======== -->
-  <g>
-    <rect x="50" y="80" width="215" height="64" rx="8" fill="#20303f" stroke="#5b9bd5"/>
-    <text x="157" y="106" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">Date_Picker_frontend.py</text>
-    <text x="157" y="126" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Pick a system and a day</text>
-
-    <rect x="290" y="80" width="215" height="64" rx="8" fill="#20303f" stroke="#5b9bd5"/>
-    <text x="397" y="106" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">Time_Picker.py</text>
-    <text x="397" y="126" fill="#9fb0c0" font-size="11.5" text-anchor="middle">24-hour timeline of clips + events</text>
-
-    <rect x="530" y="80" width="270" height="64" rx="8" fill="#20303f" stroke="#5b9bd5"/>
-    <text x="665" y="106" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">Log_vid_gui.py</text>
-    <text x="665" y="126" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Video + logs viewer, frame-aligned</text>
-
-    <rect x="825" y="80" width="280" height="64" rx="8" fill="#20303f" stroke="#5b9bd5"/>
-    <text x="965" y="106" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">target_buffer_widget.py</text>
-    <text x="965" y="126" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Live pick-queue panel</text>
-
-    <rect x="50" y="200" width="215" height="64" rx="8" fill="#20303f" stroke="#5b9bd5"/>
-    <text x="157" y="226" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">overview_widget.py</text>
-    <text x="157" y="246" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Live fleet board (today)</text>
-
-    <rect x="290" y="200" width="280" height="64" rx="8" fill="#20303f" stroke="#5b9bd5"/>
-    <text x="430" y="226" fill="#e8eef4" font-size="12.5" font-weight="bold" text-anchor="middle">fleetwide_elastic_search_widget.py</text>
-    <text x="430" y="246" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Fleet-wide search dashboard</text>
-
-    <rect x="600" y="200" width="200" height="64" rx="8" fill="#20303f" stroke="#5b9bd5"/>
-    <text x="700" y="226" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">settings_dialog.py</text>
-    <text x="700" y="246" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Settings tabs (in viewer)</text>
-
-    <rect x="825" y="200" width="280" height="64" rx="8" fill="#20303f" stroke="#5b9bd5"/>
-    <text x="965" y="226" fill="#e8eef4" font-size="12.5" font-weight="bold" text-anchor="middle">conveyor_calibration_dialog.py</text>
-    <text x="965" y="246" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Two-click belt calibration wizard</text>
-  </g>
-
-  <!-- ======== hub ======== -->
-  <rect x="440" y="372" width="300" height="70" rx="10" fill="#3a2a10" stroke="#e8a33d" stroke-width="2"/>
-  <text x="590" y="402" fill="#f4e3c2" font-size="15" font-weight="bold" text-anchor="middle">Main_Window.py</text>
-  <text x="590" y="424" fill="#c8b48e" font-size="12" text-anchor="middle">The hub — wires every panel together</text>
-
-  <!-- ======== data boxes ======== -->
-  <g>
-    <rect x="50" y="530" width="250" height="64" rx="8" fill="#1c3327" stroke="#4caf7d"/>
-    <text x="175" y="556" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">elastic_loader.py</text>
-    <text x="175" y="576" fill="#9fb0c0" font-size="11.5" text-anchor="middle">All Elastic queries + day cache</text>
-
-    <rect x="330" y="530" width="240" height="64" rx="8" fill="#1c3327" stroke="#4caf7d"/>
-    <text x="450" y="556" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">target_buffer_loader.py</text>
-    <text x="450" y="576" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Rebuilds the pick queue from logs</text>
-
-    <rect x="600" y="530" width="230" height="64" rx="8" fill="#1c3327" stroke="#4caf7d"/>
-    <text x="715" y="556" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">time_ocr.py</text>
-    <text x="715" y="576" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Reads the on-screen CCTV clock</text>
-
-    <rect x="860" y="530" width="250" height="64" rx="8" fill="#1c3327" stroke="#4caf7d"/>
-    <text x="985" y="556" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">conveyor_calibration.py</text>
-    <text x="985" y="576" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Belt speed model per robot</text>
-
-    <rect x="330" y="618" width="240" height="64" rx="8" fill="#1c3327" stroke="#4caf7d"/>
-    <text x="450" y="644" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">settings_store.py</text>
-    <text x="450" y="664" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Read by every module</text>
-
-    <rect x="600" y="618" width="230" height="64" rx="8" fill="#1c3327" stroke="#4caf7d"/>
-    <text x="715" y="644" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">app_version.py</text>
-    <text x="715" y="664" fill="#9fb0c0" font-size="11.5" text-anchor="middle">Which build is running</text>
-  </g>
-
-  <!-- ======== outside world ======== -->
-  <g stroke-dasharray="5 4">
-    <rect x="50" y="765" width="250" height="60" rx="8" fill="#1c232b" stroke="#8a93a0"/>
-    <rect x="330" y="765" width="242" height="60" rx="8" fill="#1c232b" stroke="#8a93a0"/>
-    <rect x="600" y="765" width="250" height="60" rx="8" fill="#1c232b" stroke="#8a93a0"/>
-    <rect x="880" y="765" width="250" height="60" rx="8" fill="#1c232b" stroke="#8a93a0"/>
-  </g>
-  <g>
-    <text x="175" y="790" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">Elastic Cloud</text>
-    <text x="175" y="810" fill="#9fb0c0" font-size="11.5" text-anchor="middle">logstash-*, pikpak-* indices</text>
-    <text x="451" y="790" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">CCTV share (Z:/public)</text>
-    <text x="451" y="810" fill="#9fb0c0" font-size="11.5" text-anchor="middle">PikPakNNN/YYYY/MM/DD/*.mp4</text>
-    <text x="725" y="790" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">Local cache</text>
-    <text x="725" y="810" fill="#9fb0c0" font-size="11.5" text-anchor="middle">clips, OCR offsets, annotations</text>
-    <text x="1005" y="790" fill="#e8eef4" font-size="13" font-weight="bold" text-anchor="middle">Home-dir JSON</text>
-    <text x="1005" y="810" fill="#9fb0c0" font-size="11.5" text-anchor="middle">settings + belt calibrations</text>
-  </g>
+  <text x="50" y="952" fill="#5c6f82" font-size="10">Rule: ui may import data and core; data may import core; never the reverse. Regenerated 2026-09-14.</text>
 </svg>

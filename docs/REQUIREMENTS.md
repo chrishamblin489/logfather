@@ -24,6 +24,19 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ### 2026-09-14
 
+- Code review and renames (Chris, 2026-09-14): modules, classes and
+  controls renamed to what the screen calls them (replay_view / ReplayView,
+  replay_timeline / ReplayTimeline, data_boxes / DataBoxes,
+  SyncCctvTimeWindow, conveyor_btn, targets_toggle, drift_*, gap_*,
+  info_text_btn, birds_eye_*, additional_* for the Additional CCTV, and
+  so on - the full table is in docs/CODE_REVIEW_2026-09-14.md); saved
+  mode names are now "replay" / "search" with the old values still read.
+  The About page was rebuilt: a new schematic of the layers and screens,
+  a "Where each screen lives" tab, every module described, links to the
+  chrishamblin489 repo; docs/ARCHITECTURE.md's file table is generated
+  from it (tools/gen_architecture_table.py); the smoke test imports every
+  module by walking the package. The review itself, with the ranked
+  refactoring plan, is docs/CODE_REVIEW_2026-09-14.md.
 - First-product button (Chris, 2026-09-14): an arrow-to-punnet icon
   badged "1", just left of the drift tool in the top bar, seeks the
   viewer to when the first product was seen on the loaded clip (the

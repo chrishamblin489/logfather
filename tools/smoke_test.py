@@ -21,35 +21,23 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-MODULES = [
-    "logfather.core.app_version",
-    "logfather.core.timeline_model",
-    "logfather.core.log_events",
-    "logfather.core.sku_timeline",
-    "logfather.core.frame_analysis",
-    "logfather.data.settings_store",
-    "logfather.data.elastic_errors",
-    "logfather.data.elastic_client",
-    "logfather.data.elastic_schema",
-    "logfather.data.elastic_loader",
-    "logfather.data.conveyor_calibration",
-    "logfather.data.clip_cache",
-    "logfather.data.target_buffer_loader",
-    "logfather.data.event_counts",
-    "logfather.ui.about_page",
-    "logfather.ui.time_ocr",
-    "logfather.ui.Time_Picker",
-    "logfather.ui.Date_Picker_frontend",
-    "logfather.ui.settings_dialog",
-    "logfather.ui.conveyor_calibration_dialog",
-    "logfather.ui.target_buffer_widget",
-    "logfather.ui.target_scope_widget",
-    "logfather.ui.overview_widget",
-    "logfather.ui.fleetwide_elastic_search_widget",
-    "logfather.ui.Log_vid_gui",
-    "logfather.ui.Main_Window",
-    "Main_Window",  # the entry shim itself
-]
+def _package_modules() -> list[str]:
+    """Every module under src/logfather, found by walking the tree, so a new
+    file can never be left out of the import check (2026-09-14: a hand-kept
+    list covered 27 of 71 modules). Core first, then data, then ui, so a
+    layering slip fails on the lowest layer that has it."""
+    package_root = Path(__file__).resolve().parents[1] / "src" / "logfather"
+    names: list[str] = []
+    for layer in ("", "core", "data", "ui"):
+        folder = package_root / layer if layer else package_root
+        for path in sorted(folder.glob("*.py")):
+            if path.name == "__init__.py":
+                continue
+            names.append(".".join(p for p in ("logfather", layer, path.stem) if p))
+    return names
+
+
+MODULES = _package_modules() + ["Main_Window"]  # plus the entry shim itself
 
 
 def main() -> int:

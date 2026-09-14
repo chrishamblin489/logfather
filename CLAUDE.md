@@ -23,7 +23,7 @@ The layering rule: `ui` may import `data`/`core`; `data` may import `core`; neve
 reverse. `assets/` icons/splash media/diagram · `docs/` architecture notes · `tools/`
 smoke test, Elastic check, standalone scripts · `tests/` pytest · `legacy/` old
 variants, don't touch. Deep architecture map: `docs/ARCHITECTURE.md` (predates the
-package split; module names unchanged).
+package split; rewritten 2026-09-14 - its file table is generated from the About page by `tools/gen_architecture_table.py`). Modules are named after what the screen calls them: `replay_view.py` (PikPak Replay), `replay_timeline.py` (its chart), `data_boxes.py` (the Data boxes), `SyncCctvTimeWindow` in `time_ocr.py`. Latest review: `docs/CODE_REVIEW_2026-09-14.md`.
 
 ## Per-change loop
 
