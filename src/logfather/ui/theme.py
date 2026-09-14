@@ -86,6 +86,13 @@ SUCCESS = "#2e7d32"        # sync-done button
 SUCCESS_BRIGHT = "#2ecc71" # lock-on glyph, buffer "add" events
 DANGER = "#ff4d4f"         # lock-off glyph
 WARNING_BORDER = "#cc8800" # invalid input field
+# Status colours that were repeated as literals across the ui (review
+# 2026-09-14): amber for "check this" (manual mode, a date mismatch, a
+# cancelled step), soft red for "wrong / stopped", and the two OCR boxes.
+WARNING = "#f0ad4e"        # amber: manual mode, date differs, cancelled
+DANGER_SOFT = "#ff7a70"    # soft red: does not match, stopped, no date sync
+OCR_TIME = "#00ff5a"       # the green Time box in Sync CCTV Time
+OCR_DATE = "#c77dff"       # the purple Date box in Sync CCTV Time
 
 LCD_GREEN = "#00ff66"
 
