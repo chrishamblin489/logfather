@@ -182,6 +182,9 @@ FILE_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
          "The painted icons (no image files): gear, calendar, conveyor, punnet, sync, first product, question block..."),
         ("ui/pulse.py", "src/logfather/ui/pulse.py",
          "The gentle breathing highlight on a button that needs attention (Sync: ?)."),
+        ("ui/pane_animator.py", "src/logfather/ui/pane_animator.py",
+         "The one splitter-pane slide: the Targets panel, the date picker, the timeline and the log tabs "
+         "open and close through it (show before, hide after, restart from wherever a slide is)."),
         ("ui/window_placement.py", "src/logfather/ui/window_placement.py",
          "Keeps secondary windows on screen and over their parent."),
         ("ui/app_assets.py", "src/logfather/ui/app_assets.py",
