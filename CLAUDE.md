@@ -12,6 +12,10 @@ Chris directs the work and reviews visually; Claude implements, tests, and commi
 .venv\Scripts\python.exe tools\elastic_api_check.py  # live Elastic query with the app's settings
 ```
 
+`LOGFATHER_DEBUG=1` (or a tag list, e.g. `LOGFATHER_DEBUG=timeline,ocr`) turns on the
+`dbg()`/`timed()` debug traces from `core/log.py`; the informational `[tag]` lines
+(`log()`) always print, so a captured `app_vNNN.log` stays readable by default.
+
 ## Repo layout
 
 `src/logfather/` the app package: `core/` pure logic+models (no Qt, no network),

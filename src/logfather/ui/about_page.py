@@ -96,6 +96,9 @@ FILE_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
          "Which build is running (version.json or git), and the check for a newer commit on GitHub."),
         ("core/retention.py", "src/logfather/core/retention.py",
          "The 30-day CCTV retention rule and the 'footage deleted' notice."),
+        ("core/log.py", "src/logfather/core/log.py",
+         "Console output: log() for the informational [tag] lines that always print, dbg() and timed() "
+         "for traces and timings that only appear with LOGFATHER_DEBUG=1 or a tag list."),
     ]),
     ("Data - Elastic, Grafana, caches and stores", "Everything that talks to a server or a file. No GUI imports.", [
         ("data/elastic_client.py", "src/logfather/data/elastic_client.py",
