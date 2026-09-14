@@ -294,8 +294,6 @@ class ReplayView(QWidget):
         self._log_future_id = 0
         self.logs_ready.connect(self._on_elastic_logs_ready)
         self.logs_failed.connect(self._on_elastic_logs_failed)
-        self.log_markers: list[tuple[float, str]] = []
-        self.log_markers_enabled = False
         self.external_markers: list[tuple[float, str]] = []
         self.external_marker_source: str | None = None
         self._sku_timeline_items: list[object] = []
@@ -973,7 +971,6 @@ class ReplayView(QWidget):
         add the drift/gap sliders onto the playback bar."""
         # Kept on self: mounted into the root layout in _assemble_and_wire.
         self._middle_layout = middle_layout = QVBoxLayout()
-        self.event_marker_bar = EventMarkerBar()
         self.timeline_marker_bar = EventMarkerBar()
         self.timeline_marker_bar.set_triangle_red_markers(True)
         # Clip position, log time and frame LCDs across the top (Chris,
@@ -990,9 +987,6 @@ class ReplayView(QWidget):
         video_row.addWidget(self.additional_video_label, 1)
         video_row.addWidget(self.analysis_label, 1)
         middle_layout.addLayout(video_row)
-        # The yellow log-marker bar is no longer shown (Chris, 2026-09-11);
-        # the log list and the blue timeline bar carry the same events.
-        self.event_marker_bar.hide()
         # Clip start (left) and end (right) to the minute, on the same
         # line as the scroll bar, which is shorter by their width (Chris,
         # 2026-09-11: more height for the picture).
@@ -2063,8 +2057,6 @@ class ReplayView(QWidget):
         # Refresh sync button text (in case a CSV is already loaded)
         self.update_sync_button_label()
         self.update_cache_status()
-        self.log_markers_enabled = False
-        self._set_log_markers([])
         self.set_timeline_markers([])
         self.video_start_dt = None
         self.ocr_offset_seconds = None
@@ -2185,11 +2177,8 @@ class ReplayView(QWidget):
         self.info_label.display("00:00:00.000")
         self.calc_label.display("00:00:00.000")
         self.frame_label.display("0")
-        self.log_markers_enabled = False
-        self.log_markers = []
         self.external_markers = []
         self.external_marker_source = None
-        self.event_marker_bar.clear()
         self.timeline_marker_bar.clear()
         self._clip_annotations = []
         self._annotation_history = []
@@ -2257,7 +2246,6 @@ class ReplayView(QWidget):
             self.first_log_time_str = None
         self.update_sync_button_label()
         self._set_log_busy(False)
-        self._update_timeline_markers()
         if not self.filters_loaded:
             self.load_filters_panel()
         self.apply_filters(manage_busy=False)
@@ -2274,42 +2262,6 @@ class ReplayView(QWidget):
         self.external_markers = markers
         self.external_marker_source = source or "clip_relative"
         self._refresh_timeline_marker_bar()
-
-    def set_clip_marker_fallback(self, markers: list[tuple[float, str]] | None):
-        """Populate the lower marker bar until clip logs are loaded and synced."""
-        if self.events or self.cap is None:
-            return
-        self._set_log_markers(markers or [])
-
-    def _set_log_markers(self, markers: list[tuple[float, str]] | None):
-        markers = markers or []
-        self.log_markers = markers
-        if markers:
-            self.log_markers_enabled = True
-        self._refresh_marker_bar()
-
-    def _refresh_marker_bar(self):
-        duration = 0.0
-        if self.fps and self.fps > 0:
-            duration = (self.frame_count or 0) / self.fps
-        if (
-            duration <= 0.0
-            or not self.log_markers
-            or not self.log_markers_enabled
-        ):
-            self.event_marker_bar.set_markers([])
-            return
-        ratios: list[tuple[float, str]] = []
-        for offset, color in self.log_markers:
-            try:
-                offset_val = float(offset)
-            except (TypeError, ValueError):
-                continue
-            if offset_val < 0.0 or offset_val > duration:
-                continue
-            ratio = offset_val / duration
-            ratios.append((ratio, color))
-        self.event_marker_bar.set_markers(ratios)
 
     def _refresh_timeline_marker_bar(self):
         duration = 0.0
@@ -2352,9 +2304,6 @@ class ReplayView(QWidget):
         self.first_log_dt = None
         self.update_sync_button_label()
         self._set_log_busy(False)
-        self.log_markers_enabled = False
-        self.log_markers = []
-        self._refresh_marker_bar()
         self._set_filter_tabs_enabled(False)
 
     # ---- Filter UI helpers ----
@@ -2678,7 +2627,6 @@ class ReplayView(QWidget):
             self.update_time_and_overlay(t, self.current_frame)
             self.update_log_highlight(t)
         self._update_custom_filter_counts()
-        self._update_timeline_markers()
         self._update_tab_highlights()
         if manage_busy:
             self._set_log_busy(False)
@@ -3972,19 +3920,16 @@ class ReplayView(QWidget):
         groove = style.subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderGroove, slider)
         handle = style.subControlRect(QStyle.CC_Slider, opt, QStyle.SC_SliderHandle, slider)
         if not groove.isValid() or not handle.isValid():
-            self.event_marker_bar.set_track_padding(0, 0)
             return
         half = int(round(handle.width() / 2))
         left_pad = max(0, groove.left() + half)
         right_pad = max(0, slider.width() - 1 - (groove.right() - half))
         # The slider shares its row with the clip time labels, so the
-        # full-width marker bars pad out by the slider's offset in the row.
-        for bar in (self.event_marker_bar, self.timeline_marker_bar):
-            if bar is None:
-                continue
-            dx_left = max(0, slider.geometry().left() - bar.geometry().left())
-            dx_right = max(0, bar.geometry().right() - slider.geometry().right())
-            bar.set_track_padding(left_pad + dx_left, right_pad + dx_right)
+        # full-width marker bar pads out by the slider's offset in the row.
+        bar = self.timeline_marker_bar
+        dx_left = max(0, slider.geometry().left() - bar.geometry().left())
+        dx_right = max(0, bar.geometry().right() - slider.geometry().right())
+        bar.set_track_padding(left_pad + dx_left, right_pad + dx_right)
 
     def _rebuild_ppm_model(self):
         secs: list[float] = []
@@ -4275,7 +4220,6 @@ class ReplayView(QWidget):
             t = self.current_frame / self.fps if self.fps > 0 else 0.0
             self.update_time_and_overlay(t, self.current_frame)
             self.update_log_highlight(t)
-        self._update_timeline_markers()
 
     def sync_logs_to_current_video_first_log(self):
         if not self.events:
@@ -4299,8 +4243,6 @@ class ReplayView(QWidget):
 
         self.update_time_and_overlay(t_current, self.current_frame)
         self.update_log_highlight(t_current)
-        self.log_markers_enabled = True
-        self._update_timeline_markers()
 
         QMessageBox.information(
             self,
@@ -5273,25 +5215,7 @@ class ReplayView(QWidget):
             t = self.current_frame / self.fps if self.fps > 0 else 0.0
             self.update_time_and_overlay(t, self.current_frame)
             self.update_log_highlight(t)
-        self.log_markers_enabled = True
-        self._update_timeline_markers()
         self._refresh_timeline_marker_bar()
-
-    def _update_timeline_markers(self):
-        if not self.events or self.cap is None:
-            self._set_log_markers([])
-            return
-        # Pre-dates OCR sync: skips alignment.ocr_correction, unlike
-        # event_to_video — markers can sit an OCR frame offset away from
-        # where clicking the log row seeks.
-        offset = self.effective_offset()
-        markers: list[tuple[float, str]] = []
-        for ev in self.events:
-            try:
-                markers.append((ev.start.total_seconds() + offset, "#ffcc00"))
-            except Exception:
-                continue
-        self._set_log_markers(markers)
 
     # ---- Elastic log loading ----
 

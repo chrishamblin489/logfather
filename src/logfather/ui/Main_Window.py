@@ -1445,7 +1445,6 @@ class MainWindow(QWidget):
             def _apply_markers():
                 markers = self.replay_timeline.collect_event_markers(item)
                 self.viewer.set_timeline_markers(markers)
-                self.viewer.set_clip_marker_fallback(markers)
                 if DEBUG_CLIP_TIMING:
                     print(f"[main] timeline markers set at +{time.perf_counter() - t0:.2f}s", flush=True)
             QTimer.singleShot(0, _apply_markers)
