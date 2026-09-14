@@ -20,10 +20,7 @@ from logfather.data.settings_store import Settings, DEFAULT_SETTINGS_PATH
 from logfather.data.elastic_loader import fetch_logs_for_range
 from logfather.data.elastic_errors import ElasticFetchError
 from logfather.ui.app_assets import load_placeholder_image as _load_placeholder_image
-from logfather.core.frame_analysis import (
-    compute_optical_flow_view,
-    compute_pixel_diff_view,
-)
+from logfather.ui.analysis_panel import AnalysisPanel
 from logfather.ui.annotated_video_widget import AnnotatedVideoWidget
 from logfather.data.clip_cache import ClipCache
 from logfather.data.ocr_offset_store import OcrOffsetStore
@@ -191,14 +188,10 @@ class ReplayView(QWidget):
         self._prev_frame_bgr: np.ndarray | None = None
         self._prev_frame_rgb: np.ndarray | None = None
         self._last_frame_index: int | None = None
+        self._prev_frame_index: int | None = None
         self.current_video_path: str | None = None
         self.current_video_original_path: Path | None = None
         self.current_video_filename_dt: datetime | None = None
-
-        # Frame analysis state (persists across clips for reference frame)
-        self.analysis_ref_frame_rgb: np.ndarray | None = None
-        self.analysis_ref_frame_index: int | None = None
-        self.analysis_prev_frame_index: int | None = None
 
         # Secondary video state (AdditionalCCTV)
         self.additional_cap = None
@@ -459,12 +452,6 @@ class ReplayView(QWidget):
         self.annotate_btn.clicked.connect(self._open_annotation_popout)
         self.birds_eye_btn = QPushButton("Bird's Eye")
         self.birds_eye_btn.clicked.connect(self._open_birds_eye_window)
-        self.analysis_main_alpha_label = QLabel("Overlay: 0.60")
-        self.analysis_main_alpha_slider = QSlider(Qt.Horizontal)
-        self.analysis_main_alpha_slider.setRange(0, 100)
-        self.analysis_main_alpha_slider.setValue(60)
-        self.analysis_main_alpha_slider.setFixedWidth(150)
-        self.analysis_main_alpha_slider.valueChanged.connect(self._on_analysis_main_alpha_changed)
 
         self.cache_root = self.clip_cache.root
         settings_root = DEFAULT_SETTINGS_PATH.parent
@@ -671,173 +658,17 @@ class ReplayView(QWidget):
             play.raise_()
 
     def _build_analysis_controls(self):
-        """Frame-diff / optical-flow controls and the analysis view pane."""
-        self.analysis_mode_combo = QComboBox()
-        self.analysis_mode_combo.addItems(["Off", "Frame Diff", "Optical Flow"])
-        self.analysis_mode_combo.currentIndexChanged.connect(self._on_analysis_mode_changed)
-
-        self.analysis_display_combo = QComboBox()
-        self.analysis_display_combo.addItems(["Main Overlay", "Main Side-by-side", "Popout"])
-        self.analysis_display_combo.currentIndexChanged.connect(self._on_analysis_display_changed)
-
-        self.analysis_pair_combo = QComboBox()
-        self.analysis_pair_combo.addItems(["Reference -> Current", "Previous -> Current"])
-        self.analysis_pair_combo.currentIndexChanged.connect(self._update_analysis_view)
-
-        self.analysis_set_ref_btn = QPushButton("Set Reference")
-        self.analysis_set_ref_btn.clicked.connect(self._set_analysis_reference)
-        self.analysis_clear_ref_btn = QPushButton("Clear Reference")
-        self.analysis_clear_ref_btn.clicked.connect(self._clear_analysis_reference)
-
-        self.analysis_heatmap_cb = QCheckBox("Heatmap")
-        self.analysis_heatmap_cb.setChecked(True)
-        self.analysis_heatmap_cb.stateChanged.connect(self._update_analysis_view)
-        self.analysis_overlay_cb = QCheckBox("Overlay")
-        self.analysis_overlay_cb.setChecked(False)
-        self.analysis_overlay_cb.stateChanged.connect(self._update_analysis_view)
-        self.analysis_arrows_cb = QCheckBox("Flow arrows")
-        self.analysis_arrows_cb.setChecked(False)
-        self.analysis_arrows_cb.stateChanged.connect(self._update_analysis_view)
-        self.analysis_arrows_cb.stateChanged.connect(self._update_analysis_controls_state)
-        self.analysis_hide_zero_flow_cb = QCheckBox("Hide zero flow")
-        self.analysis_hide_zero_flow_cb.setChecked(True)
-        self.analysis_hide_zero_flow_cb.stateChanged.connect(self._update_analysis_view)
-        self.analysis_hide_zero_flow_cb.stateChanged.connect(self._update_analysis_controls_state)
-        self.analysis_zero_flow_label = QLabel("Min flow: 0.00")
-        self.analysis_zero_flow_slider = QSlider(Qt.Horizontal)
-        self.analysis_zero_flow_slider.setRange(0, 100)
-        self.analysis_zero_flow_slider.setValue(1)
-        self.analysis_zero_flow_slider.setFixedWidth(140)
-        self.analysis_zero_flow_slider.valueChanged.connect(self._on_analysis_zero_flow_changed)
-        self._update_analysis_zero_flow_label()
-
-        self.analysis_gain_label = QLabel("Gain: 6x")
-        self.analysis_gain_slider = QSlider(Qt.Horizontal)
-        self.analysis_gain_slider.setRange(1, 30)
-        self.analysis_gain_slider.setValue(6)
-        self.analysis_gain_slider.valueChanged.connect(self._on_analysis_gain_changed)
-
-        self.analysis_thresh_label = QLabel("Threshold / Min motion: 15")
-        self.analysis_thresh_slider = QSlider(Qt.Horizontal)
-        self.analysis_thresh_slider.setRange(0, 255)
-        self.analysis_thresh_slider.setValue(15)
-        self.analysis_thresh_slider.valueChanged.connect(self._on_analysis_thresh_changed)
-
-        self.analysis_alpha_label = QLabel("Overlay alpha: 0.60")
-        self.analysis_alpha_slider = QSlider(Qt.Horizontal)
-        self.analysis_alpha_slider.setRange(0, 100)
-        self.analysis_alpha_slider.setValue(60)
-        self.analysis_alpha_slider.valueChanged.connect(self._on_analysis_alpha_changed)
-
-        self.analysis_scale_label = QLabel("Compute scale: 100%")
-        self.analysis_scale_slider = QSlider(Qt.Horizontal)
-        self.analysis_scale_slider.setRange(25, 100)
-        self.analysis_scale_slider.setValue(100)
-        self.analysis_scale_slider.valueChanged.connect(self._on_analysis_scale_changed)
-
-        self.analysis_arrow_step_label = QLabel("Arrow step: 20 px")
-        self.analysis_arrow_step_slider = QSlider(Qt.Horizontal)
-        self.analysis_arrow_step_slider.setRange(8, 60)
-        self.analysis_arrow_step_slider.setValue(20)
-        self.analysis_arrow_step_slider.valueChanged.connect(self._on_analysis_arrow_step_changed)
-
-        self.analysis_arrow_scale_label = QLabel("Arrow length scale: 1.5x")
-        self.analysis_arrow_scale_slider = QSlider(Qt.Horizontal)
-        self.analysis_arrow_scale_slider.setRange(5, 50)
-        self.analysis_arrow_scale_slider.setValue(15)
-        self.analysis_arrow_scale_slider.valueChanged.connect(self._on_analysis_arrow_scale_changed)
-
-        analysis_row1 = QHBoxLayout()
-        analysis_row1.addWidget(QLabel("Analysis:"))
-        analysis_row1.addWidget(self.analysis_mode_combo)
-        analysis_row1.addSpacing(8)
-        analysis_row1.addWidget(QLabel("Display:"))
-        analysis_row1.addWidget(self.analysis_display_combo)
-        analysis_row1.addStretch(1)
-
-        analysis_row2 = QHBoxLayout()
-        analysis_row2.addWidget(QLabel("Pairing:"))
-        analysis_row2.addWidget(self.analysis_pair_combo)
-        analysis_row2.addSpacing(8)
-        analysis_row2.addWidget(self.analysis_set_ref_btn)
-        analysis_row2.addWidget(self.analysis_clear_ref_btn)
-        analysis_row2.addStretch(1)
-
-        analysis_row3 = QHBoxLayout()
-        analysis_row3.addWidget(self.analysis_heatmap_cb)
-        analysis_row3.addWidget(self.analysis_overlay_cb)
-        analysis_row3.addWidget(self.analysis_arrows_cb)
-        analysis_row3.addWidget(self.analysis_hide_zero_flow_cb)
-        analysis_row3.addWidget(self.analysis_zero_flow_label)
-        analysis_row3.addWidget(self.analysis_zero_flow_slider)
-        analysis_row3.addStretch(1)
-
-        analysis_row4 = QHBoxLayout()
-        analysis_row4.addWidget(self.analysis_gain_label)
-        analysis_row4.addWidget(self.analysis_gain_slider)
-
-        analysis_row5 = QHBoxLayout()
-        analysis_row5.addWidget(self.analysis_thresh_label)
-        analysis_row5.addWidget(self.analysis_thresh_slider)
-
-        analysis_row6 = QHBoxLayout()
-        analysis_row6.addWidget(self.analysis_alpha_label)
-        analysis_row6.addWidget(self.analysis_alpha_slider)
-
-        analysis_row7 = QHBoxLayout()
-        analysis_row7.addWidget(self.analysis_scale_label)
-        analysis_row7.addWidget(self.analysis_scale_slider)
-
-        analysis_row8 = QHBoxLayout()
-        analysis_row8.addWidget(self.analysis_arrow_step_label)
-        analysis_row8.addWidget(self.analysis_arrow_step_slider)
-
-        analysis_row9 = QHBoxLayout()
-        analysis_row9.addWidget(self.analysis_arrow_scale_label)
-        analysis_row9.addWidget(self.analysis_arrow_scale_slider)
-
-        self.analysis_label = VideoFrameLabel("Analysis view")
-        self.analysis_label.setAlignment(Qt.AlignCenter)
-        self.analysis_label.setMinimumSize(480, 220)
-        self.analysis_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.analysis_label.set_scrub_callback(self._handle_scroll_wheel)
-        self.analysis_label.setVisible(False)
-        self._analysis_window: QWidget | None = None
-        self._analysis_window_label: VideoFrameLabel | None = None
-
-        self.analysis_controls_panel = QWidget()
-        analysis_controls_layout = QVBoxLayout(self.analysis_controls_panel)
-        analysis_controls_layout.setContentsMargins(0, 0, 0, 0)
-        analysis_controls_layout.setSpacing(6)
-        analysis_controls_layout.addLayout(analysis_row1)
-        analysis_controls_layout.addLayout(analysis_row2)
-        analysis_controls_layout.addLayout(analysis_row3)
-        analysis_controls_layout.addLayout(analysis_row4)
-        analysis_controls_layout.addLayout(analysis_row5)
-        analysis_controls_layout.addLayout(analysis_row6)
-        analysis_controls_layout.addLayout(analysis_row7)
-        analysis_controls_layout.addLayout(analysis_row8)
-        analysis_controls_layout.addLayout(analysis_row9)
-        analysis_controls_layout.addStretch(1)
-        self.analysis_controls_panel.setMaximumWidth(330)
-
-        for slider in (
-            self.analysis_gain_slider,
-            self.analysis_thresh_slider,
-            self.analysis_alpha_slider,
-            self.analysis_scale_slider,
-            self.analysis_arrow_step_slider,
-            self.analysis_arrow_scale_slider,
-        ):
-            slider.setFixedWidth(210)
-
-        self.analysis_container = QWidget()
-        analysis_layout = QVBoxLayout(self.analysis_container)
-        analysis_layout.setContentsMargins(0, 0, 0, 0)
-        analysis_layout.addWidget(self.analysis_label, 1)
-        self.analysis_container.setVisible(False)
-        self._update_analysis_controls_state()
-        self._update_analysis_output()
+        """The Analysis controls (analysis_panel.py): the widget itself is the
+        column the Video Popout shows; its view label and main-alpha slider
+        are placed by the layouts below."""
+        self.analysis_panel = AnalysisPanel(
+            current_frame=lambda: (self._current_frame_rgb(), self.current_frame),
+            previous_frame=lambda: (self._previous_frame_rgb(), self._prev_frame_index),
+            scrub_callback=self._handle_scroll_wheel,
+        )
+        self.analysis_panel.redraw_requested.connect(self._request_video_label_update)
+        self.analysis_panel.layout_changed.connect(self._refresh_additional_visibility)
+        self._refresh_additional_visibility()
 
     def _build_middle_layout(self):
         """Stack the video row, marker bars, seek slider and playback bar;
@@ -858,7 +689,7 @@ class ReplayView(QWidget):
         video_row = QHBoxLayout()
         video_row.addWidget(self.video_label, 1)
         video_row.addWidget(self.additional_video_label, 1)
-        video_row.addWidget(self.analysis_label, 1)
+        video_row.addWidget(self.analysis_panel.view_label, 1)
         middle_layout.addLayout(video_row)
         # Clip start (left) and end (right) to the minute, on the same
         # line as the scroll bar, which is shorter by their width (Chris,
@@ -948,8 +779,8 @@ class ReplayView(QWidget):
         overlay_strip_layout.addWidget(self.annotate_btn)
         overlay_strip_layout.addWidget(self.birds_eye_btn)
         overlay_strip_layout.addSpacing(8)
-        overlay_strip_layout.addWidget(self.analysis_main_alpha_label)
-        overlay_strip_layout.addWidget(self.analysis_main_alpha_slider)
+        overlay_strip_layout.addWidget(self.analysis_panel.main_alpha_label)
+        overlay_strip_layout.addWidget(self.analysis_panel.main_alpha_slider)
         overlay_strip_layout.addStretch(1)
         self._overlay_strip.setVisible(False)
         middle_layout.addWidget(self._overlay_strip)
@@ -1235,103 +1066,8 @@ class ReplayView(QWidget):
         if not self.right_tabs.rect().contains(pos):
             self._set_right_tabs_visible(False)
 
-    def _on_analysis_mode_changed(self, _index: int | None = None):
-        enabled = self.analysis_mode_combo.currentText() != "Off"
-        self.analysis_display_combo.setEnabled(enabled)
-        self.analysis_main_alpha_label.setVisible(enabled)
-        self.analysis_main_alpha_slider.setVisible(enabled)
-        self._update_analysis_controls_state()
-        self._update_analysis_output()
-        self._update_analysis_view()
-
-    def _on_analysis_display_changed(self, _index: int | None = None):
-        self._update_analysis_output()
-        self._update_analysis_view()
-
-    def _update_analysis_output(self):
-        enabled = self.analysis_mode_combo.currentText() != "Off"
-        if not enabled:
-            self.analysis_container.setVisible(False)
-            self._hide_analysis_popout()
-            self.analysis_label.setVisible(False)
-            self._refresh_additional_visibility()
-            self.analysis_main_alpha_label.setVisible(False)
-            self.analysis_main_alpha_slider.setVisible(False)
-            return
-        display = self.analysis_display_combo.currentText()
-        show_main_overlay = display == "Main Overlay"
-        self.analysis_main_alpha_label.setVisible(show_main_overlay)
-        self.analysis_main_alpha_slider.setVisible(show_main_overlay)
-        if display == "Popout":
-            self.analysis_container.setVisible(False)
-            self._show_analysis_popout()
-            self.analysis_label.setVisible(False)
-            self._refresh_additional_visibility()
-            return
-        if display == "Main Side-by-side":
-            self._hide_analysis_popout()
-            self.analysis_container.setVisible(False)
-            self.analysis_label.setVisible(True)
-            self._refresh_additional_visibility()
-            return
-        # Main Overlay
-        self._hide_analysis_popout()
-        self.analysis_container.setVisible(False)
-        self.analysis_label.setVisible(False)
-        self._refresh_additional_visibility()
-
-    def _update_analysis_controls_state(self, _state: int | None = None):
-        mode = self.analysis_mode_combo.currentText()
-        is_flow = mode == "Optical Flow"
-        is_main_overlay = self.analysis_display_combo.currentText() == "Main Overlay"
-        self.analysis_arrows_cb.setEnabled(is_flow)
-        self.analysis_hide_zero_flow_cb.setEnabled(is_flow and self.analysis_arrows_cb.isChecked())
-        zero_flow_enabled = (
-            is_flow
-            and self.analysis_arrows_cb.isChecked()
-            and self.analysis_hide_zero_flow_cb.isChecked()
-        )
-        self.analysis_zero_flow_label.setEnabled(zero_flow_enabled)
-        self.analysis_zero_flow_slider.setEnabled(zero_flow_enabled)
-        self.analysis_arrow_step_slider.setEnabled(is_flow and self.analysis_arrows_cb.isChecked())
-        self.analysis_arrow_scale_slider.setEnabled(is_flow and self.analysis_arrows_cb.isChecked())
-        self.analysis_scale_slider.setEnabled(is_flow)
-        self.analysis_arrow_step_label.setEnabled(is_flow)
-        self.analysis_arrow_scale_label.setEnabled(is_flow)
-        self.analysis_scale_label.setEnabled(is_flow)
-        self.analysis_overlay_cb.setEnabled(not is_main_overlay)
-        self.analysis_alpha_slider.setEnabled(not is_main_overlay)
-        self.analysis_alpha_label.setEnabled(not is_main_overlay)
-
-    def _show_analysis_popout(self):
-        if self._analysis_window is None:
-            win = QWidget(self, Qt.Window)
-            win.setWindowTitle("Analysis View")
-            win.resize(800, 450)
-            layout = QVBoxLayout(win)
-            layout.setContentsMargins(6, 6, 6, 6)
-            label = VideoFrameLabel("Analysis view")
-            label.setAlignment(Qt.AlignCenter)
-            label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-            layout.addWidget(label, 1)
-            win.setLayout(layout)
-            win.destroyed.connect(lambda _=None: self._clear_analysis_popout())
-            self._analysis_window = win
-            self._analysis_window_label = label
-        self._analysis_window.show()
-
-    def _hide_analysis_popout(self):
-        if self._analysis_window is not None:
-            self._analysis_window.hide()
-
-    def _clear_analysis_popout(self):
-        self._analysis_window = None
-        self._analysis_window_label = None
-
     def _refresh_additional_visibility(self):
-        display = self.analysis_display_combo.currentText()
-        show_side_by_side = display == "Main Side-by-side" and self.analysis_mode_combo.currentText() != "Off"
-        if show_side_by_side:
+        if self.analysis_panel.side_by_side_active():
             self.additional_video_label.setVisible(False)
             return
         if self._draw_additional_video and self.additional_video_label is not None:
@@ -1339,174 +1075,6 @@ class ReplayView(QWidget):
         else:
             self.additional_video_label.setVisible(False)
         QTimer.singleShot(0, self._place_view_menu)
-
-    def _on_analysis_main_alpha_changed(self, v: int):
-        a = v / 100.0
-        self.analysis_main_alpha_label.setText(f"Overlay: {a:.2f}")
-        self._request_video_label_update()
-
-    def _set_analysis_reference(self):
-        rgb = self._current_frame_rgb()
-        if rgb is None:
-            return
-        # Safe to hold by reference: frame buffers are never mutated in place.
-        self.analysis_ref_frame_rgb = rgb
-        self.analysis_ref_frame_index = int(self.current_frame)
-        self._update_analysis_view()
-
-    def _clear_analysis_reference(self):
-        self.analysis_ref_frame_rgb = None
-        self.analysis_ref_frame_index = None
-        self._update_analysis_view()
-
-    def _on_analysis_gain_changed(self, v: int):
-        self.analysis_gain_label.setText(f"Gain: {v}x")
-        self._update_analysis_view()
-
-    def _on_analysis_thresh_changed(self, v: int):
-        self.analysis_thresh_label.setText(f"Threshold / Min motion: {v}")
-        self._update_analysis_view()
-
-    def _on_analysis_alpha_changed(self, v: int):
-        a = v / 100.0
-        self.analysis_alpha_label.setText(f"Overlay alpha: {a:.2f}")
-        self._update_analysis_view()
-
-    def _on_analysis_scale_changed(self, v: int):
-        self.analysis_scale_label.setText(f"Compute scale: {v}%")
-        self._update_analysis_view()
-
-    def _on_analysis_arrow_step_changed(self, v: int):
-        self.analysis_arrow_step_label.setText(f"Arrow step: {v} px")
-        self._update_analysis_view()
-
-    def _on_analysis_arrow_scale_changed(self, v: int):
-        s = v / 10.0
-        self.analysis_arrow_scale_label.setText(f"Arrow length scale: {s:.1f}x")
-        self._update_analysis_view()
-
-    def _analysis_zero_flow_value(self) -> float:
-        return self.analysis_zero_flow_slider.value() / 20.0
-
-    def _update_analysis_zero_flow_label(self):
-        v = self._analysis_zero_flow_value()
-        self.analysis_zero_flow_label.setText(f"Min flow: {v:.2f}")
-
-    def _on_analysis_zero_flow_changed(self, _v: int):
-        self._update_analysis_zero_flow_label()
-        self._update_analysis_view()
-
-    def _analysis_base_frame(self) -> tuple[np.ndarray | None, str]:
-        pairing = self.analysis_pair_combo.currentText()
-        if pairing.startswith("Reference"):
-            if self.analysis_ref_frame_rgb is None:
-                return None, "Set a reference frame first."
-            label = "Reference frame"
-            if self.analysis_ref_frame_index is not None:
-                label += f": {self.analysis_ref_frame_index}"
-            return self.analysis_ref_frame_rgb, label
-        prev_rgb = self._previous_frame_rgb()
-        if prev_rgb is None:
-            return None, "No previous frame yet (scrub at least once)."
-        label = "Previous frame"
-        if self.analysis_prev_frame_index is not None:
-            label += f": {self.analysis_prev_frame_index}"
-        return prev_rgb, label
-
-    def _compute_analysis_output(self) -> tuple[np.ndarray | None, str]:
-        if self.analysis_mode_combo.currentText() == "Off":
-            return None, ""
-        frame_rgb = self._current_frame_rgb()
-        if frame_rgb is None:
-            return None, "Analysis view (no frame)"
-        base_rgb, base_info = self._analysis_base_frame()
-        if base_rgb is None:
-            return None, f"Analysis view ({base_info})"
-        if base_rgb.shape != frame_rgb.shape:
-            h, w = frame_rgb.shape[:2]
-            base_rgb = cv2.resize(base_rgb, (w, h), interpolation=cv2.INTER_AREA)
-            base_info = f"{base_info} (resized)"
-
-        gain = float(self.analysis_gain_slider.value())
-        thresh = int(self.analysis_thresh_slider.value())
-        heatmap = self.analysis_heatmap_cb.isChecked()
-        overlay = self.analysis_overlay_cb.isChecked()
-        if self.analysis_display_combo.currentText() == "Main Overlay":
-            overlay = False
-        alpha = self.analysis_alpha_slider.value() / 100.0
-        compute_scale = self.analysis_scale_slider.value() / 100.0
-        arrows = self.analysis_arrows_cb.isChecked()
-        arrow_step = int(self.analysis_arrow_step_slider.value())
-        arrow_scale = float(self.analysis_arrow_scale_slider.value()) / 10.0
-
-        mode = self.analysis_mode_combo.currentText()
-        if mode == "Frame Diff":
-            out_rgb = compute_pixel_diff_view(
-                frame_rgb=frame_rgb,
-                base_rgb=base_rgb,
-                gain=gain,
-                threshold=thresh,
-                heatmap=heatmap,
-                overlay=overlay,
-                alpha=alpha,
-            )
-        else:
-            out_rgb = compute_optical_flow_view(
-                frame_rgb=frame_rgb,
-                base_rgb=base_rgb,
-                gain=gain,
-                min_motion=thresh,
-                heatmap=heatmap,
-                overlay=overlay,
-                alpha=alpha,
-                arrows=arrows,
-                arrow_step=arrow_step,
-                arrow_scale=arrow_scale,
-                compute_scale=compute_scale,
-                arrow_min_mag=(
-                    self._analysis_zero_flow_value()
-                    if self.analysis_hide_zero_flow_cb.isChecked()
-                    else None
-                ),
-            )
-        tooltip = f"{mode}\n{base_info}\nCurrent frame: {self.current_frame}"
-        return out_rgb, tooltip
-
-    def _update_analysis_view(self, _state: int | None = None):
-        if self.analysis_mode_combo.currentText() == "Off":
-            self.analysis_label.setText("Analysis view")
-            self.analysis_label.setToolTip("")
-            self.analysis_label.set_frame(None)
-            if self._analysis_window_label is not None:
-                self._analysis_window_label.setText("Analysis view")
-                self._analysis_window_label.set_frame(None)
-            return
-        out_rgb, tooltip = self._compute_analysis_output()
-        if out_rgb is None:
-            msg = tooltip or "Analysis view"
-            self.analysis_label.setText(msg)
-            self.analysis_label.setToolTip("")
-            self.analysis_label.set_frame(None)
-            if self._analysis_window_label is not None:
-                self._analysis_window_label.setText(msg)
-                self._analysis_window_label.setToolTip("")
-                self._analysis_window_label.set_frame(None)
-            return
-
-        h, w, ch = out_rgb.shape
-        bytes_per_line = out_rgb.strides[0]
-        qimg = QImage(out_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888).copy()
-        if self.analysis_display_combo.currentText() == "Popout":
-            self.analysis_label.set_frame(None)
-            self.analysis_label.setToolTip("")
-            if self._analysis_window_label is not None:
-                self._analysis_window_label.set_frame(qimg)
-                self._analysis_window_label.setToolTip(tooltip)
-        else:
-            self.analysis_label.set_frame(qimg)
-            self.analysis_label.setToolTip(tooltip)
-            if self._analysis_window_label is not None:
-                self._analysis_window_label.set_frame(None)
 
     def update_sync_button_label(self):
         """Update the sync button text to include the first log time (if known)."""
@@ -1914,10 +1482,8 @@ class ReplayView(QWidget):
         self._prev_frame_bgr = None
         self._prev_frame_rgb = None
         self._last_frame_index = None
-        self.analysis_prev_frame_index = None
-        self.analysis_label.setText("Analysis view")
-        self.analysis_label.setToolTip("")
-        self.analysis_label.set_frame(None)
+        self._prev_frame_index = None
+        self.analysis_panel.clear_view()
         placeholder = "Loading video..." if show_loading else "No video loaded"
         self.video_label.set_frame(None)
         self.video_label.set_placeholder_text(placeholder)
@@ -2484,7 +2050,7 @@ class ReplayView(QWidget):
             # References, not copies: each decoded frame is a fresh buffer.
             self._prev_frame_bgr = self._cur_frame_bgr
             self._prev_frame_rgb = self._cur_frame_rgb
-            self.analysis_prev_frame_index = self._last_frame_index
+            self._prev_frame_index = self._last_frame_index
 
         if not _position_capture_sequential(
             self.cap, self._seq_cap is self.cap, self._seq_next_frame, frame_index
@@ -2566,24 +2132,9 @@ class ReplayView(QWidget):
                     return
                 self.video_label.set_fps(self.fps)
                 self.video_label.set_current_frame_index(self.current_frame)
-                frame_to_show = self.last_qimage
-                if (
-                    self.analysis_mode_combo.currentText() != "Off"
-                    and self.analysis_display_combo.currentText() == "Main Overlay"
-                ):
-                    out_rgb, _tooltip = self._compute_analysis_output()
-                    cur_rgb = self._current_frame_rgb()
-                    if out_rgb is not None and cur_rgb is not None:
-                        alpha = self.analysis_main_alpha_slider.value() / 100.0
-                        try:
-                            blended = cv2.addWeighted(cur_rgb, 1.0 - alpha, out_rgb, alpha, 0.0)
-                            h, w, ch = blended.shape
-                            bytes_per_line = blended.strides[0]
-                            frame_to_show = QImage(
-                                blended.data, w, h, bytes_per_line, QImage.Format_RGB888
-                            ).copy()
-                        except Exception:
-                            frame_to_show = self.last_qimage
+                # "Main Overlay" paints the analysis blended over the frame.
+                overlay_image = self.analysis_panel.main_overlay_image()
+                frame_to_show = overlay_image if overlay_image is not None else self.last_qimage
                 self.video_label.set_frame(frame_to_show)
                 self._refresh_birds_eye_if_open()
                 if self._popout_label is not None:
@@ -2600,7 +2151,7 @@ class ReplayView(QWidget):
                 and self.additional_video_label.height() > 1
             ):
                 self.additional_video_label.set_frame(self.additional_last_qimage)
-            self._update_analysis_view()
+            self.analysis_panel.refresh_view()
         finally:
             self._updating_video_label = False
             dt = time.perf_counter() - t0
@@ -2675,9 +2226,9 @@ class ReplayView(QWidget):
             label.setFocusPolicy(Qt.StrongFocus)
             content_row.addWidget(label, 1)
 
-            self.analysis_controls_panel.setParent(win)
-            self.analysis_controls_panel.setVisible(True)
-            content_row.addWidget(self.analysis_controls_panel)
+            self.analysis_panel.setParent(win)
+            self.analysis_panel.setVisible(True)
+            content_row.addWidget(self.analysis_panel)
             layout.addLayout(content_row, 1)
             win.setLayout(layout)
             win.destroyed.connect(lambda _=None: self._clear_video_popout())
@@ -4266,8 +3817,7 @@ class ReplayView(QWidget):
             # A lingering dialog (e.g. the OCR ROI tool) keeps the Qt event
             # loop alive after the main window closes, leaving a zombie
             # process with its console window open.
-            for attr in ("_ocr_tool_dialog", "_popout_window", "_analysis_window"):
-                window = getattr(self, attr, None)
+            for window in (self._ocr_tool_dialog, self._popout_window, self.analysis_panel.popout_window):
                 if window is not None:
                     window.close()
 

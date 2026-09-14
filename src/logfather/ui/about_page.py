@@ -214,6 +214,10 @@ FILE_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
          "The replay's Filters and Custom tabs: the source / state / message checkbox columns, the 15 "
          "filter presets, the five custom filter-in / filter-out blocks, their Settings persistence, "
          "and the row matching the log list is filtered by."),
+        ("ui/analysis_panel.py", "src/logfather/ui/analysis_panel.py",
+         "The replay's Analysis controls: frame differencing and optical flow over the current picture "
+         "(core/frame_analysis.py), shown side by side, blended over the main picture or in the Analysis "
+         "View popout, with the reference frame and the gain / threshold / alpha / scale / arrow sliders."),
         ("ui/replay_timeline.py", "src/logfather/ui/replay_timeline.py",
          "The timeline chart under the replay: the day's clips, event ticks, SKU bands, the Errors box rows, "
          "the label gutter, the playhead, the View menu, zoom and the Data strips."),
