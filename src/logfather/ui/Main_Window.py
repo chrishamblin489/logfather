@@ -852,7 +852,6 @@ class MainWindow(QWidget):
         # where the footage would be (Chris, 2026-09-07).
         self.viewer.set_footage_notice(FOOTAGE_DELETED_NOTICE if footage_expired(day) else None)
         self.replay_timeline.show_times(pikpak_root, day)
-        self.replay_timeline.clear_clip_target_rate_heat()
         self._update_current_system_label(pikpak_root, day)
         self._load_telemetry(pikpak_root, day)
         if self.date_picker.parent_dir:
@@ -1404,10 +1403,8 @@ class MainWindow(QWidget):
                 self.replay_timeline.set_playhead_datetime(ensure_utc(item.start))
             self.open_in_viewer(item)
         elif item.kind == "additional" and isinstance(item.payload, Path):
-            self.replay_timeline.clear_clip_target_rate_heat()
             self.load_additional_in_viewer(item.payload)
         else:
-            self.replay_timeline.clear_clip_target_rate_heat()
             QMessageBox.information(self, "Selected item", item.label)
 
     def open_in_viewer(self, item: TimelineItem):
@@ -1459,8 +1456,6 @@ class MainWindow(QWidget):
         current_root = self.replay_timeline.current_root
         if current_root and item.start and item.end:
             self._overlay_controller.load_buffer_events(current_root, item.start, item.end)
-        else:
-            self.replay_timeline.clear_clip_target_rate_heat()
 
         if ENABLE_LOG_BUTTON:
             current_root = self.replay_timeline.current_root
