@@ -24,6 +24,18 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ### 2026-09-14
 
+- Review item 9 done (Chris, 2026-09-14): four clusters out of the
+  replay view (4,361 -> 3,485 lines): ui/analysis_panel.py (the Analysis
+  tab's diff / optical-flow controls, view and popout), ui/clip_export.py
+  (export with overlays burnt in: open the writer, render the frames, mux
+  the audio, one try/finally for the temp files), ui/elastic_log_session.py
+  (the per-clip Elastic log fetch lifecycle with ready/failed signals) and
+  ui/clip_annotations.py (the annotation files, undo stack, tools, colours
+  and context menu; the canvas stays in annotated_video_widget.py). Fixed
+  on the way: the clip export had been broken since the progress-dialog
+  change earlier the same day (it called show() on the new helper), an
+  ffmpeg that cannot run now reports "audio could not be muxed" instead of
+  crashing, and a failed save no longer leaves temp files. 58 new tests.
 - Review items 6-8 done (Chris, 2026-09-14): (6) one PaneAnimator
   (ui/pane_animator.py) behind the Targets panel, date picker, timeline
   height and right-tabs slides - same durations and sizes, the two bare
