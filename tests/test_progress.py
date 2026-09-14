@@ -205,7 +205,9 @@ def test_job_progress_progress_drives_label_maximum_value(parent):
     assert dlg.maximum() == 8 and dlg.value() == 2
     slot.started["on_progress"](("thumbs", 1, 3))
     assert dlg.labelText() == "Reading stop thumbnails..."
-    assert seen == [("copies", 2, 8), ("thumbs", 1, 3)]
+    slot.started["on_progress"]("junk the parser cannot unpack")  # ignored, still forwarded
+    assert dlg.labelText() == "Reading stop thumbnails..." and dlg.value() == 1
+    assert seen == [("copies", 2, 8), ("thumbs", 1, 3), "junk the parser cannot unpack"]
     slot.started["on_result"](None)
 
 

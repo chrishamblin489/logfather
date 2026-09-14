@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QFileDialog,
     QProgressBar,
-    QProgressDialog,
 )
 
 from logfather.ui import theme
@@ -62,6 +61,7 @@ from logfather.core.app_version import load_version_info
 from logfather.data.day_listing_cache import load_day_files_cached
 from logfather.data.elastic_loader import fetch_events, set_system_id_override
 from logfather.ui.qt_worker import JobSlot
+from logfather.ui.progress import job_progress
 from logfather.ui.stop_report import (
     StopReportDialog,
     StopReportEntry,
@@ -1626,41 +1626,19 @@ class MainWindow(QWidget):
 
         self.stop_report_btn.setEnabled(False)
         self.stop_report_action.setEnabled(False)
-        progress = QProgressDialog("Building stop report...", "Cancel", 0, 0, self)
-        progress.setWindowTitle("Stop Report")
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
-        self._stop_report_progress = progress
 
-        def _cleanup():
+        def _done():
             self.stop_report_btn.setEnabled(True)
             self.stop_report_action.setEnabled(True)
             if self._stop_report_progress is progress:
                 self._stop_report_progress = None
-            try:
-                progress.canceled.disconnect(_on_canceled)
-            except (RuntimeError, TypeError):
-                pass
-            progress.close()
 
-        def _on_canceled():
-            self._stop_report_slot.retire()
-            _cleanup()
-
-        progress.canceled.connect(_on_canceled)
-
-        def _on_progress(payload):
-            try:
-                phase, done, total = payload
-            except Exception:
-                return
+        def _describe(payload):
+            phase, done, total = payload
             label = "Copying report clips..." if phase == "copies" else "Reading stop thumbnails..."
-            progress.setLabelText(label)
-            progress.setMaximum(max(1, int(total)))
-            progress.setValue(int(done))
+            return label, done, total
 
         def _on_result(data):
-            _cleanup()
             if not data:
                 QMessageBox.information(self, "Stop Report", "No stop events found for this day.")
                 return
@@ -1670,10 +1648,18 @@ class MainWindow(QWidget):
             dlg.exec()
 
         def _on_error(message):
-            _cleanup()
             QMessageBox.warning(self, "Stop Report", f"Stop report build failed:\n{message}")
 
-        self._stop_report_slot.start(
+        progress = job_progress(
+            self,
+            "Stop Report",
+            self._stop_report_slot,
+            label="Building stop report...",
+            parse_progress=_describe,
+            on_done=_done,
+        )
+        self._stop_report_progress = progress
+        progress.start(
             lambda job: collect_stop_report_data(
                 items,
                 settings=settings,
@@ -1684,7 +1670,6 @@ class MainWindow(QWidget):
             ),
             on_result=_on_result,
             on_error=_on_error,
-            on_progress=_on_progress,
         )
 
     def _open_report_entry(self, entry: StopReportEntry):

@@ -255,7 +255,10 @@ class JobProgress:
         dlg = self._dialog
         if dlg is None:
             return
-        parsed = self._parse_progress(payload)
+        try:
+            parsed = self._parse_progress(payload)
+        except (TypeError, ValueError):
+            parsed = None  # a payload the parser cannot unpack is not progress
         if parsed is None:
             return
         label, done, total = parsed
