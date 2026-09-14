@@ -6,7 +6,6 @@ import argparse
 import time
 import json
 import re
-import tempfile
 from bisect import bisect_left, bisect_right
 from concurrent.futures import ThreadPoolExecutor, Future
 from pathlib import Path
@@ -21,6 +20,7 @@ from logfather.data.elastic_loader import fetch_logs_for_range
 from logfather.data.elastic_errors import ElasticFetchError
 from logfather.ui.app_assets import load_placeholder_image as _load_placeholder_image
 from logfather.ui.analysis_panel import AnalysisPanel
+from logfather.ui.clip_export import export_clip_with_overlays, find_ffmpeg
 from logfather.ui.annotated_video_widget import AnnotatedVideoWidget
 from logfather.data.clip_cache import ClipCache
 from logfather.data.ocr_offset_store import OcrOffsetStore
@@ -54,7 +54,7 @@ from logfather.ui.viewer_widgets import (
 
 import cv2
 from PySide6.QtCore import Qt, QTimer, Signal, QEvent, QMetaObject, Slot, QPoint, QPointF, QSize, Q_ARG, QModelIndex
-from PySide6.QtGui import QAction, QImage, QColor, QPainter, QPixmap
+from PySide6.QtGui import QAction, QImage, QColor, QPixmap
 import numpy as np
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
@@ -1885,137 +1885,20 @@ class ReplayView(QWidget):
         end_seconds: float,
         target_path: Path,
     ) -> tuple[bool, str]:
-        if end_seconds <= start_seconds:
-            return False, "Select a non-zero clip range first."
-        if self.fps <= 0:
-            return False, "No loaded clip is available for export."
-        ffmpeg_path = shutil.which("ffmpeg")
-        if ffmpeg_path is None:
-            return False, "ffmpeg was not found on PATH."
-        cap = cv2.VideoCapture(str(source_path))
-        if not cap.isOpened():
-            return False, f"Failed to open source clip:\n{source_path}"
-        fps = cap.get(cv2.CAP_PROP_FPS) or self.fps or 25.0
-        start_frame = max(0, int(round(start_seconds * fps)))
-        end_frame = max(start_frame + 1, int(round(end_seconds * fps)))
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-        if width <= 0 or height <= 0:
-            cap.release()
-            return False, "Unable to determine clip dimensions for export."
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        temp_dir = Path(tempfile.mkdtemp(prefix="logfather_export_"))
-        temp_video = temp_dir / "video_no_audio.mp4"
-        writer = cv2.VideoWriter(str(temp_video), fourcc, fps, (width, height))
-        if not writer.isOpened():
-            cap.release()
-            return False, "Unable to create temporary export video."
-
-        export_widget = AnnotatedVideoWidget()
-        export_widget.resize(width, height)
-        export_widget.set_editable(False)
-        export_widget.set_fps(fps)
-        export_widget.set_annotations(self._current_annotations())
-
-        progress = StageProgress(self, "Export Clip").begin("Exporting clip with overlays...", end_frame - start_frame)
-        progress.show()
-
-        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-        try:
-            for frame_idx in range(start_frame, end_frame):
-                if progress.was_cancelled():
-                    writer.release()
-                    cap.release()
-                    try:
-                        temp_video.unlink(missing_ok=True)
-                        temp_dir.rmdir()
-                    except Exception:
-                        pass
-                    return False, "Export canceled."
-                ok, frame = cap.read()
-                if not ok or frame is None:
-                    break
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                if not frame_rgb.flags["C_CONTIGUOUS"]:
-                    frame_rgb = frame_rgb.copy()
-                qimg = QImage(
-                    frame_rgb.data,
-                    width,
-                    height,
-                    frame_rgb.strides[0],
-                    QImage.Format_RGB888,
-                ).copy()
-                export_widget.set_frame(qimg)
-                export_widget.set_current_frame_index(frame_idx)
-                t_seconds = frame_idx / fps if fps > 0 else 0.0
-                overlay_lines, _ = self._overlay_context_for_time(t_seconds)
-                export_widget.set_status_lines(overlay_lines)
-                export_overlays = []
-                if callable(self._export_target_overlay_provider):
-                    try:
-                        export_overlays = list(self._export_target_overlay_provider(t_seconds) or [])
-                    except Exception:
-                        export_overlays = []
-                export_widget.set_target_overlays(export_overlays)
-                rendered = QImage(width, height, QImage.Format_ARGB32)
-                rendered.fill(Qt.black)
-                painter = QPainter(rendered)
-                export_widget.render(painter, QPoint(0, 0))
-                painter.end()
-                rendered = rendered.convertToFormat(QImage.Format_RGB888)
-                bits = rendered.bits()
-                frame_bytes = bits.tobytes()
-                out_rgb = np.frombuffer(frame_bytes, dtype=np.uint8).reshape((height, width, 3))
-                out_bgr = cv2.cvtColor(out_rgb, cv2.COLOR_RGB2BGR)
-                writer.write(out_bgr)
-                progress.set(frame_idx - start_frame + 1)
-                QApplication.processEvents()
-        finally:
-            writer.release()
-            cap.release()
-            progress.close()
-
-        temp_with_audio = temp_dir / "video_with_audio.mp4"
-        mux_cmd = [
-            ffmpeg_path,
-            "-y",
-            "-ss",
-            f"{start_seconds:.3f}",
-            "-i",
-            str(source_path),
-            "-i",
-            str(temp_video),
-            "-map",
-            "1:v:0",
-            "-map",
-            "0:a?",
-            "-c:v",
-            "copy",
-            "-c:a",
-            "aac",
-            "-movflags",
-            "+faststart",
-            str(temp_with_audio),
-        ]
-        proc = subprocess.run(mux_cmd, capture_output=True, text=True)
-        final_source = temp_with_audio if proc.returncode == 0 and temp_with_audio.exists() else temp_video
-        try:
-            if target_path.exists():
-                target_path.unlink()
-            shutil.move(str(final_source), str(target_path))
-        except Exception as exc:
-            return False, f"Export completed but saving failed:\n{exc}"
-        try:
-            if temp_video.exists():
-                temp_video.unlink()
-            if temp_with_audio.exists():
-                temp_with_audio.unlink()
-            temp_dir.rmdir()
-        except Exception:
-            pass
-        if proc.returncode != 0:
-            return True, "Clip exported with baked overlays, but audio could not be muxed back in."
-        return True, ""
+        """Main_Window's Export Clip: bake this clip's annotations, overlay
+        lines and target overlays into source_path's range (clip_export.py)."""
+        return export_clip_with_overlays(
+            source_path,
+            start_seconds,
+            end_seconds,
+            target_path,
+            fallback_fps=self.fps,
+            annotations=self._current_annotations(),
+            status_lines_for=lambda t: self._overlay_context_for_time(t)[0],
+            target_overlays_for=self._export_target_overlay_provider,
+            progress=StageProgress(self, "Export Clip"),
+            ffmpeg_path=find_ffmpeg(),
+        ).as_tuple()
 
     def set_export_target_overlay_provider(self, provider) -> None:
         self._export_target_overlay_provider = provider

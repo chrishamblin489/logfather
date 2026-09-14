@@ -218,6 +218,10 @@ FILE_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
          "The replay's Analysis controls: frame differencing and optical flow over the current picture "
          "(core/frame_analysis.py), shown side by side, blended over the main picture or in the Analysis "
          "View popout, with the reference frame and the gain / threshold / alpha / scale / arrow sliders."),
+        ("ui/clip_export.py", "src/logfather/ui/clip_export.py",
+         "Export Clip: a clip range rendered through the video canvas with the annotations, info lines "
+         "and product overlays burnt in, then the source audio muxed back with ffmpeg; one cleanup path "
+         "for success, Cancel and every refusal."),
         ("ui/replay_timeline.py", "src/logfather/ui/replay_timeline.py",
          "The timeline chart under the replay: the day's clips, event ticks, SKU bands, the Errors box rows, "
          "the label gutter, the playhead, the View menu, zoom and the Data strips."),
