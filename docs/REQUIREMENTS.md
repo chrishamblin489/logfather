@@ -24,6 +24,21 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ### 2026-09-14
 
+- Review item 10 done (Chris, 2026-09-14), the last known cross-thread
+  data path: the module global SYSTEM_ID_OVERRIDE in elastic_loader (set
+  by the date picker's SIM Logs mode on the UI thread, read by the fetch
+  workers, so a fetch for one PikPak could silently query another robot
+  if the picker changed mid-flight) is gone. The robot id is resolved
+  once on the UI thread by elastic_schema.resolve_robot_id(root,
+  override) - override wins, else the PikPak folder - and passed to
+  every per-system fetch as a required robot_id keyword (fetch_events,
+  fetch_sku_items, fetch_logs_for_range, fetch_buffer_events) through
+  the job's arguments: the timeline's extra loaders, the clip log
+  session, the Targets buffer load and the Stop report. MainWindow's
+  system_id_override is the single source of truth. Same id value as
+  before, so the events cache keys are unchanged (no schema bump). The
+  Overview and the Fleetwide search never used the override. 14 new
+  tests.
 - Review item 9 done (Chris, 2026-09-14): four clusters out of the
   replay view (4,361 -> 3,485 lines): ui/analysis_panel.py (the Analysis
   tab's diff / optical-flow controls, view and popout), ui/clip_export.py
