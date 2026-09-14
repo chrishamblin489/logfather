@@ -30,6 +30,7 @@ from logfather.data.ocr_offset_store import OcrOffsetStore
 from logfather.data.ui_state_store import load_ui_state, update_ui_state
 from logfather.core.time_alignment import plausible_ocr_offset, TimeAlignment
 from logfather.ui import theme
+from logfather.ui.progress import BusyDialog, StageProgress
 from logfather.ui.icons import sync_icon
 from logfather.ui.log_filter_panel import LogFilterPanel
 from logfather.ui.pulse import Pulser
@@ -60,7 +61,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QFileDialog, QMessageBox,
     QSlider, QSizePolicy, QListView, QAbstractItemView,
-    QCheckBox, QProgressDialog, QTabWidget, QDialog,
+    QCheckBox, QTabWidget, QDialog,
     QComboBox, QInputDialog, QMenu, QColorDialog,
     QToolButton, QButtonGroup, QStyleOptionSlider, QStyle, QLCDNumber
 )
@@ -284,7 +285,7 @@ class ReplayView(QWidget):
         self._pending_seek: tuple[int, float, bool] | None = None
         self._video_load_generation = 0
         self._video_load_t0 = 0.0
-        self._video_busy_dialog: QProgressDialog | None = None
+        self._video_busy = BusyDialog(self, "Loading clip")
         self._log_future: Future | None = None
         self._log_future_id = 0
         self.logs_ready.connect(self._on_elastic_logs_ready)
@@ -1112,7 +1113,7 @@ class ReplayView(QWidget):
         self.installEventFilter(self)
         self.right_tabs.installEventFilter(self)
         self.right_column.installEventFilter(self)
-        self._log_busy_dialog: QProgressDialog | None = None
+        self._log_busy = BusyDialog(self, "Log Viewer")
         self.log_filter_panel.set_tabs_enabled(False)
 
         self._startup_maintenance_started = False
@@ -1736,32 +1737,18 @@ class ReplayView(QWidget):
 
     def _set_video_busy(self, busy: bool, message: str | None = None):
         if busy:
-            if self._video_busy_dialog is None:
-                dlg = QProgressDialog(message or "Working...", None, 0, 0, self)
-                dlg.setWindowTitle("Loading clip")
-                dlg.setCancelButton(None)
-                dlg.setWindowModality(Qt.NonModal)
-                dlg.setMinimumDuration(0)
-                dlg.setRange(0, 0)
-                self._video_busy_dialog = dlg
-            self._video_busy_dialog.setLabelText(message or "Working...")
-            self._video_busy_dialog.show()
-        elif self._video_busy_dialog is not None:
-            self._video_busy_dialog.close()
-            self._video_busy_dialog = None
+            self._video_busy.show(message or "Working...")
+        else:
+            self._video_busy.hide()
 
     def show_download_progress(self, source_path: str, done: int, total: int, text: str) -> None:
         """The 'Loading clip' dialog shows the same size, percentage and
         rate as the activity bar (Chris, 2026-09-08: the bar sits at the
         bottom of the window, off screen on a small laptop)."""
         pending = self._pending_video_load
-        dlg = self._video_busy_dialog
-        if pending is None or dlg is None or str(pending[1]) != source_path:
+        if pending is None or not self._video_busy.is_shown() or str(pending[1]) != source_path:
             return
-        if total:
-            dlg.setRange(0, 1000)
-            dlg.setValue(min(1000, int(done * 1000 / total)))
-        dlg.setLabelText(text)
+        self._video_busy.set_progress(done, total, text)
 
     def _finish_pending_video_load(self, source_path: str, ok: bool) -> None:
         pending = self._pending_video_load
@@ -2360,16 +2347,13 @@ class ReplayView(QWidget):
         export_widget.set_fps(fps)
         export_widget.set_annotations(self._current_annotations())
 
-        progress = QProgressDialog("Exporting clip with overlays...", "Cancel", 0, max(1, end_frame - start_frame), self)
-        progress.setWindowTitle("Export Clip")
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
+        progress = StageProgress(self, "Export Clip").begin("Exporting clip with overlays...", end_frame - start_frame)
         progress.show()
 
         cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
         try:
             for frame_idx in range(start_frame, end_frame):
-                if progress.wasCanceled():
+                if progress.was_cancelled():
                     writer.release()
                     cap.release()
                     try:
@@ -2414,7 +2398,7 @@ class ReplayView(QWidget):
                 out_rgb = np.frombuffer(frame_bytes, dtype=np.uint8).reshape((height, width, 3))
                 out_bgr = cv2.cvtColor(out_rgb, cv2.COLOR_RGB2BGR)
                 writer.write(out_bgr)
-                progress.setValue(frame_idx - start_frame + 1)
+                progress.set(frame_idx - start_frame + 1)
                 QApplication.processEvents()
         finally:
             writer.release()
@@ -4366,21 +4350,10 @@ class ReplayView(QWidget):
 
     def _set_log_busy(self, busy: bool, message: str | None = None):
         if busy:
-            if self._log_busy_dialog is None:
-                dlg = QProgressDialog(message or "Working...", None, 0, 0, self)
-                dlg.setWindowTitle("Log Viewer")
-                dlg.setCancelButton(None)
-                dlg.setWindowModality(Qt.NonModal)
-                dlg.setMinimumDuration(0)
-                dlg.setRange(0, 0)
-                self._log_busy_dialog = dlg
-            self._log_busy_dialog.setLabelText(message or "Working...")
-            self._log_busy_dialog.show()
+            self._log_busy.show(message or "Working...")
             QApplication.processEvents()
         else:
-            if self._log_busy_dialog is not None:
-                self._log_busy_dialog.close()
-                self._log_busy_dialog = None
+            self._log_busy.hide()
 
     def _on_elastic_logs_ready(self, rows: list):
         print(f"[viewer] _on_elastic_logs_ready (rows={len(rows)})", flush=True)

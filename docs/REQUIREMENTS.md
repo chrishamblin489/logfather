@@ -24,6 +24,21 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ### 2026-09-14
 
+- Review items 4 and 5 done (Chris, 2026-09-14): (4) the log filtering
+  (Filters and Custom tabs, the 15 presets, the custom filters and their
+  persistence, the tab highlights, the row matching) moved out of the
+  replay view into ui/log_filter_panel.py (LogFilterPanel, with the
+  matching logic as pure functions under test) - the replay view is 898
+  lines shorter; the six select-all/none and three reset copies are one
+  method each; behaviour unchanged, including two quirks now pinned by
+  tests (the custom filter's AND mode is unreachable from the UI, and a
+  message-column filter applied while the Custom tab is on screen is
+  dropped because it keys off checkbox visibility - follow-up). (5) one
+  ui/progress.py: BusyDialog (indeterminate, no cancel), StageProgress
+  (determinate with Cancel, nothing shown headless) and job_progress (a
+  dialog bound to a JobSlot); the nine hand-rolled QProgressDialog sites
+  in the replay view, the timeline, Sync CCTV Time and the Stop report
+  use them, with the same titles, labels and cancel behaviour.
 - Review items 1-3 done (Chris, 2026-09-14): (1) 74 unused imports, 54
   of the 57 self-probes in the replay view, the grep-verified dead code
   (SettingsDialog, the radar TargetScopeWidget module, dead methods and
