@@ -36,7 +36,7 @@ from logfather.core.retention import FOOTAGE_DELETED_NOTICE, footage_expired
 from logfather.paths import REPO_ROOT
 from logfather.ui.day_popup import DayPopup
 from logfather.ui.system_filter import SystemPickerPopup, funnel_icon
-from logfather.ui.icons import refresh_icon, calendar_icon, conveyor_icon, punnet_icon
+from logfather.ui.icons import refresh_icon, calendar_icon, conveyor_icon, punnet_icon, first_product_icon
 from logfather.ui.window_placement import show_over_parent
 from logfather.ui.gear_menu import build_gear_button
 from logfather.ui.day_selection import DaySelection
@@ -456,6 +456,16 @@ class MainWindow(QWidget):
         strip = self.viewer.video_sync_btn.parentWidget()
         if strip is not None and strip.layout() is not None:
             strip.layout().removeWidget(self.viewer.video_sync_btn)
+        # Jump to the first product seen on the clip - the best moment to
+        # set the drift (Chris, 2026-09-14). Left of the drift tool.
+        self.first_product_btn = QToolButton()
+        self.first_product_btn.setIcon(first_product_icon(22))
+        self.first_product_btn.setIconSize(QSize(22, 22))
+        self.first_product_btn.setToolTip("Go to the first product seen on this clip - the best moment to set the drift")
+        self.first_product_btn.setCursor(Qt.PointingHandCursor)
+        self.first_product_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.first_product_btn.clicked.connect(self._go_to_first_product)
+        top_controls.addWidget(self.first_product_btn, 0, Qt.AlignRight)
         top_controls.addWidget(self.viewer.drift_tool, 0, Qt.AlignRight)
         top_controls.addWidget(self.viewer.video_sync_btn, 0, Qt.AlignRight)
         top_controls.addWidget(self.calibrate_btn, 0, Qt.AlignRight)
@@ -1872,6 +1882,20 @@ class MainWindow(QWidget):
         self._overlay_controller.set_tracking_enabled(False)
         btn.setToolTip("Calibrate the conveyor first (the Conveyor button) to track products")
 
+    def _go_to_first_product(self) -> None:
+        """Seek the viewer to the moment the first product was seen on the
+        loaded clip (the earliest target_added event in its span)."""
+        first_dt = self._overlay_controller.first_product_time()
+        if first_dt is None:
+            QMessageBox.information(
+                self,
+                "First product",
+                "No product has been seen on this clip yet. The clip's product events may still be loading, or none were logged in its span.",
+            )
+            return
+        if not self.viewer.seek_to_wall_time(first_dt, pause=True):
+            QMessageBox.information(self, "First product", "The clip's start time is not known, so the moment cannot be found.")
+
     def _update_viewer_tool_visibility(self):
         """Calibrate/Track/Targets belong to viewer mode WITH a clip
         loaded (Chris: only the essential buttons at any point). There is
@@ -1881,6 +1905,7 @@ class MainWindow(QWidget):
         show = in_viewer and self._viewer_tools_available
         self.calibrate_btn.setVisible(show)
         self.viewer.video_sync_btn.setVisible(show)
+        self.first_product_btn.setVisible(show)
         self.viewer.drift_tool.setVisible(show)
         self.track_toggle.setVisible(show)
         self.buffer_toggle.setVisible(show)

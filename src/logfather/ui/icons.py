@@ -460,3 +460,47 @@ def sync_icon(size: int = 24) -> QIcon:
     painter.drawLine(c, QPointF(s * 0.66, s * 0.58))   # hour hand to four o'clock
     painter.end()
     return QIcon(pm)
+
+
+def first_product_icon(size: int = 24) -> QIcon:
+    """An arrow pointing at a punnet badged "1": the button that jumps to
+    the first product seen on the clip (Chris, 2026-09-14)."""
+    from PySide6.QtGui import QPolygonF, QFont
+
+    pm, painter, s = _start(size)
+    # the arrow, left third
+    pen = QPen(QColor(theme.TEXT_BRIGHT))
+    pen.setWidthF(s * 0.11)
+    pen.setCapStyle(Qt.RoundCap)
+    pen.setJoinStyle(Qt.RoundJoin)
+    painter.setPen(pen)
+    painter.drawLine(QPointF(s * 0.06, s * 0.62), QPointF(s * 0.34, s * 0.62))
+    painter.drawPolyline([QPointF(s * 0.22, s * 0.48), QPointF(s * 0.36, s * 0.62), QPointF(s * 0.22, s * 0.76)])
+    # the punnet, right two thirds (the Track icon, shifted and shrunk)
+    painter.setPen(Qt.NoPen)
+    ox, sc = s * 0.40, 0.62
+    painter.setBrush(QColor("#e74c3c"))
+    for cx in (0.30, 0.50, 0.70):
+        painter.drawEllipse(QPointF(ox + s * sc * cx, s * (0.30 + sc * 0.46)), s * sc * 0.13, s * sc * 0.13)
+    painter.setBrush(QColor("#2ecc71"))
+    for cx in (0.30, 0.50, 0.70):
+        painter.drawEllipse(QPointF(ox + s * sc * cx, s * (0.30 + sc * 0.33)), s * sc * 0.045, s * sc * 0.03)
+    painter.setBrush(QColor(theme.TEXT_BRIGHT))
+    painter.drawPolygon(QPolygonF([
+        QPointF(ox + s * sc * 0.12, s * (0.30 + sc * 0.52)), QPointF(ox + s * sc * 0.88, s * (0.30 + sc * 0.52)),
+        QPointF(ox + s * sc * 0.80, s * (0.30 + sc * 0.84)), QPointF(ox + s * sc * 0.20, s * (0.30 + sc * 0.84)),
+    ]))
+    painter.setBrush(QColor(theme.TEXT_MUTED))
+    painter.drawRect(QRectF(ox + s * sc * 0.12, s * (0.30 + sc * 0.52), s * sc * 0.76, s * sc * 0.06))
+    # the "1" badge, top right
+    painter.setBrush(QColor("#f39c12"))
+    painter.setPen(QPen(QColor("#1b1f24"), max(1.0, s * 0.04)))
+    painter.drawEllipse(QPointF(s * 0.80, s * 0.22), s * 0.17, s * 0.17)
+    font = QFont()
+    font.setBold(True)
+    font.setPixelSize(int(s * 0.28))
+    painter.setFont(font)
+    painter.setPen(QColor("#1b1f24"))
+    painter.drawText(QRectF(s * 0.63, s * 0.05, s * 0.34, s * 0.34), Qt.AlignCenter, "1")
+    painter.end()
+    return QIcon(pm)

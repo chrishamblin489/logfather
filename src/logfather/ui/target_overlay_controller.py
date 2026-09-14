@@ -236,6 +236,15 @@ class TargetOverlayController(QObject):
 
     # ---- conveyor calibration -------------------------------------------
 
+    def first_product_time(self):
+        """When the first product was seen on the loaded clip: the earliest
+        target_added event in the clip's buffer events (they are fetched
+        for the clip's span and sorted), or None before any is known."""
+        for event in self._buffer_events:
+            if getattr(event, "event_type", "") == "target_added":
+                return event.timestamp
+        return self._buffer_events[0].timestamp if self._buffer_events else None
+
     def has_calibration(self) -> bool:
         return bool(self._conveyor_cal.has_tracking_line())
 

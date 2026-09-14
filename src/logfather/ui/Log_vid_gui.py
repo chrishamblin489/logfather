@@ -3276,6 +3276,22 @@ class VideoLogViewer(QWidget):
             return None
         return self.alignment.video_seconds_for_clock(start, target)
 
+    def seek_to_wall_time(self, wall_dt: datetime, pause: bool = True) -> bool:
+        """Seek to the frame where the clip shows `wall_dt`: through the
+        OCR-corrected start when there is one, else the filename time.
+        False when neither is known."""
+        seconds = self.video_seconds_for_wall_time(wall_dt)
+        if seconds is None:
+            if not self.current_video_path:
+                return False
+            filename_dt = parse_filename_datetime(Path(self.current_video_path))
+            target = _to_local_naive(wall_dt)
+            if filename_dt is None or target is None:
+                return False
+            seconds = (target - filename_dt).total_seconds()
+        self.seek_to_seconds(max(0.0, float(seconds)), pause=pause)
+        return True
+
     def seek_to_seconds(self, seconds: float, pause: bool = True):
         if self.cap is None:
             # The clip may still be downloading; replay the seek once it opens.

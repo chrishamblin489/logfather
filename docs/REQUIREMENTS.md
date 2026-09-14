@@ -22,6 +22,16 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ## Shipped
 
+### 2026-09-14
+
+- First-product button (Chris, 2026-09-14): an arrow-to-punnet icon
+  badged "1", just left of the drift tool in the top bar, seeks the
+  viewer to when the first product was seen on the loaded clip (the
+  earliest target_added buffer event in the clip's span) - the best
+  moment to set the drift. Seeks through the OCR-corrected start, or the
+  filename time without one; a message explains when no product is
+  known yet. Shown with the other viewer tools.
+
 ### 2026-09-13
 
 - Track needs a conveyor calibration (Chris, 2026-09-13): the Track
