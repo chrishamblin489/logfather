@@ -16,7 +16,7 @@ try:
 except Exception:
     ZoneInfo = None
 
-from logfather.data.settings_store import Settings, DEFAULT_SETTINGS_PATH, CustomFilterPreset, FilterPreset
+from logfather.data.settings_store import Settings, DEFAULT_SETTINGS_PATH
 from logfather.data.elastic_loader import fetch_logs_for_range
 from logfather.data.elastic_errors import ElasticFetchError
 from logfather.ui.app_assets import load_placeholder_image as _load_placeholder_image
@@ -31,6 +31,7 @@ from logfather.data.ui_state_store import load_ui_state, update_ui_state
 from logfather.core.time_alignment import plausible_ocr_offset, TimeAlignment
 from logfather.ui import theme
 from logfather.ui.icons import sync_icon
+from logfather.ui.log_filter_panel import LogFilterPanel
 from logfather.ui.pulse import Pulser
 from logfather.core.log_events import (
     LOCAL_TIMEZONE,
@@ -53,14 +54,14 @@ from logfather.ui.viewer_widgets import (
 
 import cv2
 from PySide6.QtCore import Qt, QTimer, Signal, QEvent, QMetaObject, Slot, QPoint, QPointF, QSize, Q_ARG, QVariantAnimation, QEasingCurve, QModelIndex
-from PySide6.QtGui import QAction, QImage, QColor, QPainter, QPalette, QPixmap
+from PySide6.QtGui import QAction, QImage, QColor, QPainter, QPixmap
 import numpy as np
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QFileDialog, QMessageBox,
     QSlider, QSizePolicy, QListView, QAbstractItemView,
-    QCheckBox, QScrollArea, QProgressDialog, QTabWidget, QDialog,
-    QLineEdit, QComboBox, QInputDialog, QMenu, QColorDialog,
+    QCheckBox, QProgressDialog, QTabWidget, QDialog,
+    QComboBox, QInputDialog, QMenu, QColorDialog,
     QToolButton, QButtonGroup, QStyleOptionSlider, QStyle, QLCDNumber
 )
 
@@ -137,7 +138,6 @@ class ReplayView(QWidget):
         # order matters: later sections consume attributes from earlier ones.
         self._init_state()
         self._build_filter_panel()
-        self._build_custom_filter_tab()
         self._build_video_and_playback()
         self._build_analysis_controls()
         self._build_middle_layout()
@@ -225,11 +225,6 @@ class ReplayView(QWidget):
         self.events: list[LogEvent] = []
         self.log_display_rows: list[str] = []
 
-        # Filter checkboxes: key -> QCheckBox
-        self.source_checkboxes: dict[str, QCheckBox] = {}
-        self.state_checkboxes: dict[str, QCheckBox] = {}
-        self.message_checkboxes: dict[str, QCheckBox] = {}
-
         # Time offsets
         self.sync_offset = 0.0      # coarse sync (sync logs to video)
         self.time_offset = 0.0      # fine-tune offset from spinbox
@@ -306,182 +301,25 @@ class ReplayView(QWidget):
         self._ocr_additional_sync_slot = JobSlot(self)
 
     def _build_filter_panel(self):
-        """The Filters tab: source / state / message checkbox columns."""
-        self.filters_loaded = False
-        # Unticked filter keys survive a reload: rebuilt checkboxes start
-        # from this memory, and filters auto-reload if they were loaded
-        # before (Chris, 2026-09-05).
-        self._remembered_unchecked: dict[str, set[str]] = {"source": set(), "state": set(), "message": set()}
-        self._filters_wanted = False
+        """The Filters and Custom tabs live in LogFilterPanel; the view only
+        re-reads its rows when filters_changed fires and shows the busy
+        dialog it asks for."""
+        self.log_filter_panel = LogFilterPanel(self.settings)
+        self.log_filter_panel.filters_changed.connect(self._on_filters_changed)
+        self.log_filter_panel.busy_changed.connect(self._set_log_busy)
 
-        # Source filter
-        self.source_label = QLabel(f"Filter by {SOURCE_COLUMN}")
-        self.source_label.setWordWrap(True)
-
-        self.source_container_widget = QWidget()
-        self.source_layout_inner = QVBoxLayout(self.source_container_widget)
-        self.source_layout_inner.addStretch(1)
-
-        self.source_scroll = QScrollArea()
-        self.source_scroll.setWidgetResizable(True)
-        self.source_scroll.setWidget(self.source_container_widget)
-        self.source_scroll.setMinimumWidth(160)
-
-        self.source_all_btn = QPushButton("All")
-        self.source_none_btn = QPushButton("None")
-        self.source_all_btn.clicked.connect(self.select_all_sources)
-        self.source_none_btn.clicked.connect(self.select_no_sources)
-
-        source_header_layout = QHBoxLayout()
-        source_header_layout.addWidget(self.source_label, 1)
-        source_header_layout.addWidget(self.source_all_btn)
-        source_header_layout.addWidget(self.source_none_btn)
-
-        # State filter
-        self.state_label = QLabel(f"Filter by {STATE_COLUMN}")
-        self.state_label.setWordWrap(True)
-
-        self.state_container_widget = QWidget()
-        self.state_layout_inner = QVBoxLayout(self.state_container_widget)
-        self.state_layout_inner.addStretch(1)
-
-        self.state_scroll = QScrollArea()
-        self.state_scroll.setWidgetResizable(True)
-        self.state_scroll.setWidget(self.state_container_widget)
-        self.state_scroll.setMinimumWidth(160)
-
-        self.state_all_btn = QPushButton("All")
-        self.state_none_btn = QPushButton("None")
-        self.state_all_btn.clicked.connect(self.select_all_states)
-        self.state_none_btn.clicked.connect(self.select_no_states)
-
-        state_header_layout = QHBoxLayout()
-        state_header_layout.addWidget(self.state_label, 1)
-        state_header_layout.addWidget(self.state_all_btn)
-        state_header_layout.addWidget(self.state_none_btn)
-
-        # Message filter
-        self.message_label = QLabel(f"Filter by {MESSAGE_COLUMN}")
-        self.message_label.setWordWrap(True)
-
-        self.message_container_widget = QWidget()
-        self.message_layout_inner = QVBoxLayout(self.message_container_widget)
-        self.message_layout_inner.addStretch(1)
-
-        self.message_scroll = QScrollArea()
-        self.message_scroll.setWidgetResizable(True)
-        self.message_scroll.setWidget(self.message_container_widget)
-        self.message_scroll.setMinimumWidth(160)
-
-        self.message_all_btn = QPushButton("All")
-        self.message_none_btn = QPushButton("None")
-        self.message_all_btn.clicked.connect(self.select_all_messages)
-        self.message_none_btn.clicked.connect(self.select_no_messages)
-
-        message_header_layout = QHBoxLayout()
-        message_header_layout.addWidget(self.message_label, 1)
-        message_header_layout.addWidget(self.message_all_btn)
-        message_header_layout.addWidget(self.message_none_btn)
-
-
-        self.filter_panel_layout = QVBoxLayout()
-        self.filter_panel_layout.addLayout(source_header_layout)
-        self.filter_panel_layout.addWidget(self.source_scroll)
-        self.filter_panel_layout.addSpacing(12)
-        self.filter_panel_layout.addSpacing(12)
-        self.filter_panel_layout.addLayout(state_header_layout)
-        self.filter_panel_layout.addWidget(self.state_scroll)
-        self.filter_panel_layout.addSpacing(12)
-        self.filter_panel_layout.addLayout(message_header_layout)
-        self.filter_panel_layout.addWidget(self.message_scroll)
-
-        self.filter_panel = QWidget()
-        self.filter_panel.setLayout(self.filter_panel_layout)
-        self.filter_panel.setVisible(False)
-
-        self.filter_container = QWidget()
-        self.filter_container_layout = QVBoxLayout(self.filter_container)
-        self.filter_container_layout.setContentsMargins(0, 0, 0, 0)
-        self.filter_container_layout.setSpacing(8)
-        self.filter_container_layout.addWidget(self.filter_panel)
-
-    def _build_custom_filter_tab(self):
-        """The Custom tab: 15 preset buttons + 5 free-text filter blocks."""
-        self.custom_filter_blocks: list[tuple[QPushButton, QLineEdit, QLineEdit, QLabel]] = []
-        self.custom_filter_hint = QLabel("Empty entries are ignored. Use commas to separate terms.")
-        self.custom_filter_hint.setStyleSheet(theme.DIM_LABEL)
-
-        self.filter_preset_group: list[QPushButton] = []
-        self.active_filter_preset_index: int | None = None
-        self.active_filter_presets: set[int] = set()
-
-        # Kept on self: inserted into the filter container during final
-        # assembly (_assemble_and_wire).
-        self._preset_container = preset_container = QWidget()
-        preset_container_layout = QVBoxLayout(preset_container)
-        preset_container_layout.setContentsMargins(0, 0, 0, 0)
-        preset_container_layout.setSpacing(4)
-
-        preset_index = 0
-        for _row in range(3):
-            preset_row = QHBoxLayout()
-            preset_row.setSpacing(6)
-            for _col in range(5):
-                idx = preset_index + 1
-                btn = QPushButton(f"Preset {idx}")
-                btn.setCheckable(True)
-                btn.clicked.connect(lambda _checked, i=preset_index: self._on_filter_preset_clicked(i))
-                btn.setContextMenuPolicy(Qt.CustomContextMenu)
-                btn.customContextMenuRequested.connect(
-                    lambda _pos, i=preset_index: self._on_filter_preset_menu(i)
-                )
-                btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                preset_row.addWidget(btn, 1)
-                self.filter_preset_group.append(btn)
-                preset_index += 1
-            preset_container_layout.addLayout(preset_row)
-
-        custom_tab = QWidget()
-        self._custom_tab = custom_tab
-        custom_layout = QVBoxLayout(custom_tab)
-        custom_layout.setContentsMargins(8, 8, 8, 8)
-        custom_layout.setSpacing(6)
-        custom_layout.addWidget(QLabel("Custom filters (comma separated)."))
-
-        custom_layout.addWidget(self.custom_filter_hint)
-
-        for idx in range(1, 6):
-            block = QWidget()
-            block_layout = QVBoxLayout(block)
-            block_layout.setContentsMargins(0, 6, 0, 6)
-            block_layout.setSpacing(4)
-
-            btn = QPushButton(f"Preset {idx}")
-            btn.setCheckable(True)
-            btn.toggled.connect(self._on_custom_filter_changed)
-            btn.setContextMenuPolicy(Qt.CustomContextMenu)
-            btn.customContextMenuRequested.connect(
-                lambda _pos, i=idx - 1: self._on_custom_filter_menu(i)
-            )
-            in_edit = QLineEdit()
-            in_edit.setPlaceholderText("Filter in (comma separated)")
-            in_edit.textChanged.connect(lambda _text, b=btn: self._on_custom_filter_text_changed(b))
-            in_edit.textChanged.connect(self._validate_custom_filter_inputs)
-            out_edit = QLineEdit()
-            out_edit.setPlaceholderText("Filter out (comma separated)")
-            out_edit.textChanged.connect(lambda _text, b=btn: self._on_custom_filter_text_changed(b))
-            out_edit.textChanged.connect(self._validate_custom_filter_inputs)
-            count_label = QLabel("Matches: -")
-            count_label.setStyleSheet(theme.DIM_LABEL)
-
-            block_layout.addWidget(btn)
-            block_layout.addWidget(in_edit)
-            block_layout.addWidget(out_edit)
-            block_layout.addWidget(count_label)
-            custom_layout.addWidget(block)
-            self.custom_filter_blocks.append((btn, in_edit, out_edit, count_label))
-
-        custom_layout.addStretch(1)
+    def _on_filters_changed(self):
+        """Refresh the log list (and the playhead's highlight) from the
+        rows the filter panel now lets through."""
+        rows = self.log_filter_panel.filtered_rows()
+        self.events = [ev for ev, _row in rows]
+        self.log_display_rows = [row for _ev, row in rows]
+        self._rebuild_event_start_times()
+        self.populate_log_list()
+        if self.cap is not None:
+            t = self.current_frame / self.fps if self.fps > 0 else 0.0
+            self.update_time_and_overlay(t, self.current_frame)
+            self.update_log_highlight(t)
 
     def _build_video_and_playback(self):
         """Video panes, sync buttons, seek slider, LCDs, playback bar,
@@ -1146,8 +984,7 @@ class ReplayView(QWidget):
 
         self.right_tabs = QTabWidget()
         self.right_tabs.addTab(log_tab, "Logs")
-        self.right_tabs.addTab(self.filter_container, "Filters")
-        self.right_tabs.addTab(self._custom_tab, "Custom")
+        self.log_filter_panel.add_to_tabs(self.right_tabs)  # "Filters", "Custom"
 
         # Settings/Systems/Readme are configuration, not daily use: they
         # open from the gear button as a dialog instead of living as
@@ -1276,20 +1113,13 @@ class ReplayView(QWidget):
         self.right_tabs.installEventFilter(self)
         self.right_column.installEventFilter(self)
         self._log_busy_dialog: QProgressDialog | None = None
-        self._set_filter_tabs_enabled(False)
+        self.log_filter_panel.set_tabs_enabled(False)
 
-        self.filter_container_layout.insertWidget(0, self._preset_container)
-        self._load_custom_filter_settings()
-        self._load_filter_preset_settings()
         self._startup_maintenance_started = False
         self._settings_autosave_timer = QTimer(self)
         self._settings_autosave_timer.setSingleShot(True)
         self._settings_autosave_timer.setInterval(350)
         self._settings_autosave_timer.timeout.connect(self._save_settings_from_tab)
-        self._filter_debounce_timer = QTimer(self)
-        self._filter_debounce_timer.setSingleShot(True)
-        self._filter_debounce_timer.setInterval(250)
-        self._filter_debounce_timer.timeout.connect(self.apply_filters)
         self.settings_panel.changed.connect(self._schedule_settings_autosave)
         self.settings_panel.save_requested.connect(self._flush_settings_autosave)
         self.system_layout_panel.changed.connect(self._schedule_settings_autosave)
@@ -1734,8 +1564,7 @@ class ReplayView(QWidget):
             self.system_layout_panel.reload_from_settings()
         except AttributeError:
             pass
-        self._load_custom_filter_settings()
-        self._load_filter_preset_settings()
+        self.log_filter_panel.reload_from_settings()
         QMessageBox.information(
             self,
             "Import complete",
@@ -1769,73 +1598,6 @@ class ReplayView(QWidget):
         second_open = self.additional_cap is not None
         self.additional_sync_btn.setText(label(self._additional_sync_done, self.additional_ocr_offset_seconds, second_open))
         self.additional_sync_btn.setStyleSheet(theme.SYNC_DONE_BUTTON if self._additional_sync_done else "")
-
-    def _set_filter_tabs_enabled(self, enabled: bool):
-        tab_bar = self.right_tabs.tabBar()
-        default_color = self.palette().color(QPalette.WindowText)
-        disabled_color = QColor("#888888")
-        filter_idx = self.right_tabs.indexOf(self.filter_container)
-        if filter_idx >= 0:
-            self.right_tabs.setTabEnabled(filter_idx, enabled)
-            tab_bar.setTabTextColor(filter_idx, default_color if enabled else disabled_color)
-        custom_idx = self.right_tabs.indexOf(self._custom_tab)
-        if custom_idx >= 0:
-            self.right_tabs.setTabEnabled(custom_idx, enabled)
-            tab_bar.setTabTextColor(custom_idx, default_color if enabled else disabled_color)
-
-    def _load_custom_filter_settings(self):
-        presets = getattr(self.settings, "custom_filters", [])
-        if not presets:
-            return
-        for preset, block in zip(presets, self.custom_filter_blocks):
-            btn, in_edit, out_edit, _count_label = block
-            if preset.name:
-                btn.setText(preset.name)
-            in_edit.setText(preset.filter_in or "")
-            out_edit.setText(preset.filter_out or "")
-            btn.setChecked(bool(preset.enabled))
-        self._update_custom_filter_counts()
-        self._update_tab_highlights()
-
-    def _save_custom_filter_settings(self):
-        presets: list[CustomFilterPreset] = []
-        for btn, in_edit, out_edit, _count_label in self.custom_filter_blocks:
-            presets.append(
-                CustomFilterPreset(
-                    name=btn.text(),
-                    filter_in=in_edit.text(),
-                    filter_out=out_edit.text(),
-                    enabled=btn.isChecked(),
-                )
-            )
-        self.settings.custom_filters = presets
-        self.settings.save()
-
-    def _load_filter_preset_settings(self):
-        presets = getattr(self.settings, "filter_presets", [])
-        if not presets:
-            return
-        for preset, btn in zip(presets, self.filter_preset_group):
-            if preset.name:
-                btn.setText(preset.name)
-
-    def _save_filter_preset_settings(self):
-        presets: list[FilterPreset] = []
-        for idx, btn in enumerate(self.filter_preset_group):
-            if idx < len(self.settings.filter_presets):
-                existing = self.settings.filter_presets[idx]
-                presets.append(
-                    FilterPreset(
-                        name=btn.text(),
-                        sources=list(existing.sources),
-                        states=list(existing.states),
-                        messages=list(existing.messages),
-                    )
-                )
-            else:
-                presets.append(FilterPreset(name=btn.text()))
-        self.settings.filter_presets = presets
-        self.settings.save()
 
     def set_pending_logs(self, pikpak_path: str, start_iso: str, end_iso: str):
         self.pending_pikpak_path = pikpak_path
@@ -2211,10 +1973,9 @@ class ReplayView(QWidget):
         self._loaded_log_request_key = None
         self._pending_log_autoload_timer.stop()
         self.populate_log_list()
-        self._reset_filter_state(show_busy=False)
+        self.log_filter_panel.clear_events()
         self._set_log_busy(False)
-        self.filter_panel.setVisible(False)
-        self._set_filter_tabs_enabled(False)
+        self.log_filter_panel.set_tabs_enabled(False)
 
     def _apply_loaded_events(self, events, display_rows, source_keys, state_keys, message_keys, first_dt):
         print("[viewer] _apply_loaded_events start", flush=True)
@@ -2232,7 +1993,10 @@ class ReplayView(QWidget):
         self.set_offset_value(0.0)
 
         print(f"[viewer] total events: {len(self.all_events)}, display rows: {len(self.all_log_display_rows)}", flush=True)
-        self._reset_filter_state()
+        self.log_filter_panel.set_events(
+            self.all_events, self.all_log_display_rows,
+            self.all_source_keys, self.all_state_keys, self.all_message_keys,
+        )
         self.events = list(self.all_events)
         self.log_display_rows = list(self.all_log_display_rows)
         self._rebuild_event_start_times()
@@ -2246,16 +2010,16 @@ class ReplayView(QWidget):
             self.first_log_time_str = None
         self.update_sync_button_label()
         self._set_log_busy(False)
-        if not self.filters_loaded:
-            self.load_filters_panel()
-        self.apply_filters(manage_busy=False)
+        if not self.log_filter_panel.filters_loaded:
+            self.log_filter_panel.load_filters_panel()
+        self.log_filter_panel.apply_filters(manage_busy=False)
         self._apply_auto_sync_if_possible()
         if self.current_video_path and self.ocr_offset_seconds is None:
             settings = Settings.load()
             if settings.auto_ocr_open_on_missing or self._confirm_ocr_sync():
                 self._auto_sync_with_ocr()
-        self._update_tab_highlights()
-        self._set_filter_tabs_enabled(True)
+        self.log_filter_panel.update_tab_highlights()
+        self.log_filter_panel.set_tabs_enabled(True)
 
     def set_timeline_markers(self, markers: list[tuple[float, str]] | None, source: str | None = None):
         markers = markers or []
@@ -2299,670 +2063,12 @@ class ReplayView(QWidget):
         self._event_start_times = []
         self.log_display_rows = []
         self.populate_log_list()
-        self._reset_filter_state(show_busy=False)
+        self.log_filter_panel.clear_events()
         self.first_log_time_str = None
         self.first_log_dt = None
         self.update_sync_button_label()
         self._set_log_busy(False)
-        self._set_filter_tabs_enabled(False)
-
-    # ---- Filter UI helpers ----
-    # (unchanged from your version)
-
-    def _remember_unchecked_filters(self):
-        """Snapshot what the user has unticked before the panels are
-        rebuilt. Empty dicts mean nothing was built - keep the old memory."""
-        for kind, boxes in (
-            ("source", self.source_checkboxes),
-            ("state", self.state_checkboxes),
-            ("message", self.message_checkboxes),
-        ):
-            if not boxes:
-                continue
-            unchecked: set[str] = set()
-            for key, box in boxes.items():
-                try:
-                    if not box.isChecked():
-                        unchecked.add(key)
-                except RuntimeError:
-                    continue
-            self._remembered_unchecked[kind] = unchecked
-
-    def clear_filter_checkboxes(self, show_busy: bool = True):
-        self._remember_unchecked_filters()
-        if show_busy:
-            self._set_log_busy(True, "Resetting source filters...")
-        self._reset_source_panel()
-        if show_busy:
-            QApplication.processEvents()
-            self._set_log_busy(True, "Resetting state filters...")
-        self._reset_state_panel()
-        if show_busy:
-            QApplication.processEvents()
-            self._set_log_busy(True, "Resetting message filters...")
-        self._reset_message_panel()
-        if show_busy:
-            QApplication.processEvents()
-        self.source_checkboxes.clear()
-        self.state_checkboxes.clear()
-        self.message_checkboxes.clear()
-        if show_busy:
-            self._set_log_busy(False)
-
-    def _reset_filter_state(self, show_busy: bool = False):
-        if self.filters_loaded:
-            self._filters_wanted = True
-        self.filters_loaded = False
-        self.clear_filter_checkboxes(show_busy=show_busy)
-        self.filter_panel.setVisible(False)
-
-    def _reset_source_panel(self):
-        print("[viewer] resetting source panel", flush=True)
-        if self.source_container_widget is not None:
-            self.source_container_widget.deleteLater()
-        new_widget = QWidget()
-        new_layout = QVBoxLayout(new_widget)
-        new_layout.addStretch(1)
-        self.source_container_widget = new_widget
-        self.source_layout_inner = new_layout
-        self.source_scroll.setWidget(new_widget)
-
-    def _reset_message_panel(self):
-        print("[viewer] resetting message panel", flush=True)
-        if self.message_container_widget is not None:
-            self.message_container_widget.deleteLater()
-        new_widget = QWidget()
-        new_layout = QVBoxLayout(new_widget)
-        new_layout.addStretch(1)
-        self.message_container_widget = new_widget
-        self.message_layout_inner = new_layout
-        self.message_scroll.setWidget(new_widget)
-
-    def _reset_state_panel(self):
-        print("[viewer] resetting state panel", flush=True)
-        if self.state_container_widget is not None:
-            self.state_container_widget.deleteLater()
-        new_widget = QWidget()
-        new_layout = QVBoxLayout(new_widget)
-        new_layout.addStretch(1)
-        self.state_container_widget = new_widget
-        self.state_layout_inner = new_layout
-        self.state_scroll.setWidget(new_widget)
-
-    def build_filter_checkboxes(self):
-        if not self.filters_loaded:
-            return
-        self.clear_filter_checkboxes()
-
-        # ----- Sources: build once from all rows -----
-        unique_sources = sorted({k for k in self.all_source_keys if k})
-        if unique_sources:
-            last = self.source_layout_inner.takeAt(self.source_layout_inner.count() - 1)
-            if last is not None and last.widget() is not None:
-                last.widget().setParent(None)
-
-            for key in unique_sources:
-                cb = QCheckBox(key)
-                cb.setChecked(key not in self._remembered_unchecked["source"])
-                cb.stateChanged.connect(self.on_source_checkbox_changed)
-                self.source_layout_inner.addWidget(cb)
-                self.source_checkboxes[key] = cb
-
-            self.source_layout_inner.addStretch(1)
-
-        # ----- States: build once from all rows -----
-        unique_states = sorted({k if k else "(null)" for k in self.all_state_keys})
-        if unique_states:
-            last = self.state_layout_inner.takeAt(self.state_layout_inner.count() - 1)
-            if last is not None and last.widget() is not None:
-                last.widget().setParent(None)
-
-            for key in unique_states:
-                cb = QCheckBox(key)
-                cb.setChecked(key not in self._remembered_unchecked["state"])
-                cb.stateChanged.connect(self.on_state_checkbox_changed)
-                self.state_layout_inner.addWidget(cb)
-                self.state_checkboxes[key] = cb
-
-            self.state_layout_inner.addStretch(1)
-
-        # ----- Messages: build once from all rows -----
-        unique_messages = sorted({k for k in self.all_message_keys if k})
-        if unique_messages:
-            last = self.message_layout_inner.takeAt(self.message_layout_inner.count() - 1)
-            if last is not None and last.widget() is not None:
-                last.widget().setParent(None)
-
-            for key in unique_messages:
-                cb = QCheckBox(key)
-                cb.setChecked(key not in self._remembered_unchecked["message"])
-                cb.stateChanged.connect(self.on_message_checkbox_changed)
-                self.message_layout_inner.addWidget(cb)
-                self.message_checkboxes[key] = cb
-
-        self.message_layout_inner.addStretch(1)
-
-        self.update_message_visibility_from_filters()
-
-    def load_filters_panel(self):
-        if not self.all_events:
-            QMessageBox.information(self, "No logs", "Load a video/logs before loading filters.")
-            return
-        if self.filters_loaded:
-            QMessageBox.information(self, "Filters already loaded", "Filters are already available.")
-            return
-        self.filters_loaded = True
-        self._set_log_busy(True, "Resetting filters...")
-        self.clear_filter_checkboxes(show_busy=False)
-        self._set_log_busy(True, "Building filter lists...")
-        self.build_filter_checkboxes()
-        self._set_log_busy(True, "Applying filters and refreshing log list...")
-        self.apply_filters(status_message="Applying filters...", manage_busy=False)
-        self._set_log_busy(False)
-        self.filter_panel.setVisible(True)
-        print(
-            f"[viewer] filter checkboxes built (sources={len(self.source_checkboxes)}, "
-            f"states={len(self.state_checkboxes)}, messages={len(self.message_checkboxes)})",
-            flush=True,
-        )
-
-    def update_message_visibility_from_filters(self):
-        if (
-            not self.filters_loaded
-            or not self.all_events
-            or not self.message_checkboxes
-            or not self.state_checkboxes
-        ):
-            return
-
-        source_filter_active = bool(self.source_checkboxes)
-        state_filter_active = bool(self.state_checkboxes)
-        include_empty_state = True
-        allowed_sources = {
-            key for key, cb in self.source_checkboxes.items() if cb.isChecked()
-        } if source_filter_active else set()
-        allowed_states = {
-            key for key, cb in self.state_checkboxes.items() if cb.isChecked()
-        } if state_filter_active else set()
-
-        states_used = set()
-        messages_used = set()
-        for src, state, msg in zip(self.all_source_keys, self.all_state_keys, self.all_message_keys):
-            if source_filter_active and src not in allowed_sources:
-                continue
-            state_val = state if state else "(null)"
-            states_used.add(state_val)
-            if state_filter_active and state_val not in allowed_states:
-                continue
-            if msg:
-                messages_used.add(msg)
-
-        for state_val, cb in self.state_checkboxes.items():
-            if state_val == "(null)":
-                cb.setVisible(True)
-            else:
-                cb.setVisible(state_val in states_used)
-        for msg_val, cb in self.message_checkboxes.items():
-            cb.setVisible(msg_val in messages_used)
-
-    def on_source_checkbox_changed(self, _state):
-        if not self.filters_loaded:
-            return
-        self._clear_active_filter_preset()
-        self.update_message_visibility_from_filters()
-        self.apply_filters()
-
-    def on_state_checkbox_changed(self, _state):
-        if not self.filters_loaded:
-            return
-        self._clear_active_filter_preset()
-        self.update_message_visibility_from_filters()
-        self.apply_filters()
-
-    def on_message_checkbox_changed(self, _state):
-        if not self.filters_loaded:
-            return
-        self._clear_active_filter_preset()
-        self.apply_filters()
-
-    def select_all_sources(self):
-        if not self.filters_loaded:
-            return
-        checkboxes = list(self.source_checkboxes.values())
-        for cb in checkboxes:
-            cb.blockSignals(True)
-            cb.setChecked(True)
-            cb.blockSignals(False)
-        self.update_message_visibility_from_filters()
-        self.apply_filters()
-
-    def select_no_sources(self):
-        if not self.filters_loaded:
-            return
-        checkboxes = list(self.source_checkboxes.values())
-        for cb in checkboxes:
-            cb.blockSignals(True)
-            cb.setChecked(False)
-            cb.blockSignals(False)
-        self.update_message_visibility_from_filters()
-        self.apply_filters()
-
-    def select_all_states(self):
-        if not self.filters_loaded:
-            return
-        checkboxes = list(self.state_checkboxes.values())
-        for cb in checkboxes:
-            cb.blockSignals(True)
-            cb.setChecked(True)
-            cb.blockSignals(False)
-        self.update_message_visibility_from_filters()
-        self.apply_filters()
-
-    def select_no_states(self):
-        if not self.filters_loaded:
-            return
-        checkboxes = list(self.state_checkboxes.values())
-        for cb in checkboxes:
-            cb.blockSignals(True)
-            cb.setChecked(False)
-            cb.blockSignals(False)
-        self.update_message_visibility_from_filters()
-        self.apply_filters()
-
-    def select_all_messages(self):
-        if not self.filters_loaded:
-            return
-        checkboxes = list(self.message_checkboxes.values())
-        for cb in checkboxes:
-            cb.blockSignals(True)
-            cb.setChecked(True)
-            cb.blockSignals(False)
-        self.apply_filters()
-
-    def select_no_messages(self):
-        if not self.filters_loaded:
-            return
-        checkboxes = list(self.message_checkboxes.values())
-        for cb in checkboxes:
-            cb.blockSignals(True)
-            cb.setChecked(False)
-            cb.blockSignals(False)
-        self.apply_filters()
-
-    def apply_filters(self, status_message: str | None = None, manage_busy: bool = True):
-        print("[viewer] apply_filters start", flush=True)
-        if not self.all_events:
-            print("[viewer] apply_filters no events", flush=True)
-            if manage_busy:
-                self._set_log_busy(False)
-            return
-        if manage_busy:
-            self._set_log_busy(True, status_message or "Applying filters...")
-
-        if self.active_filter_presets:
-            base_rows = self._collect_preset_filtered_rows()
-        else:
-            base_rows = self._collect_base_filtered_rows()
-        self.events = []
-        self.log_display_rows = []
-
-        custom_filters = self._get_active_custom_filters()
-        custom_mode = "OR"
-
-        for ev, row_text in base_rows:
-            if custom_filters:
-                text = row_text
-                if "  |  " in row_text:
-                    text = row_text.split("  |  ", 1)[1]
-                if not self._custom_filter_match(text, custom_filters, custom_mode):
-                    continue
-            self.events.append(ev)
-            self.log_display_rows.append(row_text)
-
-        self._rebuild_event_start_times()
-        self.populate_log_list()
-
-        if self.cap is not None:
-            t = self.current_frame / self.fps if self.fps > 0 else 0.0
-            self.update_time_and_overlay(t, self.current_frame)
-            self.update_log_highlight(t)
-        self._update_custom_filter_counts()
-        self._update_tab_highlights()
-        if manage_busy:
-            self._set_log_busy(False)
-        print("[viewer] apply_filters done", flush=True)
-
-    def _set_all_filters_checked(self):
-        for cb in self.source_checkboxes.values():
-            cb.blockSignals(True)
-            cb.setChecked(True)
-            cb.blockSignals(False)
-        for cb in self.state_checkboxes.values():
-            cb.blockSignals(True)
-            cb.setChecked(True)
-            cb.blockSignals(False)
-        for cb in self.message_checkboxes.values():
-            cb.blockSignals(True)
-            cb.setChecked(True)
-            cb.blockSignals(False)
-        self.update_message_visibility_from_filters()
-
-    def _collect_base_filtered_rows(self) -> list[tuple[LogEvent, str]]:
-        if not self.filters_loaded:
-            return list(zip(self.all_events, self.all_log_display_rows))
-        allowed_sources = {
-            key for key, cb in self.source_checkboxes.items() if cb.isChecked()
-        }
-        allowed_states = {
-            key for key, cb in self.state_checkboxes.items() if cb.isChecked()
-        }
-        allowed_messages = {
-            key for key, cb in self.message_checkboxes.items()
-            if cb.isChecked() and cb.isVisible()
-        }
-
-        source_filter_active = bool(self.source_checkboxes)
-        state_filter_active = bool(self.state_checkboxes)
-        message_filter_active = any(cb.isVisible() for cb in self.message_checkboxes.values())
-
-        rows: list[tuple[LogEvent, str]] = []
-        for ev, row_text, src, state, msg in zip(
-            self.all_events,
-            self.all_log_display_rows,
-            self.all_source_keys,
-            self.all_state_keys,
-            self.all_message_keys,
-        ):
-            state_val = state if state else "(null)"
-            if source_filter_active and src not in allowed_sources:
-                continue
-            if state_filter_active and state_val not in allowed_states:
-                continue
-            if message_filter_active and msg not in allowed_messages:
-                continue
-            rows.append((ev, row_text))
-        return rows
-
-    def _collect_preset_filtered_rows(self) -> list[tuple[LogEvent, str]]:
-        presets = getattr(self.settings, "filter_presets", [])
-        if not presets or not self.active_filter_presets:
-            return list(zip(self.all_events, self.all_log_display_rows))
-        active = [presets[i] for i in sorted(self.active_filter_presets) if i < len(presets)]
-        rows: list[tuple[LogEvent, str]] = []
-        for ev, row_text, src, state, msg in zip(
-            self.all_events,
-            self.all_log_display_rows,
-            self.all_source_keys,
-            self.all_state_keys,
-            self.all_message_keys,
-        ):
-            state_val = state if state else "(null)"
-            matched = False
-            for preset in active:
-                if preset.sources and src not in preset.sources:
-                    continue
-                if preset.states and state_val not in preset.states:
-                    continue
-                if preset.messages and msg not in preset.messages:
-                    continue
-                if not preset.sources and not preset.states and not preset.messages:
-                    continue
-                matched = True
-                break
-            if matched:
-                rows.append((ev, row_text))
-        return rows
-
-    def _parse_custom_terms(self, text: str) -> list[str]:
-        return [term.strip().lower() for term in text.split(",") if term.strip()]
-
-    def _get_active_custom_filters(self) -> list[tuple[list[str], list[str]]]:
-        filters: list[tuple[list[str], list[str]]] = []
-        for btn, in_edit, out_edit, _count_label in self.custom_filter_blocks:
-            if not btn.isChecked():
-                continue
-            in_terms = self._parse_custom_terms(in_edit.text())
-            out_terms = self._parse_custom_terms(out_edit.text())
-            if not in_terms and not out_terms:
-                continue
-            filters.append((in_terms, out_terms))
-        return filters
-
-    def _custom_filter_match(
-        self,
-        text: str,
-        filters: list[tuple[list[str], list[str]]],
-        mode: str,
-    ) -> bool:
-        if not filters:
-            return True
-        text_l = text.lower()
-        for in_terms, out_terms in filters:
-            include_ok = True
-            if in_terms:
-                if mode == "AND":
-                    include_ok = all(term in text_l for term in in_terms)
-                else:
-                    include_ok = any(term in text_l for term in in_terms)
-            if not include_ok:
-                continue
-            if out_terms and any(term in text_l for term in out_terms):
-                continue
-            return True
-        return False
-
-    def _on_custom_filter_changed(self, *_args):
-        self._update_tab_highlights()
-        if not self.all_events:
-            return
-        self.apply_filters()
-
-    def _on_custom_filter_text_changed(self, button: QPushButton):
-        if not self.all_events:
-            return
-        if not button.isChecked():
-            return
-        self._filter_debounce_timer.start()
-
-    def _clear_active_filter_preset(self):
-        if self.active_filter_preset_index is None and not self.active_filter_presets:
-            return
-        for btn in self.filter_preset_group:
-            btn.blockSignals(True)
-            btn.setChecked(False)
-            btn.blockSignals(False)
-        self.active_filter_preset_index = None
-        self.active_filter_presets.clear()
-
-    def _validate_custom_filter_inputs(self):
-        for _btn, in_edit, out_edit, _count_label in self.custom_filter_blocks:
-            for edit in (in_edit, out_edit):
-                text = edit.text()
-                has_empty = text.strip().startswith(",") or text.strip().endswith(",") or ",," in text
-                if has_empty:
-                    edit.setStyleSheet(theme.INPUT_WARNING_BORDER)
-                    edit.setToolTip("Empty entries will be ignored.")
-                else:
-                    edit.setStyleSheet("")
-                    edit.setToolTip("")
-
-    def _on_custom_filter_menu(self, index: int):
-        if index < 0 or index >= len(self.custom_filter_blocks):
-            return
-        btn, _in_edit, _out_edit, _count_label = self.custom_filter_blocks[index]
-        menu = QMenu(self)
-        save_action = menu.addAction("Save current selection")
-        rename_action = menu.addAction("Rename")
-        chosen = menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
-        if chosen == rename_action:
-            text, ok = QInputDialog.getText(self, "Rename preset", "Preset name:", text=btn.text())
-            if ok and text.strip():
-                btn.setText(text.strip())
-                self._save_custom_filter_settings()
-        elif chosen == save_action:
-            self._save_custom_filter_settings()
-
-    def _update_custom_filter_counts(self):
-        if not self.all_events:
-            for _btn, _in_edit, _out_edit, count_label in self.custom_filter_blocks:
-                count_label.setText("Matches: -")
-            return
-        base_rows = self._collect_base_filtered_rows()
-        mode = "OR"
-        for idx, (btn, in_edit, out_edit, count_label) in enumerate(self.custom_filter_blocks, start=1):
-            in_terms = self._parse_custom_terms(in_edit.text())
-            out_terms = self._parse_custom_terms(out_edit.text())
-            if not in_terms and not out_terms:
-                count_label.setText("Matches: 0")
-                continue
-            custom_filters = [(in_terms, out_terms)]
-            match_count = 0
-            for _ev, row_text in base_rows:
-                text = row_text.split("  |  ", 1)[1] if "  |  " in row_text else row_text
-                if self._custom_filter_match(text, custom_filters, mode):
-                    match_count += 1
-            count_label.setText(f"Matches: {match_count}")
-
-    def _on_filter_preset_clicked(self, index: int):
-        if index < 0 or index >= len(self.filter_preset_group):
-            return
-        btn = self.filter_preset_group[index]
-        modifiers = QApplication.keyboardModifiers()
-        if modifiers & Qt.ControlModifier:
-            if btn.isChecked():
-                self.active_filter_presets.add(index)
-            else:
-                self.active_filter_presets.discard(index)
-            self.active_filter_preset_index = None
-            for idx, b in enumerate(self.filter_preset_group):
-                b.blockSignals(True)
-                b.setChecked(idx in self.active_filter_presets)
-                b.blockSignals(False)
-            if not self.active_filter_presets:
-                self._set_all_filters_checked()
-            self.apply_filters()
-            return
-        if not btn.isChecked():
-            self.active_filter_preset_index = None
-            self.active_filter_presets.clear()
-            self._set_all_filters_checked()
-            self.apply_filters()
-            return
-        for idx, b in enumerate(self.filter_preset_group):
-            b.blockSignals(True)
-            b.setChecked(idx == index)
-            b.blockSignals(False)
-        self.active_filter_presets = {index}
-        self.active_filter_preset_index = index
-        self._apply_filter_preset(index)
-
-    def _apply_filter_preset(self, index: int):
-        if not self.all_events:
-            return
-        if not self.filters_loaded:
-            self.load_filters_panel()
-        if not self.filters_loaded:
-            return
-        presets = getattr(self.settings, "filter_presets", [])
-        if index < 0 or index >= len(presets):
-            return
-        preset = presets[index]
-        for key, cb in self.source_checkboxes.items():
-            cb.blockSignals(True)
-            cb.setChecked(key in preset.sources)
-            cb.blockSignals(False)
-        for key, cb in self.state_checkboxes.items():
-            cb.blockSignals(True)
-            cb.setChecked(key in preset.states)
-            cb.blockSignals(False)
-        for key, cb in self.message_checkboxes.items():
-            cb.blockSignals(True)
-            cb.setChecked(key in preset.messages)
-            cb.blockSignals(False)
-        self.update_message_visibility_from_filters()
-        self.apply_filters()
-
-    def _on_filter_preset_menu(self, index: int):
-        if index < 0 or index >= len(self.filter_preset_group):
-            return
-        menu = QMenu(self)
-        save_action = menu.addAction("Save current selection")
-        rename_action = menu.addAction("Rename")
-        chosen = menu.exec(self.filter_preset_group[index].mapToGlobal(
-            self.filter_preset_group[index].rect().bottomLeft()
-        ))
-        if chosen == rename_action:
-            text, ok = QInputDialog.getText(
-                self, "Rename preset", "Preset name:", text=self.filter_preset_group[index].text()
-            )
-            if ok and text.strip():
-                self.filter_preset_group[index].setText(text.strip())
-                self._save_filter_preset_settings()
-        elif chosen == save_action:
-            self._save_current_filter_selection(index)
-
-    def _save_current_filter_selection(self, index: int):
-        if not self.filters_loaded:
-            return
-        if index < 0 or index >= len(self.filter_preset_group):
-            return
-        sources = [k for k, cb in self.source_checkboxes.items() if cb.isChecked()]
-        states = [k for k, cb in self.state_checkboxes.items() if cb.isChecked()]
-        messages = [k for k, cb in self.message_checkboxes.items() if cb.isChecked() and cb.isVisible()]
-        presets = getattr(self.settings, "filter_presets", [])
-        while len(presets) < 15:
-            presets.append(FilterPreset(name=f"Preset {len(presets) + 1}"))
-        presets[index] = FilterPreset(
-            name=self.filter_preset_group[index].text(),
-            sources=sources,
-            states=states,
-            messages=messages,
-        )
-        self.settings.filter_presets = presets
-        self.settings.save()
-
-    def _update_tab_highlights(self):
-        highlight = QColor("#ff4d4f")
-        default_color = QApplication.palette().windowText().color()
-        disabled_color = QColor("#888888")
-        tab_bar = self.right_tabs.tabBar()
-        # Filters tab highlight
-        filter_idx = self.right_tabs.indexOf(self.filter_container)
-        if filter_idx >= 0:
-            if not self.right_tabs.isTabEnabled(filter_idx):
-                self.right_tabs.setTabText(filter_idx, "Filters")
-                tab_bar.setTabTextColor(filter_idx, disabled_color)
-            else:
-                active = False
-                if self.active_filter_presets:
-                    active = True
-                if self.filters_loaded:
-                    for cb in self.source_checkboxes.values():
-                        if not cb.isChecked():
-                            active = True
-                            break
-                    if not active:
-                        for cb in self.state_checkboxes.values():
-                            if not cb.isChecked():
-                                active = True
-                                break
-                    if not active:
-                        for cb in self.message_checkboxes.values():
-                            if not cb.isChecked():
-                                active = True
-                                break
-                self.right_tabs.setTabText(filter_idx, "Filters")
-                tab_bar.setTabTextColor(filter_idx, highlight if active else default_color)
-        # Custom tab highlight
-        custom_idx = self.right_tabs.indexOf(self._custom_tab)
-        if custom_idx >= 0:
-            if not self.right_tabs.isTabEnabled(custom_idx):
-                self.right_tabs.setTabText(custom_idx, "Custom")
-                tab_bar.setTabTextColor(custom_idx, disabled_color)
-            else:
-                custom_active = any(btn.isChecked() for btn, _in, _out, _count in self.custom_filter_blocks)
-                self.right_tabs.setTabText(custom_idx, "Custom")
-                tab_bar.setTabTextColor(custom_idx, highlight if custom_active else default_color)
+        self.log_filter_panel.set_tabs_enabled(False)
 
     def populate_log_list(self):
         print(f"[viewer] populate_log_list start (rows={len(self.log_display_rows)})", flush=True)
@@ -5286,11 +4392,7 @@ class ReplayView(QWidget):
         self._apply_loaded_events(*build_events_from_rows(rows))
         # Avoid modal dialog here; it can re-enter UI updates during heavy redraw.
         print("[viewer] events loaded", flush=True)
-        if self._filters_wanted and self.all_events and not self.filters_loaded:
-            # Filters were loaded before this reload: rebuild them with the
-            # remembered ticks and re-apply, no extra click needed.
-            self._filters_wanted = False
-            self.load_filters_panel()
+        self.log_filter_panel.reload_filters_if_wanted()
 
     def _on_elastic_logs_failed(self, message: str):
         print(f"[viewer] _on_elastic_logs_failed: {message}", flush=True)
