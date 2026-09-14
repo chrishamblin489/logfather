@@ -3,7 +3,7 @@ import calendar
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal, QDate
+from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QTextCharFormat, QBrush, QColor, QFont, QImage, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,

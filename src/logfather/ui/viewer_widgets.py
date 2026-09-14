@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import Qt, Signal, QPointF, QRect, QRectF, QAbstractListModel, QModelIndex
-from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QFontMetrics, QImage, QPixmap, QPolygonF
+from PySide6.QtCore import Qt, Signal, QPointF, QRect, QAbstractListModel, QModelIndex
+from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QImage, QPolygonF
 from PySide6.QtWidgets import QLabel, QLCDNumber, QMenu, QSlider, QWidget, QStyle, QStyleOptionSlider
 
 

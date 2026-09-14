@@ -4,7 +4,6 @@ import re
 import os
 import json
 import hashlib
-import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import perf_counter
@@ -16,7 +15,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from logfather.core.timeline_model import (
     TimelineItem,
     parse_time_from_name,
-    LAST_BLOCK_DURATION,
     inferred_live_clip_end,
     local_day_start_utc,
     local_day_end_utc,
@@ -42,7 +40,6 @@ from logfather.data.elastic_schema import (
     identity_filter,
     is_automatic_state as _is_automatic_state,
     is_manual_state as _is_manual_state,
-    is_shutdown_message as _is_shutdown_message,
     is_stop_like_event as _is_stop_like_event,
     robot_id_from_folder,
 )

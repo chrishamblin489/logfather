@@ -10,10 +10,9 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable, Iterable, Optional, Dict, Tuple, List
 
-from PySide6.QtCore import Qt, Signal, QEvent, QThread, QRectF, QPointF, QTimer, QSize
+from PySide6.QtCore import Qt, Signal, QEvent, QRectF, QPointF, QTimer, QSize
 
 from logfather.ui.qt_worker import JobSlot
-from logfather.ui import theme
 from logfather.ui.icons import zoom_glyph_icon
 from logfather.ui.data_boxes import DataBoxes, COMPACT_BOX_STYLE, COMPACT_FONT_PX, add_label_backdrop, CollapsibleGroupBox
 from logfather.data import grafana_client
@@ -24,7 +23,7 @@ from PySide6.QtWidgets import QApplication, QProgressDialog, QMessageBox, QMenu,
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout,
     QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem,
-    QGraphicsPolygonItem, QGraphicsLineItem, QGroupBox, QGridLayout, QCheckBox, QGraphicsItemGroup,
+    QGraphicsPolygonItem, QGraphicsLineItem, QGridLayout, QCheckBox, QGraphicsItemGroup,
     QSizePolicy
 )
 

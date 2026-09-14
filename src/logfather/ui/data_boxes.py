@@ -9,7 +9,6 @@ settings, the chosen span, and calls back for redraws.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Callable
 
 from PySide6.QtCore import QEvent, QObject, QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QBrush, QColor, QFont, QFontMetrics, QIcon, QPainterPath, QPen, QTransform

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 from PySide6.QtCore import Qt, QPropertyAnimation, QSequentialAnimationGroup, QEasingCurve
-from PySide6.QtGui import QColor, QPalette, QFont
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -11,7 +10,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QScrollArea,
     QFrame,
-    QSizePolicy,
     QGraphicsOpacityEffect,
 )
 

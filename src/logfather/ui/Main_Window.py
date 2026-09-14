@@ -7,19 +7,17 @@ from dataclasses import asdict
 from datetime import date, timedelta, datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QEvent, QVariantAnimation, QEasingCurve, QPoint, QRectF, QSize
-from PySide6.QtGui import QAction, QColor, QIcon
+from PySide6.QtCore import Qt, QTimer, QEvent, QVariantAnimation, QEasingCurve, QPoint, QSize
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
-    QMenu,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
     QMessageBox,
     QSplitter,
     QToolButton,
-    QWidgetAction,
     QSizePolicy,
     QPushButton,
     QLabel,

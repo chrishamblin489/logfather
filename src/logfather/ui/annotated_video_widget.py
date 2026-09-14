@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import math
 import time
-from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
 
-from PySide6.QtCore import Qt, Signal, QEvent, QPointF, QRect, QRectF, QTimer
+from PySide6.QtCore import Qt, Signal, QEvent, QPointF, QRect, QRectF
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -22,18 +21,14 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
     QPolygonF,
-    QTransform,
 )
 from PySide6.QtWidgets import (
-    QColorDialog,
     QInputDialog,
     QLabel,
-    QMenu,
     QVBoxLayout,
     QWidget,
 )
 
-from logfather.ui.app_assets import load_placeholder_image as _load_placeholder_image
 from logfather.ui.viewer_widgets import _dist, _distance_to_segment
 
 

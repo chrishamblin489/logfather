@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import threading
 import time
 from collections import OrderedDict
@@ -11,8 +10,8 @@ from typing import Callable, Iterable
 
 import cv2
 
-from PySide6.QtCore import QDate, QEvent, QPoint, QSize, QThread, Qt, Signal, QTimer, QRectF, QVariantAnimation, QEasingCurve, QUrl
-from PySide6.QtGui import QAction, QColor, QBrush, QPen, QFont, QFontMetrics, QImage, QPainterPath, QPalette, QPixmap, QTextCharFormat
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, Signal, QTimer, QRectF, QVariantAnimation, QEasingCurve, QUrl
+from PySide6.QtGui import QColor, QBrush, QPen, QFont, QFontMetrics, QImage, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -23,13 +22,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QButtonGroup,
-    QCalendarWidget,
     QDialog,
-    QDialogButtonBox,
     QGraphicsScene,
     QGraphicsView,
-    QGroupBox,
-    QMenu,
     QGraphicsRectItem,
     QStackedWidget,
     QToolButton,
@@ -40,7 +35,6 @@ from logfather.ui.replay_timeline import (
     parse_time_from_name,
     ensure_utc,
     MIN_BLOCK_DURATION,
-    LAST_BLOCK_DURATION,
     inferred_live_clip_end,
     _cache_key_for,
 )
@@ -61,7 +55,7 @@ from logfather.data.ui_state_store import (
 from logfather.ui.day_range_dialog import DayRangeDialog, live_button_text
 from logfather.ui.icons import calendar_icon
 from logfather.data import grafana_client
-from logfather.ui.data_boxes import DataBoxes, SignalChannel
+from logfather.ui.data_boxes import DataBoxes
 from logfather.ui.system_filter import SystemFilterPopup, funnel_icon
 
 _OVERVIEW_HIDDEN_KEY = "overview_hidden_systems"

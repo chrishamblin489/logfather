@@ -1,12 +1,9 @@
 import sys
 import os
-import csv
 import subprocess
 import shutil
-import hashlib
 import argparse
 import time
-import math
 import json
 import re
 import tempfile
@@ -14,7 +11,6 @@ from bisect import bisect_left, bisect_right
 from concurrent.futures import ThreadPoolExecutor, Future
 from pathlib import Path
 from datetime import timedelta, datetime, timezone
-from typing import Callable
 try:
     from zoneinfo import ZoneInfo
 except Exception:
@@ -23,10 +19,7 @@ except Exception:
 from logfather.data.settings_store import Settings, DEFAULT_SETTINGS_PATH, CustomFilterPreset, FilterPreset
 from logfather.data.elastic_loader import fetch_logs_for_range
 from logfather.data.elastic_errors import ElasticFetchError
-from logfather.ui.app_assets import (
-    load_placeholder_image as _load_placeholder_image,
-    resolve_asset_path as _resolve_asset_path,
-)
+from logfather.ui.app_assets import load_placeholder_image as _load_placeholder_image
 from logfather.core.frame_analysis import (
     compute_optical_flow_view,
     compute_pixel_diff_view,
@@ -54,16 +47,13 @@ from logfather.ui.viewer_widgets import (
     DriftSlider,
     EventMarkerBar,
     LogListModel,
-    ScrubbableLabel,
     SegmentDisplay,
     VideoFrameLabel,
-    _dist,
-    _distance_to_segment,
 )
 
 import cv2
-from PySide6.QtCore import Qt, QTimer, Signal, QEvent, QMetaObject, Slot, QRect, QPoint, QPointF, QSize, Q_ARG, QVariantAnimation, QEasingCurve, QAbstractListModel, QModelIndex
-from PySide6.QtGui import QAction, QImage, QColor, QPainter, QPen, QBrush, QPalette, QFont, QTransform, QPolygonF, QPixmap
+from PySide6.QtCore import Qt, QTimer, Signal, QEvent, QMetaObject, Slot, QPoint, QPointF, QSize, Q_ARG, QVariantAnimation, QEasingCurve, QModelIndex
+from PySide6.QtGui import QAction, QImage, QColor, QPainter, QPalette, QPixmap
 import numpy as np
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
@@ -79,7 +69,7 @@ from logfather.ui.qt_worker import JobSlot
 
 SKIP_INITIAL_FRAME_RENDER = False
 from logfather.ui.settings_dialog import SettingsPanel, SystemLayoutPanel, ReadmePanel
-from logfather.core.app_version import format_version_label, format_version_suffix
+from logfather.core.app_version import format_version_label
 
 
 TARGET_QUEUE_MESSAGE = "adding new target to queue"
