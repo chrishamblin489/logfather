@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from logfather.paths import bundle_root
+from logfather.ui import theme
 
 import cv2
 import numpy as np
@@ -167,7 +168,7 @@ class RoiEditorLabel(ScrubbableLabel):
 
     roi_changed = Signal(str, object)  # box name ("time" or "date"), Roi in frame pixels
     HANDLE = 8
-    COLOURS = {"time": ("#00ff5a", "#003a14"), "date": ("#c77dff", "#2a0a45")}
+    COLOURS = {"time": (theme.OCR_TIME, "#003a14"), "date": (theme.OCR_DATE, "#2a0a45")}
 
     def __init__(self, text: str = "", parent=None):
         super().__init__(text, parent)
@@ -780,16 +781,16 @@ class SyncCctvTimeWindow(QWidget):
         # The date as it reads once the camera has synced, large, labelled
         # with the frame it happened on (Chris, 2026-09-12).
         self.synced_date_caption = QLabel("Synced date")
-        self.synced_date_caption.setStyleSheet("color: #c77dff; font-weight: bold;")
+        self.synced_date_caption.setStyleSheet(f"color: {theme.OCR_DATE}; font-weight: bold;")
         self.synced_date_preview = QLabel("(no date change found yet)")
         self.synced_date_preview.setAlignment(Qt.AlignCenter)
         self.synced_date_preview.setMinimumSize(260, 80)
         self.synced_date_caption.hide()
         self.synced_date_preview.hide()
         self.date_preview_caption = QLabel("Date (frame 1)")
-        self.date_preview_caption.setStyleSheet("color: #c77dff; font-weight: bold;")
+        self.date_preview_caption.setStyleSheet(f"color: {theme.OCR_DATE}; font-weight: bold;")
         self.time_preview_caption = QLabel("Time (frame 1)")
-        self.time_preview_caption.setStyleSheet("color: #00ff5a; font-weight: bold;")
+        self.time_preview_caption.setStyleSheet(f"color: {theme.OCR_TIME}; font-weight: bold;")
 
         self.time_label = QLabel("Time: 00:00:00.000")
         self.time_label.setAlignment(Qt.AlignCenter)
@@ -811,12 +812,12 @@ class SyncCctvTimeWindow(QWidget):
         # frame (y)" riding above the handle.
         self.first_frame_label = QLabel("Frame 1")
         self.last_frame_label = QLabel("Frame \u2013")
-        self.first_frame_label.setStyleSheet("color: #9aa0a6;")
-        self.last_frame_label.setStyleSheet("color: #9aa0a6;")
+        self.first_frame_label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+        self.last_frame_label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
         self.current_frame_strip = QWidget()
         self.current_frame_strip.setFixedHeight(18)
         self.current_frame_label = QLabel("Current frame (1)", self.current_frame_strip)
-        self.current_frame_label.setStyleSheet("color: #ecf0f4; font-weight: bold;")
+        self.current_frame_label.setStyleSheet(f"color: {theme.TEXT_BRIGHT}; font-weight: bold;")
         self.current_frame_label.adjustSize()
         self.current_frame_label.hide()
 
@@ -955,7 +956,7 @@ class SyncCctvTimeWindow(QWidget):
         # the Exact time and FPS headings drifted right of their values
         # (Chris, 2026-09-12). The left inset matches the list frame and
         # item padding so the columns line up.
-        history_header.setStyleSheet("color: #ecf0f4;")
+        history_header.setStyleSheet(f"color: {theme.TEXT_BRIGHT};")
         history_header.setContentsMargins(self.readings_list.frameWidth() + 3, 0, 0, 0)
         history_header.setToolTip(f"Every second change in the {OCR_TABLE_SECONDS} s after the sync frame, then a drift check every {OCR_TABLE_INTERVAL_SECONDS} s: the frame the second began on and how many frames it lasted; green = the last row at or before the current frame")
         right_layout.addWidget(history_header)
@@ -1023,7 +1024,7 @@ class SyncCctvTimeWindow(QWidget):
         rows = len(self.HELP_STEPS)
         height = 30 + rows * (box_h + gap) + 20 + 44  # + the cancel note
         pm = QPixmap(width, height)
-        pm.fill(QColor("#0d1116"))
+        pm.fill(QColor(theme.BG))
         painter = QPainter(pm)
         painter.setRenderHint(QPainter.Antialiasing)
         font = painter.font()
@@ -1034,9 +1035,9 @@ class SyncCctvTimeWindow(QWidget):
         for i, (letter, text, kind) in enumerate(self.HELP_STEPS):
             top = 30 + i * (box_h + gap)
             rect = QRect(left, top, box_w, box_h)
-            colour = QColor("#c77dff") if letter in ("B", "D", "E") else (QColor("#00ff5a") if letter == "F" else QColor("#9aa0a6"))
+            colour = QColor(theme.OCR_DATE) if letter in ("B", "D", "E") else (QColor(theme.OCR_TIME) if letter == "F" else QColor(theme.TEXT_MUTED))
             painter.setPen(QPen(colour, 2))
-            painter.setBrush(QBrush(QColor("#151b22")))
+            painter.setBrush(QBrush(QColor(theme.BG_RAISED)))
             if kind == "decision":
                 from PySide6.QtGui import QPolygonF
                 from PySide6.QtCore import QPointF
@@ -1044,12 +1045,12 @@ class SyncCctvTimeWindow(QWidget):
                 painter.drawPolygon(QPolygonF([QPointF(cx, top - 10), QPointF(rect.right() + 24, cy), QPointF(cx, rect.bottom() + 10), QPointF(rect.left() - 24, cy)]))
             else:
                 painter.drawRoundedRect(rect, 8, 8)
-            painter.setPen(QColor("#ecf0f4"))
+            painter.setPen(QColor(theme.TEXT_BRIGHT))
             painter.drawText(rect.adjusted(12, 0, -12, 0), Qt.AlignVCenter | Qt.AlignLeft | Qt.TextWordWrap, f"{letter}.  {text}")
             centres.append((rect.center().x(), top, rect.bottom()))
             if i > 0:
                 _px, _pt, prev_bottom = centres[i - 1]
-                painter.setPen(QPen(QColor("#9aa0a6"), 2))
+                painter.setPen(QPen(QColor(theme.TEXT_MUTED), 2))
                 painter.drawLine(rect.center().x(), prev_bottom + 6, rect.center().x(), top - 6)
                 painter.drawLine(rect.center().x(), top - 6, rect.center().x() - 5, top - 12)
                 painter.drawLine(rect.center().x(), top - 6, rect.center().x() + 5, top - 12)
@@ -1057,30 +1058,30 @@ class SyncCctvTimeWindow(QWidget):
         c_cx, c_top, c_bottom = centres[2]
         f_cx, f_top, f_bottom = centres[5]
         x_right = left + box_w + 50
-        painter.setPen(QPen(QColor("#00ff5a"), 2))
+        painter.setPen(QPen(QColor(theme.OCR_TIME), 2))
         painter.drawLine(left + box_w + 20, (c_top + c_bottom) // 2, x_right, (c_top + c_bottom) // 2)
         painter.drawLine(x_right, (c_top + c_bottom) // 2, x_right, (f_top + f_bottom) // 2)
         painter.drawLine(x_right, (f_top + f_bottom) // 2, left + box_w + 4, (f_top + f_bottom) // 2)
         painter.drawText(left + box_w + 24, (c_top + c_bottom) // 2 - 6, "Yes")
-        painter.setPen(QPen(QColor("#9aa0a6"), 2))
+        painter.setPen(QPen(QColor(theme.TEXT_MUTED), 2))
         painter.drawText(c_cx + 8, c_bottom + 16, "No")
         g_cx, g_top, g_bottom = centres[6]
         painter.drawText(g_cx + 8, g_bottom + 16, "No")
-        painter.setPen(QPen(QColor("#f0ad4e"), 2))
+        painter.setPen(QPen(QColor(theme.WARNING), 2))
         painter.drawText(left - 26, (g_top + g_bottom) // 2 - 6, "Yes")
         a_cx, a_top, a_bottom = centres[0]
         x_left = 14
-        painter.setPen(QPen(QColor("#f0ad4e"), 2))
+        painter.setPen(QPen(QColor(theme.WARNING), 2))
         painter.drawLine(left, (g_top + g_bottom) // 2, x_left, (g_top + g_bottom) // 2)
         painter.drawLine(x_left, (g_top + g_bottom) // 2, x_left, (a_top + a_bottom) // 2)
         painter.drawLine(x_left, (a_top + a_bottom) // 2, left - 2, (a_top + a_bottom) // 2)
         # The cancel rule under the steps (Chris, 2026-09-13)
         _hx, _ht, h_bottom = centres[7]
         note = QRect(left, h_bottom + 14, box_w, 40)
-        painter.setPen(QPen(QColor("#f0ad4e"), 1))
+        painter.setPen(QPen(QColor(theme.WARNING), 1))
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(note, 6, 6)
-        painter.setPen(QColor("#f0ad4e"))
+        painter.setPen(QColor(theme.WARNING))
         painter.drawText(note.adjusted(10, 0, -10, 0), Qt.AlignVCenter | Qt.AlignLeft | Qt.TextWordWrap, self.HELP_CANCEL)
         painter.end()
         return pm
@@ -1586,23 +1587,23 @@ class SyncCctvTimeWindow(QWidget):
         # C: frame 1 against the filename
         if self.cctv_date is None:
             self.cctv_date_label.setText(f"CCTV date: not read on frame 1 ({text.strip() or 'blank'})")
-            self.cctv_date_label.setStyleSheet("color: #9aa0a6;")
+            self.cctv_date_label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
         elif filename_date is not None and self.cctv_date == filename_date:
             self.cctv_date_label.setText(f"CCTV date: {self.cctv_date:%d/%m/%Y} on frame 1 - matches the filename")
-            self.cctv_date_label.setStyleSheet("color: #2ecc71;")
+            self.cctv_date_label.setStyleSheet(f"color: {theme.SUCCESS_BRIGHT};")
             self.date_sync_frame = 0
             self.cctv_synced_date = self.cctv_date
             return  # F
         elif self.cctv_date == _epoch_date():
             self.cctv_date_label.setText("CCTV date: 01/01/1970 on frame 1 - the camera had not synced yet")
-            self.cctv_date_label.setStyleSheet("color: #f0ad4e;")
+            self.cctv_date_label.setStyleSheet(f"color: {theme.WARNING};")
         elif filename_date is None:
             self.cctv_date_label.setText(f"CCTV date: {self.cctv_date:%d/%m/%Y} on frame 1 (no filename date to compare)")
             self.cctv_date_label.setStyleSheet("")
             return
         else:
             self.cctv_date_label.setText(f"CCTV date: {self.cctv_date:%d/%m/%Y} on frame 1 - differs from the filename ({filename_date:%d/%m/%Y})")
-            self.cctv_date_label.setStyleSheet("color: #f0ad4e;")
+            self.cctv_date_label.setStyleSheet(f"color: {theme.WARNING};")
         # D + E
         self._scan_for_date_sync(filename_date)
 
@@ -1635,14 +1636,14 @@ class SyncCctvTimeWindow(QWidget):
         if cancelled:
             self._run_cancelled = True
             self.date_sync_label.setText("Camera date sync: cancelled - the clock is read from frame 1")
-            self.date_sync_label.setStyleSheet("color: #f0ad4e;")
+            self.date_sync_label.setStyleSheet(f"color: {theme.WARNING};")
             self.date_sync_label.setToolTip("The date scan was cancelled; drag the date box or reopen the clip to run it again")
             self.date_sync_label.show()
             return
         initial = self.cctv_date.strftime("%d/%m/%Y") if self.cctv_date else "unreadable"
         if change is None:
             self.date_sync_label.setText(f"Camera date sync: none - the date stayed {initial} for the whole clip")
-            self.date_sync_label.setStyleSheet("color: #ff7a70; font-weight: bold;")
+            self.date_sync_label.setStyleSheet(f"color: {theme.DANGER_SOFT}; font-weight: bold;")
             self.date_sync_label.setToolTip("The camera never synced its date in this clip, so its clock cannot be trusted here")
             self.date_sync_label.show()
             return
@@ -1657,11 +1658,11 @@ class SyncCctvTimeWindow(QWidget):
         else:
             verdict = "no filename date to compare"
         self.date_sync_label.setText(f"Camera date sync: {initial} -> {new_date:%d/%m/%Y} (frame {change_frame + 1}) - {verdict}")
-        self.date_sync_label.setStyleSheet("color: #2ecc71;" if agrees else "color: #ff7a70; font-weight: bold;")
+        self.date_sync_label.setStyleSheet(f"color: {theme.SUCCESS_BRIGHT};" if agrees else f"color: {theme.DANGER_SOFT}; font-weight: bold;")
         self.date_sync_label.setToolTip(f"{change_frame} frames ({change_frame / self.fps:.1f} s) before the camera synced; the clock is read from that frame on {new_date:%d/%m/%Y}")
         self.date_sync_label.show()
         self._show_synced_date_preview(change_frame, date_roi)
-        self.synced_date_caption.setStyleSheet("color: #c77dff; font-weight: bold;")  # purple like the box (Chris, 2026-09-12)
+        self.synced_date_caption.setStyleSheet(f"color: {theme.OCR_DATE}; font-weight: bold;")  # purple like the box (Chris, 2026-09-12)
         if self.cap is not None:
             self._read_and_show(self.date_sync_frame)
 
