@@ -7,7 +7,7 @@ from dataclasses import asdict
 from datetime import date, timedelta, datetime, timezone
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QEvent, QVariantAnimation, QEasingCurve, QPoint, QSize
+from PySide6.QtCore import Qt, QTimer, QEvent, QPoint, QSize
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QApplication,
@@ -62,6 +62,7 @@ from logfather.data.day_listing_cache import load_day_files_cached
 from logfather.data.elastic_loader import fetch_events, set_system_id_override
 from logfather.ui.qt_worker import JobSlot
 from logfather.ui.progress import job_progress
+from logfather.ui.pane_animator import PaneAnimator
 from logfather.ui.stop_report import (
     StopReportDialog,
     StopReportEntry,
@@ -326,16 +327,14 @@ class MainWindow(QWidget):
         self._horizontal_splitter = horizontal_splitter
         self._left_panel_target_width = 380
         self._left_panel_visible = False
-        self._left_panel_anim = QVariantAnimation(self)
-        self._left_panel_anim.setDuration(170)
-        self._left_panel_anim.setEasingCurve(QEasingCurve.OutCubic)
-        self._left_panel_anim.valueChanged.connect(self._on_left_panel_anim_step)
-        self._left_panel_anim.finished.connect(self._on_left_panel_anim_finished)
-        self._targets_panel_anim = QVariantAnimation(self)
-        self._targets_panel_anim.setDuration(170)
-        self._targets_panel_anim.setEasingCurve(QEasingCurve.OutCubic)
-        self._targets_panel_anim.valueChanged.connect(self._on_targets_panel_anim_step)
-        self._targets_panel_anim.finished.connect(self._on_targets_panel_anim_finished)
+        # Both side panels slide with the centre absorbing the change; the
+        # date picker's slide can run before the first layout, when the
+        # splitter has no width yet.
+        self._left_panel_anim = PaneAnimator(
+            horizontal_splitter, 0, widget=self.date_picker, parent=self,
+            fallback_total=lambda px: max(self.width(), px + 1000),
+        )
+        self._targets_panel_anim = PaneAnimator(horizontal_splitter, 2, widget=self.targets_panel, parent=self)
         # Start with buffer panel hidden
         self.targets_panel.setVisible(False)
 
@@ -345,10 +344,8 @@ class MainWindow(QWidget):
         main_splitter.setStretchFactor(0, 3)
         main_splitter.setStretchFactor(1, 2)
         self._main_splitter = main_splitter
-        self._timeline_anim = QVariantAnimation(self)
-        self._timeline_anim.setDuration(170)
-        self._timeline_anim.setEasingCurve(QEasingCurve.OutCubic)
-        self._timeline_anim.valueChanged.connect(self._on_timeline_anim_step)
+        # The timeline never takes the whole height: the top pane keeps 1 px.
+        self._timeline_anim = PaneAnimator(main_splitter, 1, cap_to_total=True, parent=self)
         self._timeline_expand_timer = QTimer(self)
         self._timeline_expand_timer.setSingleShot(True)
         self._timeline_expand_timer.setInterval(TIMELINE_EXPAND_DELAY_MS)
@@ -1005,42 +1002,9 @@ class MainWindow(QWidget):
         if self._targets_panel_visible and self._overlay_controller._last_playhead_dt:
             self.targets_panel.update_for_time(self._overlay_controller._last_playhead_dt)
         if self._targets_panel_visible:
-            self.targets_panel.setVisible(True)
-            self._animate_targets_panel(self._buffer_panel_target_width)
+            self._targets_panel_anim.show_to(self._buffer_panel_target_width)
         else:
-            self._animate_targets_panel(0)
-
-    def _animate_targets_panel(self, end_width: int) -> None:
-        splitter = self._horizontal_splitter
-        sizes = splitter.sizes()
-        current = sizes[2] if len(sizes) > 2 else 0
-        if int(current) == int(end_width):
-            if end_width == 0:
-                self.targets_panel.setVisible(False)
-            return
-        if self._targets_panel_anim.state() == QVariantAnimation.Running:
-            self._targets_panel_anim.stop()
-        self._targets_panel_anim.setStartValue(int(current))
-        self._targets_panel_anim.setEndValue(int(end_width))
-        self._targets_panel_anim.start()
-
-    def _on_targets_panel_anim_step(self, value: int) -> None:
-        try:
-            right = max(0, int(value))
-            splitter = self._horizontal_splitter
-            sizes = splitter.sizes()
-            if len(sizes) < 3:
-                return
-            total = sum(sizes)
-            left = sizes[0]
-            centre = max(1, total - left - right)
-            splitter.setSizes([left, centre, right])
-        except Exception:
-            pass
-
-    def _on_targets_panel_anim_finished(self) -> None:
-        if not self._targets_panel_visible:
-            self.targets_panel.setVisible(False)
+            self._targets_panel_anim.hide()
 
     def _set_system_id_override(self, system_id: str | None):
         self.system_id_override = system_id or None
@@ -1062,43 +1026,10 @@ class MainWindow(QWidget):
                 total = max(1, sum(sizes) or self.width())
                 buf = sizes[2] if len(sizes) > 2 else 0
                 self._horizontal_splitter.setSizes([0, max(1, total - buf), buf])
-            self._animate_left_panel(self._left_panel_target_width)
+            self._left_panel_anim.animate_to(self._left_panel_target_width)
         else:
             self.date_picker_toggle.setText("Show Date Picker")
-            self._animate_left_panel(0)
-
-    def _animate_left_panel(self, end_width: int):
-        splitter = self._horizontal_splitter
-        sizes = splitter.sizes()
-        current = sizes[0] if sizes else (self._left_panel_target_width if self.date_picker.isVisible() else 0)
-        if int(current) == int(end_width):
-            if end_width == 0:
-                self.date_picker.setVisible(False)
-            return
-        if self._left_panel_anim.state() == QVariantAnimation.Running:
-            self._left_panel_anim.stop()
-        self._left_panel_anim.setStartValue(int(current))
-        self._left_panel_anim.setEndValue(int(end_width))
-        self._left_panel_anim.start()
-
-    def _on_left_panel_anim_step(self, value):
-        try:
-            left = max(0, int(value))
-            splitter = self._horizontal_splitter
-            sizes = splitter.sizes()
-            total = sum(sizes) or max(self.width(), left + 1000)
-            buf = sizes[2] if len(sizes) > 2 else 0
-            centre = max(1, total - left - buf)
-            if len(sizes) > 2:
-                splitter.setSizes([left, centre, buf])
-            else:
-                splitter.setSizes([left, centre])
-        except Exception:
-            pass
-
-    def _on_left_panel_anim_finished(self):
-        if not self._left_panel_visible:
-            self.date_picker.setVisible(False)
+            self._left_panel_anim.hide()
 
     def eventFilter(self, obj, event):
         if not self._hover_reveal_enabled:
@@ -1128,35 +1059,8 @@ class MainWindow(QWidget):
             return
         self._timeline_expanded = expanded
         target = self._timeline_max_height if expanded else self._timeline_min_height
-        self._animate_timeline_height(target)
-
-    def _animate_timeline_height(self, target_height: int):
-        sizes = self._main_splitter.sizes()
-        if len(sizes) < 2:
-            return
-        bottom_current = max(0, int(sizes[1]))
-        total = max(1, int(sum(sizes)))
-        target = max(self._timeline_min_height, min(self._timeline_max_height, int(target_height)))
-        if total > 1:
-            target = min(target, total - 1)
-        if bottom_current == target:
-            return
-        if self._timeline_anim.state() == QVariantAnimation.Running:
-            self._timeline_anim.stop()
-        self._timeline_anim.setStartValue(bottom_current)
-        self._timeline_anim.setEndValue(target)
-        self._timeline_anim.start()
-
-    def _on_timeline_anim_step(self, value):
-        sizes = self._main_splitter.sizes()
-        if len(sizes) < 2:
-            return
-        total = max(1, int(sum(sizes)))
-        bottom = max(0, int(value))
-        if total > 1:
-            bottom = min(bottom, total - 1)
-        top = max(1, total - bottom)
-        self._main_splitter.setSizes([top, bottom])
+        target = max(self._timeline_min_height, min(self._timeline_max_height, int(target)))
+        self._timeline_anim.animate_to(target)
 
     def _schedule_timeline_expand(self):
         if self._timeline_expanded:
@@ -1943,7 +1847,7 @@ class MainWindow(QWidget):
             self.content_stack.setMinimumWidth(980)
             if self.date_picker_toggle.isChecked():
                 self.date_picker.setVisible(True)
-                self._animate_left_panel(self._left_panel_target_width)
+                self._left_panel_anim.animate_to(self._left_panel_target_width)
             self.replay_timeline.setVisible(True)
             self._apply_initial_timeline_size()
 
