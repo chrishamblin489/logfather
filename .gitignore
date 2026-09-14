@@ -30,3 +30,6 @@ cctv_picker_settings.json
 # OS junk
 .DS_Store
 Output/
+
+# Agent worktrees
+.claude/worktrees/
