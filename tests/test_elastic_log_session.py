@@ -37,6 +37,8 @@ class SyncExecutor:
         self.calls: list[tuple] = []
 
     def submit(self, fn, *args):
+        # The session submits a partial carrying the fetch arguments, so
+        # `args` is empty; the fake fetch itself records what it received.
         self.calls.append(args)
         future: Future = Future()
         try:
@@ -67,6 +69,7 @@ class Sink:
 
 
 SETTINGS = object()
+ROBOT = "35-2300-012"
 ROWS = [(datetime(2026, 9, 14, 12, 0, 0), "robot", "RUNNING", "hello", "x")]
 
 
@@ -98,50 +101,74 @@ def test_parse_window_and_request_key():
 
 def test_start_fetches_with_the_window_and_delivers_rows(app):
     executor = SyncExecutor()
-    session = make_session(executor, lambda *a: ROWS)
+    received: list[tuple[tuple, dict]] = []
+
+    def fetch(*args, **kwargs):
+        received.append((args, kwargs))
+        return ROWS
+
+    session = make_session(executor, fetch)
     sink = Sink(session)
-    assert session.start("Z:/public/PikPak012", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z")
+    assert session.start("Z:/public/PikPak012", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z", robot_id=ROBOT)
     assert session.is_active() and session.active_key == ("Z:/public/PikPak012", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z")
     assert sink.ready == []  # nothing before the event loop turns
     pump(app)
     assert sink.ready == [ROWS] and sink.failed == []
     assert not session.is_active() and session.active_key is None
     assert session.loaded_key == ("Z:/public/PikPak012", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z")
-    settings, root, start_dt, end_dt = executor.calls[0]
+    assert len(executor.calls) == 1
+    (settings, root, start_dt, end_dt), kwargs = received[0]
     assert settings is SETTINGS and root == Path("Z:/public/PikPak012")
     assert (start_dt, end_dt) == (
         datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc),
         datetime(2026, 9, 14, 12, 5, tzinfo=timezone.utc),
     )
+    # The robot id resolved on the UI thread reaches the fetch as-is
+    # (review item 10: the worker never reads the picker's override).
+    assert kwargs == {"robot_id": ROBOT}
+
+
+def test_no_robot_id_is_passed_through_as_none(app):
+    received: list[dict] = []
+
+    def fetch(*_args, **kwargs):
+        received.append(kwargs)
+        return []
+
+    session = make_session(SyncExecutor(), fetch)
+    Sink(session)
+    assert session.start("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z", robot_id=None)
+    pump(app)
+    assert received == [{"robot_id": None}]
 
 
 def test_same_request_is_skipped_while_the_rows_are_held(app):
     held = {"rows": False}
     executor = SyncExecutor()
-    session = make_session(executor, lambda *a: ROWS, has_rows=lambda: held["rows"])
+    session = make_session(executor, lambda *a, **k: ROWS, has_rows=lambda: held["rows"])
     Sink(session)
     args = ("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z")
-    assert session.start(*args)
+    assert session.start(*args, robot_id=ROBOT)
     pump(app)
     held["rows"] = True
     assert session.is_satisfied(request_key(*args))
-    assert not session.start(*args) and len(executor.calls) == 1
+    assert not session.start(*args, robot_id=ROBOT) and len(executor.calls) == 1
     # Once the replay drops its rows (a new clip), the same range fetches again.
     held["rows"] = False
     session.forget()
     assert session.loaded_key is None
-    assert session.start(*args) and len(executor.calls) == 2
+    assert session.start(*args, robot_id=ROBOT) and len(executor.calls) == 2
 
 
 def test_same_request_in_flight_is_skipped_and_a_new_one_cancels_it(app):
     executor = PendingExecutor()
-    session = make_session(executor, lambda *a: ROWS)
+    session = make_session(executor, lambda *a, **k: ROWS)
     sink = Sink(session)
     args = ("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z")
-    assert session.start(*args)
-    assert not session.start(*args) and len(executor.futures) == 1
+    assert session.start(*args, robot_id=ROBOT)
+    assert not session.start(*args, robot_id=ROBOT) and len(executor.futures) == 1
     pump(app)
-    assert session.start("p", "2026-09-14T12:05:00Z", "2026-09-14T12:10:00Z")
+    assert session.start("p", "2026-09-14T12:05:00Z", "2026-09-14T12:10:00Z", robot_id=ROBOT)
     assert executor.futures[0].cancelled()
     assert session.active_key == ("p", "2026-09-14T12:05:00Z", "2026-09-14T12:10:00Z")
     executor.futures[1].set_result(ROWS)
@@ -151,20 +178,20 @@ def test_same_request_in_flight_is_skipped_and_a_new_one_cancels_it(app):
 
 def test_bad_timestamps_raise_before_anything_starts(app):
     executor = SyncExecutor()
-    session = make_session(executor, lambda *a: ROWS)
+    session = make_session(executor, lambda *a, **k: ROWS)
     with pytest.raises(ValueError):
-        session.start("p", "not a time", "2026-09-14T12:05:00Z")
+        session.start("p", "not a time", "2026-09-14T12:05:00Z", robot_id=ROBOT)
     assert executor.calls == [] and not session.is_active()
 
 
 def test_partial_failure_delivers_the_rows_then_the_message(app):
-    def fetch(*_a):
+    def fetch(*_a, **_k):
         raise ElasticFetchError("timed out after 2 pages", items=ROWS)
 
     session = make_session(SyncExecutor(), fetch)
     sink = Sink(session)
     args = ("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z")
-    session.start(*args)
+    session.start(*args, robot_id=ROBOT)
     pump(app)
     assert sink.ready == [ROWS] and sink.failed == ["timed out after 2 pages"]
     # The partial range counts as loaded, so it is not refetched on retrigger.
@@ -172,33 +199,33 @@ def test_partial_failure_delivers_the_rows_then_the_message(app):
 
 
 def test_failure_without_rows_only_reports(app):
-    def fetch(*_a):
+    def fetch(*_a, **_k):
         raise ElasticFetchError("nothing at all")
 
     session = make_session(SyncExecutor(), fetch)
     sink = Sink(session)
-    session.start("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z")
+    session.start("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z", robot_id=ROBOT)
     pump(app)
     assert sink.ready == [] and sink.failed == ["nothing at all"]
     assert session.loaded_key is None
 
 
 def test_any_other_error_is_reported_as_text(app):
-    def fetch(*_a):
+    def fetch(*_a, **_k):
         raise RuntimeError("boom")
 
     session = make_session(SyncExecutor(), fetch)
     sink = Sink(session)
-    session.start("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z")
+    session.start("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z", robot_id=ROBOT)
     pump(app)
     assert sink.failed == ["boom"] and not session.is_active()
 
 
 def test_cancel_drops_the_result_that_arrives_later(app):
     executor = PendingExecutor()
-    session = make_session(executor, lambda *a: ROWS)
+    session = make_session(executor, lambda *a, **k: ROWS)
     sink = Sink(session)
-    session.start("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z")
+    session.start("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z", robot_id=ROBOT)
     pump(app)
     session.cancel()
     assert not session.is_active() and session.active_key is None
@@ -208,9 +235,9 @@ def test_cancel_drops_the_result_that_arrives_later(app):
 
 
 def test_own_executor_is_created_on_demand_and_shut_down(app):
-    session = ElasticLogSession(settings_provider=lambda: SETTINGS, fetch=lambda *a: ROWS)
+    session = ElasticLogSession(settings_provider=lambda: SETTINGS, fetch=lambda *a, **k: ROWS)
     sink = Sink(session)
-    assert session.start("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z")
+    assert session.start("p", "2026-09-14T12:00:00Z", "2026-09-14T12:05:00Z", robot_id=ROBOT)
     future = session._future
     future.result(timeout=5)
     for _ in range(50):

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Callable
 
@@ -105,13 +106,14 @@ class ElasticLogSession(QObject):
 
     # ---- lifecycle ------------------------------------------------------------
 
-    def start(self, pikpak_path, start_iso: str, end_iso: str) -> bool:
+    def start(self, pikpak_path, start_iso: str, end_iso: str, *, robot_id: str | None) -> bool:
         """Fetch the rows for the clip at ``pikpak_path`` between the two
-        ISO stamps. Returns False (nothing started) when the same request
-        is satisfied already; raises ValueError for stamps it cannot parse.
-        Any earlier request is cancelled first. The first poll runs on the
-        next event-loop turn, so the caller can show its busy dialog before
-        a result can arrive."""
+        ISO stamps, querying ``robot_id`` (resolved by the caller on the UI
+        thread; None fetches nothing). Returns False (nothing started) when
+        the same request is satisfied already; raises ValueError for stamps
+        it cannot parse. Any earlier request is cancelled first. The first
+        poll runs on the next event-loop turn, so the caller can show its
+        busy dialog before a result can arrive."""
         key = request_key(pikpak_path, start_iso, end_iso)
         if self.is_satisfied(key):
             return False
@@ -125,7 +127,8 @@ class ElasticLogSession(QObject):
         if self._executor is None:
             self._executor = ThreadPoolExecutor(max_workers=1)
             self._owns_executor = True
-        self._future = self._executor.submit(self._fetch, settings, Path(pikpak_path), start_dt, end_dt)
+        fetch = partial(self._fetch, settings, Path(pikpak_path), start_dt, end_dt, robot_id=robot_id)
+        self._future = self._executor.submit(fetch)
         dbg("viewer", f"scheduled log fetch id {fetch_id}")
         QTimer.singleShot(0, lambda fid=fetch_id: self._poll(fid))
         return True

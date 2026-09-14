@@ -22,6 +22,7 @@ from logfather.ui.clip_export import export_clip_with_overlays, find_ffmpeg
 from logfather.ui.elastic_log_session import ElasticLogSession
 from logfather.ui.annotated_video_widget import AnnotatedVideoWidget
 from logfather.data.clip_cache import ClipCache
+from logfather.data.elastic_schema import resolve_robot_id
 from logfather.data.ocr_offset_store import OcrOffsetStore
 from logfather.data.ui_state_store import load_ui_state, update_ui_state
 from logfather.core.log import dbg, log, timed
@@ -264,6 +265,7 @@ class ReplayView(QWidget):
         self.pending_pikpak_path: str | None = None
         self.pending_start_iso: str | None = None
         self.pending_end_iso: str | None = None
+        self.pending_robot_id: str | None = None
         self.auto_load_clip_logs = True
         self._pending_log_request_key: tuple[str, str, str] | None = None
         self._pending_log_autoload_timer = QTimer(self)
@@ -1196,10 +1198,13 @@ class ReplayView(QWidget):
         self.additional_sync_btn.setText(label(self._additional_sync_done, self.additional_ocr_offset_seconds, second_open))
         self.additional_sync_btn.setStyleSheet(theme.SYNC_DONE_BUTTON if self._additional_sync_done else "")
 
-    def set_pending_logs(self, pikpak_path: str, start_iso: str, end_iso: str):
+    def set_pending_logs(self, pikpak_path: str, start_iso: str, end_iso: str, *, robot_id: str | None):
+        """``robot_id`` is the system the fetch queries, resolved by the
+        main window on the UI thread at selection time."""
         self.pending_pikpak_path = pikpak_path
         self.pending_start_iso = start_iso
         self.pending_end_iso = end_iso
+        self.pending_robot_id = robot_id
         self._pending_log_request_key = (str(pikpak_path), str(start_iso), str(end_iso))
         if self.auto_load_clip_logs:
             self._pending_log_autoload_timer.start()
@@ -1212,6 +1217,7 @@ class ReplayView(QWidget):
             self.pending_start_iso,
             self.pending_end_iso,
             show_busy=False,
+            robot_id=self.pending_robot_id,
         )
 
     # ---- ffmpeg rewrap helper ----
@@ -1518,6 +1524,7 @@ class ReplayView(QWidget):
         self.pending_pikpak_path = None
         self.pending_start_iso = None
         self.pending_end_iso = None
+        self.pending_robot_id = None
         self._pending_log_request_key = None
         self.log_session.forget()
         self._pending_log_autoload_timer.stop()
@@ -3349,12 +3356,15 @@ class ReplayView(QWidget):
 
     # ---- Elastic log loading ----
 
-    def load_logs_from_elastic(self, pikpak_path: str, start_iso: str, end_iso: str, show_busy: bool = True):
-        """Fetch the clip's Elastic rows (elastic_log_session.py); the rows
+    def load_logs_from_elastic(
+        self, pikpak_path: str, start_iso: str, end_iso: str, show_busy: bool = True, *, robot_id: str | None
+    ):
+        """Fetch the clip's Elastic rows (elastic_log_session.py) for
+        ``robot_id`` (resolved by the caller on the UI thread); the rows
         land in _on_elastic_logs_ready. A request already satisfied is a
         no-op; unparseable stamps are reported and nothing starts."""
         try:
-            started = self.log_session.start(pikpak_path, start_iso, end_iso)
+            started = self.log_session.start(pikpak_path, start_iso, end_iso, robot_id=robot_id)
         except Exception:
             QMessageBox.warning(self, "Invalid time range", "Could not parse provided timestamps.")
             return
@@ -3477,7 +3487,9 @@ def main():
     if args.video:
         win.load_video_from_path(args.video)
     if args.pikpak and args.start and args.end:
-        win.load_logs_from_elastic(args.pikpak, args.start, args.end)
+        win.load_logs_from_elastic(
+            args.pikpak, args.start, args.end, robot_id=resolve_robot_id(Path(args.pikpak), None)
+        )
     sys.exit(app.exec())
 
 

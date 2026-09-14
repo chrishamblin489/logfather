@@ -106,16 +106,22 @@ class TargetOverlayController(QObject):
         self._buffer_events = []
         self._buffer_widget.clear()
 
-    def load_buffer_events(self, pikpak_root: Path | None, clip_start, clip_end) -> None:
+    def load_buffer_events(
+        self, pikpak_root: Path | None, clip_start, clip_end, robot_id: str | None
+    ) -> None:
+        """``robot_id`` is the system to query, resolved by the caller on
+        the UI thread (the main window knows the picker's override)."""
         self._buffer_events = []
         self._buffer_widget.clear()
         if pikpak_root is None or clip_start is None or clip_end is None:
             return
 
-        log("buffer", f"starting load for {pikpak_root}  {clip_start} -> {clip_end}")
+        log("buffer", f"starting load for {pikpak_root} ({robot_id})  {clip_start} -> {clip_end}")
         settings = self._settings_provider()
         self._buffer_slot.start(
-            lambda job: fetch_buffer_events(settings, pikpak_root, clip_start, clip_end),
+            lambda job: fetch_buffer_events(
+                settings, pikpak_root, clip_start, clip_end, robot_id=robot_id
+            ),
             on_result=self._on_buffer_events_loaded,
             on_error=self._on_buffer_events_failed,
         )

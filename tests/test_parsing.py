@@ -776,6 +776,7 @@ class TestFetchSkuItemsLastVideoEnd:
             Path("Z:/public/PikPak012"),
             date(2026, 9, 1),
             last_video_end=None,
+            robot_id="35-2300-012",
         )
         assert list(result) == []
 
@@ -790,7 +791,76 @@ class TestFetchSkuItemsLastVideoEnd:
                 self._settings_without_credentials(),
                 Path("Z:/public/PikPak012"),
                 date(2026, 9, 1),
+                robot_id="35-2300-012",
             )
+
+
+class TestFetchesWithoutRobotId:
+    """Every per-system fetch takes the robot id as an explicit argument
+    (review item 10); with none there is nothing to query, so each returns
+    its empty shape without touching the cache, the share or the network."""
+
+    @staticmethod
+    def _settings_with_credentials():
+        from logfather.data.settings_store import Settings
+        return Settings(elastic_api_key="key", elastic_url="https://example.invalid")
+
+    @staticmethod
+    def _forbid_network(monkeypatch):
+        def _boom(*_args, **_kwargs):
+            raise AssertionError("network/cache touched with no robot id")
+        for name in ("_get_thread_session", "paginate", "msearch_first_pages",
+                     "_load_events_cache", "_save_events_cache", "_last_video_end"):
+            monkeypatch.setattr(elastic_loader, name, _boom)
+        from logfather.data import target_buffer_loader
+        for name in ("_get_thread_session", "paginate"):
+            monkeypatch.setattr(target_buffer_loader, name, _boom)
+
+    def test_fetch_events_without_root_or_id_is_empty(self, monkeypatch):
+        from datetime import date
+        self._forbid_network(monkeypatch)
+        result = elastic_loader.fetch_events(
+            self._settings_with_credentials(), None, date(2026, 9, 1), robot_id=None
+        )
+        assert list(result) == []
+
+    def test_fetch_events_with_root_but_no_id_is_empty(self, monkeypatch):
+        from datetime import date
+        self._forbid_network(monkeypatch)
+        result = elastic_loader.fetch_events(
+            self._settings_with_credentials(), Path("Z:/public/PikPak"), date(2026, 9, 1), robot_id=None
+        )
+        assert list(result) == []
+
+    def test_fetch_sku_items_without_id_is_empty(self, monkeypatch):
+        from datetime import date
+        self._forbid_network(monkeypatch)
+        result = elastic_loader.fetch_sku_items(
+            self._settings_with_credentials(), None, date(2026, 9, 1), robot_id=None
+        )
+        assert list(result) == []
+
+    def test_fetch_logs_for_range_without_id_is_empty(self, monkeypatch):
+        self._forbid_network(monkeypatch)
+        start = datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc)
+        rows = elastic_loader.fetch_logs_for_range(
+            self._settings_with_credentials(), None, start, start, robot_id=None
+        )
+        assert rows == []
+
+    def test_fetch_buffer_events_without_id_is_empty(self, monkeypatch):
+        from logfather.data.target_buffer_loader import fetch_buffer_events
+        self._forbid_network(monkeypatch)
+        start = datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc)
+        events = fetch_buffer_events(
+            self._settings_with_credentials(), Path("Z:/public/PikPak012"), start, start, robot_id=None
+        )
+        assert events == []
+
+    def test_module_global_is_gone(self):
+        assert not hasattr(elastic_loader, "SYSTEM_ID_OVERRIDE")
+        assert not hasattr(elastic_loader, "set_system_id_override")
+        assert not hasattr(elastic_loader, "_get_robot_id")
 
 
 class TestTimelineLoaderConcurrency:
@@ -816,21 +886,24 @@ class TestTimelineLoaderConcurrency:
         ]
         seen = {}
 
-        def extra_loader(_root, _day, resolve_last_video_end):
+        def extra_loader(_root, _day, resolve_last_video_end, robot_id):
             assert callable(resolve_last_video_end)
             seen["value"] = resolve_last_video_end()
+            seen["robot_id"] = robot_id
             return []
 
         job = self._FakeJob()
         result = _load_timeline_items(
             job, Path("Z:/nowhere"), date(2026, 9, 1),
-            lambda _root, _day: clips, [extra_loader], None,
+            lambda _root, _day: clips, [extra_loader], None, "35-2300-012",
         )
         assert result is not None
         items, _day, _root = result
         videos = [i for i in items if i.kind == "video"]
         assert len(videos) == 2
         assert seen["value"] == max(v.end for v in videos)
+        # The robot id the UI thread resolved reaches the loader unchanged.
+        assert seen["robot_id"] == "35-2300-012"
         # All partials append now; arrival order no longer matters.
         assert all(p[3] is True for p in job.partials if p[0] == "partial")
 
@@ -840,7 +913,7 @@ class TestTimelineLoaderConcurrency:
 
         seen = {}
 
-        def extra_loader(_root, _day, resolve_last_video_end):
+        def extra_loader(_root, _day, resolve_last_video_end, _robot_id):
             seen["value"] = resolve_last_video_end()
             return []
 

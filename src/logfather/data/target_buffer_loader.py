@@ -17,7 +17,6 @@ from logfather.data.elastic_loader import (
     KIBANA_BASE_DEFAULT,
     _build_robot_filters,
     _ensure_utc,
-    _get_robot_id,
     _normalize_index_id,
     _parse_ts,
 )
@@ -103,12 +102,17 @@ def fetch_buffer_events(
     clip_start: datetime,
     clip_end: datetime,
     lookback_minutes: int = 60,
+    *,
+    robot_id: str | None,
 ) -> list[BufferEvent]:
     """
     Fetch pick-target queue events for a clip window and simulate the buffer state machine.
 
     Queries from (clip_start - lookback_minutes) to clip_end so the buffer state
     at the start of the clip is reconstructed without loading an entire day.
+
+    robot_id is the system to query, resolved by the caller on the UI thread
+    (elastic_schema.resolve_robot_id); None means nothing to fetch.
 
     Combines two message types:
     - targeting_node  "Received new unique pick target"  — position, SKU, metrics
@@ -119,7 +123,6 @@ def fetch_buffer_events(
     """
     from datetime import timedelta
 
-    robot_id = _get_robot_id(pikpak_root)
     dbg("buffer", f"robot_id={robot_id!r}  pikpak_root={pikpak_root}")
     if not robot_id:
         log("buffer", "no robot_id - aborting")

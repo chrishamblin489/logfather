@@ -49,7 +49,6 @@ from logfather.data.elastic_schema import (
 KIBANA_BASE_DEFAULT = "https://leap-deployment.kb.europe-west2.gcp.elastic-cloud.com:9243"
 ELASTIC_INDEX_PATTERN = "logstash-*,pikpak,pikpak-*"
 ELASTIC_TIMESTAMP_FIELDS = ["@timestamp_ros", "@timestamp"]
-SYSTEM_ID_OVERRIDE: str | None = None
 ELASTIC_EVENT_MAX_WORKERS = 4
 # Sentinel: distinguishes "caller didn't supply last_video_end" (fall back
 # to scanning the share) from an explicit None ("no videos that day").
@@ -66,11 +65,11 @@ ELASTIC_EVENT_MIN_PAGE_SIZE = 300
 ELASTIC_EVENT_TIMEOUT_SEC = 12
 FLEETWIDE_OCCURRENCE_COOLDOWN_SECONDS = 30
 
-
-
-def set_system_id_override(system_id: str | None) -> None:
-    global SYSTEM_ID_OVERRIDE
-    SYSTEM_ID_OVERRIDE = system_id or None
+# The robot id every per-system fetch queries is an explicit ``robot_id``
+# keyword, resolved by the caller on the UI thread with
+# elastic_schema.resolve_robot_id (override wins, else the PikPak folder).
+# It was a module global (SYSTEM_ID_OVERRIDE) mutated by the UI thread and
+# read by the fetch workers until 2026-09-14 (review item 10).
 
 
 def _normalize_index_id(_index_id: str | None) -> str | None:
@@ -131,14 +130,6 @@ def _events_cache_path_for_robot(
 def _extract_robot_id(pikpak_root: Path) -> str | None:
     """PikPak folder -> robot id (canonical rule lives in elastic_schema)."""
     return robot_id_from_folder(pikpak_root.name)
-
-
-def _get_robot_id(pikpak_root: Path | None) -> str | None:
-    if SYSTEM_ID_OVERRIDE:
-        return SYSTEM_ID_OVERRIDE
-    if pikpak_root is None:
-        return None
-    return _extract_robot_id(pikpak_root)
 
 
 def _iso_range_for_day(day: datetime.date) -> tuple[str, str]:
@@ -722,15 +713,21 @@ def fetch_events(
     pikpak_root: Path | None,
     day,
     last_video_end: object = _LAST_VIDEO_END_UNSET,
+    *,
+    robot_id: str | None,
 ) -> Iterable[TimelineItem]:
     """last_video_end: the inferred end of the day's last clip, when the
     caller (the timeline loader) has already scanned the share for it —
     re-listing a day folder on the WAN share costs ~5s. May also be a
     zero-arg callable (resolver) that fetch_sku_items calls only at its
-    final band-capping step, letting the queries overlap the scan."""
+    final band-capping step, letting the queries overlap the scan.
+
+    robot_id: the system to query, resolved by the caller on the UI
+    thread (elastic_schema.resolve_robot_id); None means nothing to fetch.
+    pikpak_root is kept for the cache key and the share scan only."""
     t_fetch_start = perf_counter()
-    if not day or (pikpak_root is None and SYSTEM_ID_OVERRIDE is None):
-        log("elastic", "No PikPak or day selected; skipping event fetch.")
+    if not day or not robot_id:
+        log("elastic", f"No robot id or day selected (root={pikpak_root}); skipping event fetch.")
         return []
     url = settings.elastic_url or KIBANA_BASE_DEFAULT
     api_key = settings.elastic_api_key or ""
@@ -742,11 +739,6 @@ def fetch_events(
         log("elastic", "Missing index/pattern; set it in Settings.")
         return []
 
-
-    robot_id = _get_robot_id(pikpak_root)
-    if not robot_id:
-        log("elastic", f"Could not derive robot id from {pikpak_root}")
-        return []
     cache_path = _events_cache_path_for_robot(settings, robot_id, day, pikpak_root=pikpak_root)
     t_cache_read_start = perf_counter()
     cached = _load_events_cache(cache_path, day)
@@ -766,7 +758,9 @@ def fetch_events(
         sku_ok = True
         try:
             sku_items = list(
-                fetch_sku_items(settings, pikpak_root, day, last_video_end=last_video_end)
+                fetch_sku_items(
+                    settings, pikpak_root, day, last_video_end=last_video_end, robot_id=robot_id
+                )
             )
         except ElasticFetchError as exc:
             sku_ok = False
@@ -926,7 +920,9 @@ def fetch_events(
     sku_ok = True
     try:
         sku_items = list(
-            fetch_sku_items(settings, pikpak_root, day, last_video_end=last_video_end)
+            fetch_sku_items(
+                settings, pikpak_root, day, last_video_end=last_video_end, robot_id=robot_id
+            )
         )
     except ElasticFetchError as exc:
         warnings.append(str(exc))
@@ -982,10 +978,12 @@ def fetch_sku_items(
     pikpak_root: Path | None,
     day,
     last_video_end: object = _LAST_VIDEO_END_UNSET,
+    *,
+    robot_id: str | None,
 ) -> Iterable[TimelineItem]:
     dbg("sku-debug", "fetch_sku_items start")
-    if not day or (pikpak_root is None and SYSTEM_ID_OVERRIDE is None):
-        log("elastic", "No PikPak or day selected; skipping SKU fetch.")
+    if not day or not robot_id:
+        log("elastic", f"No robot id or day selected (root={pikpak_root}); skipping SKU fetch.")
         return []
     if last_video_end is _LAST_VIDEO_END_UNSET:
         last_video_end = _last_video_end(pikpak_root, day)
@@ -999,11 +997,6 @@ def fetch_sku_items(
         return []
     if not index_id:
         log("elastic", "Missing index/pattern; set it in Settings.")
-        return []
-
-    robot_id = _get_robot_id(pikpak_root)
-    if not robot_id:
-        log("elastic", f"Could not derive robot id from {pikpak_root}")
         return []
 
     start_iso, end_iso = _iso_range_for_day(day)
@@ -1236,19 +1229,17 @@ def _fetch_logs_range_raw(
     start_dt: datetime,
     end_dt: datetime,
     max_hits: int = 50000,
+    *,
+    robot_id: str | None,
 ) -> list[tuple[datetime, str, str, str, str]]:
-    if not pikpak_root and not SYSTEM_ID_OVERRIDE:
-        log("elastic", "No PikPak root provided for log fetch.")
+    if not robot_id:
+        log("elastic", f"No robot id for log fetch (root={pikpak_root}).")
         return []
     url = settings.elastic_url or KIBANA_BASE_DEFAULT
     api_key = settings.elastic_api_key or ""
     index_id = _normalize_index_id(None)
     if not url or not api_key or not index_id:
         log("elastic", "Missing URL/API key/index; cannot fetch logs.")
-        return []
-    robot_id = _get_robot_id(pikpak_root)
-    if not robot_id:
-        log("elastic", f"Could not derive robot id from {pikpak_root}")
         return []
 
     start_iso = _ensure_utc(start_dt).isoformat().replace("+00:00", "Z")
@@ -1344,8 +1335,15 @@ def fetch_logs_for_range(
     start_dt: datetime,
     end_dt: datetime,
     max_hits: int = 50000,
+    *,
+    robot_id: str | None,
 ) -> list[tuple[datetime, str, str, str, str]]:
-    return _fetch_logs_range_raw(settings, pikpak_root, start_dt, end_dt, max_hits=max_hits)
+    """The raw log rows for ``robot_id`` between the two stamps; the id is
+    resolved by the caller on the UI thread (elastic_schema.resolve_robot_id).
+    pikpak_root only names the folder in the log lines."""
+    return _fetch_logs_range_raw(
+        settings, pikpak_root, start_dt, end_dt, max_hits=max_hits, robot_id=robot_id
+    )
 
 
 def fetch_fleetwide_search_histogram(

@@ -40,7 +40,7 @@ from logfather.ui.gear_menu import build_gear_button
 from logfather.ui.day_selection import DaySelection
 from logfather.ui.telemetry_strip import TelemetryPanel
 from logfather.data import grafana_client
-from logfather.data.elastic_schema import robot_id_from_folder
+from logfather.data.elastic_schema import resolve_robot_id, robot_id_from_folder
 from logfather.data.telemetry_loader import fetch_telemetry_day
 from logfather.core.telemetry import summary_track
 from logfather.ui.pulse import Pulser
@@ -60,7 +60,7 @@ from logfather.ui.replay_timeline import (
 )
 from logfather.core.app_version import load_version_info
 from logfather.data.day_listing_cache import load_day_files_cached
-from logfather.data.elastic_loader import fetch_events, set_system_id_override
+from logfather.data.elastic_loader import fetch_events
 from logfather.ui.qt_worker import JobSlot
 from logfather.ui.progress import job_progress
 from logfather.ui.pane_animator import PaneAnimator
@@ -164,12 +164,14 @@ class MainWindow(QWidget):
 
         # Extra loaders: Elastic events + additional CCTV clips. The third
         # argument is the day's last-video-end from the timeline scan, so
-        # the SKU fetch doesn't re-list the share.
+        # the SKU fetch doesn't re-list the share; the fourth is the robot
+        # id resolved on the UI thread when the day was chosen (a loader
+        # runs on a worker and must not read self.system_id_override).
         extra_loaders = [
-            lambda root, day, last_video_end: fetch_events(
-                self.settings, root, day, last_video_end=last_video_end
+            lambda root, day, last_video_end, robot_id: fetch_events(
+                self.settings, root, day, last_video_end=last_video_end, robot_id=robot_id
             ),
-            lambda root, day, last_video_end: self._load_additional_cctv_items(root, day, cache_root),
+            lambda root, day, last_video_end, _robot_id: self._load_additional_cctv_items(root, day, cache_root),
         ]
 
         self.replay_timeline = ReplayTimeline(
@@ -844,12 +846,19 @@ class MainWindow(QWidget):
             static_tracks.append((kind, label, color))
         return static_tracks
 
+    def _robot_id_for(self, pikpak_root: Path | None) -> str | None:
+        """The robot id a fetch for ``pikpak_root`` should query: the date
+        picker's system-id override (SIM Logs mode) wins, else the folder's
+        id. UI thread only — every fetch takes the result as an explicit
+        argument, so a worker never reads self.system_id_override."""
+        return resolve_robot_id(pikpak_root, self.system_id_override)
+
     def on_date_selected(self, pikpak_root: Path | None, day: date | None):
         self.viewer.prepare_for_new_clip(show_loading=False)
         # Past the share's retention there is nothing to play: say so
         # where the footage would be (Chris, 2026-09-07).
         self.viewer.set_footage_notice(FOOTAGE_DELETED_NOTICE if footage_expired(day) else None)
-        self.replay_timeline.show_times(pikpak_root, day)
+        self.replay_timeline.show_times(pikpak_root, day, self._robot_id_for(pikpak_root))
         self._update_current_system_label(pikpak_root, day)
         self._load_telemetry(pikpak_root, day)
         if self.date_picker.parent_dir:
@@ -1008,8 +1017,10 @@ class MainWindow(QWidget):
             self._targets_panel_anim.hide()
 
     def _set_system_id_override(self, system_id: str | None):
+        """The date picker chose a system by id (SIM Logs mode) or cleared
+        it (a PikPak folder). The single source of truth for the override;
+        read only on the UI thread through _robot_id_for."""
         self.system_id_override = system_id or None
-        set_system_id_override(self.system_id_override)
         self._overlay_controller.reload_calibration()
 
     def _set_date_picker_visible(self, visible: bool, splitter: QSplitter):
@@ -1355,17 +1366,17 @@ class MainWindow(QWidget):
         if item.start is not None:
             self._save_last_session(playhead_override=item.start)
         current_root = self.replay_timeline.current_root
+        robot_id = self._robot_id_for(current_root)
         if current_root and item.start and item.end:
-            self._overlay_controller.load_buffer_events(current_root, item.start, item.end)
+            self._overlay_controller.load_buffer_events(current_root, item.start, item.end, robot_id)
 
         if ENABLE_LOG_BUTTON:
-            current_root = self.replay_timeline.current_root
             if current_root and item.start and item.end:
                 start_iso = item.start.isoformat()
                 end_iso = (item.end + timedelta(minutes=1)).isoformat()
                 if DEBUG_CLIP_TIMING:
                     dbg("main", f"Logs pending for {start_iso} -> {end_iso}")
-                self.viewer.set_pending_logs(str(current_root), start_iso, end_iso)
+                self.viewer.set_pending_logs(str(current_root), start_iso, end_iso, robot_id=robot_id)
 
     def _open_next_clip(self) -> bool:
         """Open the clip after the one in the viewer (Chris, 2026-09-11:
@@ -1524,6 +1535,7 @@ class MainWindow(QWidget):
         settings = self.settings
         day = self.replay_timeline._current_date
         root = self.replay_timeline.current_root
+        robot_id = self._robot_id_for(root)
         clip_cache = self.viewer.clip_cache
 
         self.stop_report_btn.setEnabled(False)
@@ -1567,6 +1579,7 @@ class MainWindow(QWidget):
                 settings=settings,
                 day=day,
                 root=root,
+                robot_id=robot_id,
                 clip_cache=clip_cache,
                 job=job,
             ),

@@ -167,7 +167,10 @@ class ReplayTimeline(QWidget):
     moment_clicked = Signal(object)  # a click on empty chart: the moment under the pointer (Chris, 2026-09-12)
 
     def __init__(self, load_func: Optional[Callable[[Path, date], Iterable[Path]]] = None,
-                 extra_loaders: Optional[list[Callable[[Path, date, Optional[datetime]], Iterable[TimelineItem]]]] = None,
+                 # An extra loader is called on the worker as
+                 # loader(root, day, resolve_last_video_end, robot_id); the
+                 # robot id was resolved by show_times' caller on the UI thread.
+                 extra_loaders: Optional[list[Callable[[Path, date, Callable, Optional[str]], Iterable[TimelineItem]]]] = None,
                  static_tracks: Optional[List[Tuple[str, str, str]]] = None,
                  cache_root: Optional[Path] = None):
         super().__init__()
@@ -297,6 +300,8 @@ class ReplayTimeline(QWidget):
 
         self._current_root: Optional[Path] = None
         self._current_date: Optional[date] = None
+        # The robot id the current day was loaded for (Refresh reuses it).
+        self._current_robot_id: Optional[str] = None
         self._cursor_line = None
         self._cursor_label = None
         self._cursor_marker_outer = None
@@ -345,11 +350,16 @@ class ReplayTimeline(QWidget):
     def current_root(self) -> Optional[Path]:
         return self._current_root
 
-    def show_times(self, pikpak_root: Optional[Path], day: Optional[date]):
+    def show_times(self, pikpak_root: Optional[Path], day: Optional[date], robot_id: Optional[str]):
+        """Load the day. ``robot_id`` is the system the Elastic loaders
+        query, resolved by the caller on the UI thread (the main window
+        knows the picker's system-id override) and carried through the
+        job's arguments so an in-flight load never reads UI state."""
         # Stop any in-flight loads so stale results can't repopulate after switching PikPak/day.
         self._stop_loader_thread()
         self._current_root = pikpak_root
         self._current_date = day
+        self._current_robot_id = robot_id
         self._items.clear()
         self.scene.clear()
         self._signals.reset_for_redraw()
@@ -387,7 +397,9 @@ class ReplayTimeline(QWidget):
         extra_loaders = list(self._extra_loaders)
         cache_root = self._cache_root
         self._loader_slot.start(
-            lambda job: _load_timeline_items(job, load_root, day, load_func, extra_loaders, cache_root),
+            lambda job: _load_timeline_items(
+                job, load_root, day, load_func, extra_loaders, cache_root, robot_id
+            ),
             on_result=self._on_load_result,
             on_error=self._on_load_failed,
             on_progress=self._on_load_progress,
@@ -713,7 +725,7 @@ class ReplayTimeline(QWidget):
         base.setAcceptedMouseButtons(Qt.NoButton)
 
     def _refresh_clicked(self):
-        self.show_times(self._current_root, self._current_date)
+        self.show_times(self._current_root, self._current_date, self._current_robot_id)
 
     @staticmethod
     def _event_tooltip(item: TimelineItem) -> str:
@@ -1736,15 +1748,25 @@ class ReplayTimeline(QWidget):
 
 
 
-def _load_timeline_items(job, root: Path, day: date, load_func, extra_loaders, cache_root: Optional[Path]):
+def _load_timeline_items(
+    job,
+    root: Path,
+    day: date,
+    load_func,
+    extra_loaders,
+    cache_root: Optional[Path],
+    robot_id: Optional[str] = None,
+):
     """Worker for the day timeline: the Elastic extra loaders run
     CONCURRENTLY with the video scan of the share (each emits a partial as
     it completes; all partials append, and show_times cleared the items).
     The loaders receive a zero-arg resolver for the day's last-video-end —
     fetch_sku_items needs that value only for its final band-capping step,
     so its Elastic queries overlap the scan and the resolver blocks only
-    if the scan hasn't finished by then. Progress payloads are tagged
-    tuples: ("partial", items, day, append, root) and ("warning", message).
+    if the scan hasn't finished by then — and the robot id the day was
+    requested for (resolved on the UI thread; never read from UI state
+    here). Progress payloads are tagged tuples:
+    ("partial", items, day, append, root) and ("warning", message).
     """
     t_total_start = perf_counter()
 
@@ -1762,7 +1784,7 @@ def _load_timeline_items(job, root: Path, day: date, load_func, extra_loaders, c
     if extra_loaders:
         executor = ThreadPoolExecutor(max_workers=max(1, len(extra_loaders)))
         for loader in extra_loaders:
-            future = executor.submit(loader, root, day, _resolve_last_video_end)
+            future = executor.submit(loader, root, day, _resolve_last_video_end, robot_id)
             future_to_name[future] = getattr(loader, "__name__", repr(loader))
             future_to_start[future] = perf_counter()
 

@@ -249,15 +249,17 @@ def collect_stop_report_data(
     settings: Settings,
     day,
     root: Path | None,
+    robot_id: str | None,
     clip_cache,
     job=None,
 ) -> list[StopEventData]:
     """Gather the day's stop report data: Elastic fallback fetch, clip
     copies, thumbnail decodes. Worker-safe (no QPixmap/QWidget).
 
-    `clip_cache` is the viewer's ClipCache; `job` (a qt_worker.Job) gets
-    ("copies"|"thumbs", done, total) progress and is polled for
-    interruption between steps."""
+    `robot_id` is the system the fallback fetch queries, resolved by the
+    caller on the UI thread. `clip_cache` is the viewer's ClipCache; `job`
+    (a qt_worker.Job) gets ("copies"|"thumbs", done, total) progress and
+    is polled for interruption between steps."""
     if not items:
         return []
     has_operator_stop_in_timeline = any(_is_operator_stop_item(itm) for itm in items)
@@ -325,7 +327,7 @@ def collect_stop_report_data(
     # Ensure behaviour-node operator_stop entries are included even when not
     # represented by configured timeline conditions.
     if not has_operator_stop_in_timeline:
-        for ts, source, state_name, message in _fetch_operator_stop_events(settings, day, root):
+        for ts, source, state_name, message in _fetch_operator_stop_events(settings, day, root, robot_id):
             if job is not None and job.interrupted():
                 return []
             key = (int(ts.timestamp()), state_name.lower() or "operator_stop")
@@ -399,7 +401,9 @@ def build_stop_report_entries(data: list[StopEventData]) -> list[StopReportEntry
         )
     return entries
 
-def _fetch_operator_stop_events(settings: Settings, day, root: Path | None) -> list[tuple[datetime, str, str, str]]:
+def _fetch_operator_stop_events(
+    settings: Settings, day, root: Path | None, robot_id: str | None
+) -> list[tuple[datetime, str, str, str]]:
     if day is None:
         return []
     start_dt = local_day_start_utc(day)
@@ -411,6 +415,7 @@ def _fetch_operator_stop_events(settings: Settings, day, root: Path | None) -> l
             start_dt,
             end_dt,
             max_hits=30000,
+            robot_id=robot_id,
         )
     except Exception:
         return []
