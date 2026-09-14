@@ -18,6 +18,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+from logfather.core.log import log
+
 
 class OcrOffsetStore:
     def __init__(self, path: Path | None = None):
@@ -45,9 +47,9 @@ class OcrOffsetStore:
         aside = self.path.with_name(f"{self.path.name}.corrupt-{stamp}")
         try:
             os.replace(self.path, aside)
-            print(f"[ocr-store] {self.path} is {why}; moved to {aside.name} and starting a fresh store", flush=True)
+            log("ocr-store", f"{self.path} is {why}; moved to {aside.name} and starting a fresh store")
         except Exception as exc:
-            print(f"[ocr-store] {self.path} is {why} and could not be moved aside ({exc}); leaving it untouched", flush=True)
+            log("ocr-store", f"{self.path} is {why} and could not be moved aside ({exc}); leaving it untouched")
 
     def _save(self, data: dict) -> None:
         """Atomic: write next to the file, then rename over it."""
@@ -59,7 +61,7 @@ class OcrOffsetStore:
             tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
             os.replace(tmp, self.path)
         except Exception as exc:
-            print(f"[ocr-store] could not write {self.path}: {exc}", flush=True)
+            log("ocr-store", f"could not write {self.path}: {exc}")
             try:
                 tmp.unlink()
             except Exception:

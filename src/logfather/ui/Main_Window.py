@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
 )
 
+from logfather.core.log import dbg, log
 from logfather.ui import theme
 from logfather.ui.Date_Picker_frontend import DatePicker
 from logfather.core.app_version import is_newer, latest_available_version, load_version_info
@@ -793,7 +794,7 @@ class MainWindow(QWidget):
         try:
             subprocess.Popen(cmd, cwd=os.getcwd(), creationflags=flags, close_fds=True)
         except Exception as exc:
-            print(f"[update] could not start the new instance: {exc}")
+            log("update", f"could not start the new instance: {exc}")
 
     def _open_about_dialog(self):
         from logfather.ui.about_page import AboutDialog
@@ -1139,7 +1140,7 @@ class MainWindow(QWidget):
             "mode": self._current_mode_name(),
         }
         self.settings.save()
-        print(f"[main] session saved: {root.name} {day.isoformat()} @ {playhead_iso}", flush=True)
+        log("main", f"session saved: {root.name} {day.isoformat()} @ {playhead_iso}")
 
     def _current_mode_name(self) -> str:
         if self.overview_btn.isChecked():
@@ -1254,10 +1255,10 @@ class MainWindow(QWidget):
             try:
                 shutdown()
             except Exception as exc:
-                print(f"[main] shutdown step failed: {exc}", flush=True)
+                log("main", f"shutdown step failed: {exc}")
             dt_ms = (time.perf_counter() - t0) * 1000
             if dt_ms > 100:
-                print(f"[shutdown] '{label}' took {dt_ms:.0f}ms", flush=True)
+                dbg("shutdown", f"'{label}' took {dt_ms:.0f}ms")
         _step("Saving session", len(steps))
         # Geometry capture and session save must come AFTER
         # viewer.shutdown_workers: its settings flush emits settings_saved,
@@ -1274,10 +1275,7 @@ class MainWindow(QWidget):
         except Exception:
             pass
         popup_bar.setValue(len(steps) + 1)
-        print(
-            f"[shutdown] total {(time.perf_counter() - t_shutdown) * 1000:.0f}ms",
-            flush=True,
-        )
+        dbg("shutdown", f"total {(time.perf_counter() - t_shutdown) * 1000:.0f}ms")
         popup.close()
         super().closeEvent(event)
 
@@ -1317,15 +1315,15 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "File not found", str(video_path))
             return
         t0 = time.perf_counter()
-        print(f"[main] Opening video: {video_path}", flush=True)
+        log("main", f"Opening video: {video_path}")
         self.viewer.prepare_for_new_clip()
         if DEBUG_CLIP_TIMING:
-            print(f"[main] prepare_for_new_clip took {time.perf_counter() - t0:.2f}s", flush=True)
+            dbg("main", f"prepare_for_new_clip took {time.perf_counter() - t0:.2f}s")
         if not self.viewer.load_video_from_path(str(video_path)):
             return
-        print("[main] Video loaded OK", flush=True)
+        log("main", "Video loaded OK")
         if DEBUG_CLIP_TIMING:
-            print(f"[main] load_video_from_path total {time.perf_counter() - t0:.2f}s", flush=True)
+            dbg("main", f"load_video_from_path total {time.perf_counter() - t0:.2f}s")
         self._sync_viewer_sku_overlay()
         # Keep cache color updates, but avoid log marker updates while logs are disabled.
         # Keep cache colors in the timeline; do it off the critical path.
@@ -1335,22 +1333,22 @@ class MainWindow(QWidget):
             if DEBUG_CLIP_TIMING:
                 QTimer.singleShot(
                     0,
-                    lambda: print(f"[main] timeline cache update at +{time.perf_counter() - t0:.2f}s", flush=True),
+                    lambda: dbg("main", f"timeline cache update at +{time.perf_counter() - t0:.2f}s"),
                 )
         elif DEBUG_CLIP_TIMING:
             QTimer.singleShot(
                 0,
-                lambda: print(f"[main] timeline cache update skipped at +{time.perf_counter() - t0:.2f}s", flush=True),
+                lambda: dbg("main", f"timeline cache update skipped at +{time.perf_counter() - t0:.2f}s"),
             )
         if DEBUG_CLIP_TIMING:
-            QTimer.singleShot(0, lambda: print(f"[main] UI tick +{time.perf_counter() - t0:.2f}s", flush=True))
-            QTimer.singleShot(200, lambda: print(f"[main] UI tick +{time.perf_counter() - t0:.2f}s", flush=True))
+            QTimer.singleShot(0, lambda: dbg("main", f"UI tick +{time.perf_counter() - t0:.2f}s"))
+            QTimer.singleShot(200, lambda: dbg("main", f"UI tick +{time.perf_counter() - t0:.2f}s"))
         if ENABLE_EVENT_MARKERS:
             def _apply_markers():
                 markers = self.replay_timeline.collect_event_markers(item)
                 self.viewer.set_timeline_markers(markers)
                 if DEBUG_CLIP_TIMING:
-                    print(f"[main] timeline markers set at +{time.perf_counter() - t0:.2f}s", flush=True)
+                    dbg("main", f"timeline markers set at +{time.perf_counter() - t0:.2f}s")
             QTimer.singleShot(0, _apply_markers)
         if ENABLE_PREFETCH_ADJACENT:
             QTimer.singleShot(0, lambda: self._prefetch_adjacent_clips(item))
@@ -1366,7 +1364,7 @@ class MainWindow(QWidget):
                 start_iso = item.start.isoformat()
                 end_iso = (item.end + timedelta(minutes=1)).isoformat()
                 if DEBUG_CLIP_TIMING:
-                    print(f"[main] Logs pending for {start_iso} -> {end_iso}", flush=True)
+                    dbg("main", f"Logs pending for {start_iso} -> {end_iso}")
                 self.viewer.set_pending_logs(str(current_root), start_iso, end_iso)
 
     def _open_next_clip(self) -> bool:
@@ -1446,7 +1444,7 @@ class MainWindow(QWidget):
         if paths:
             # Stop downloading a previously viewed day before queueing this one.
             self.viewer.cancel_queued_prefetches()
-            print(f"[main] day prefetch: queueing {len(paths)} clips", flush=True)
+            log("main", f"day prefetch: queueing {len(paths)} clips")
             self.viewer.prefetch_clips_to_cache(paths)
 
     def _prefetch_adjacent_clips(self, item: TimelineItem):
@@ -1713,7 +1711,7 @@ class MainWindow(QWidget):
                 f"{label}={((t - prev) * 1000):.0f}ms"
                 for (label, t), (_, prev) in zip(marks[1:], marks[:-1])
             )
-            print(f"[settings-reload] {steps}", flush=True)
+            dbg("settings-reload", steps)
 
     def _sync_settings_from_fleetwide_search(self):
         # Keep the viewer's embedded settings panels on the same settings

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from logfather.core.log import dbg
+
 try:
     from zoneinfo import ZoneInfo
 except Exception:
@@ -71,9 +73,9 @@ def _format_display_timestamp(dt: datetime) -> str:
 
 
 def build_events_from_rows(rows: list[tuple]):
-    print(f"[viewer] build_events_from_rows start ({len(rows)} rows)", flush=True)
+    dbg("viewer", f"build_events_from_rows start ({len(rows)} rows)")
     if not rows:
-        print("[viewer] build_events_from_rows early exit (no rows)", flush=True)
+        dbg("viewer", "build_events_from_rows early exit (no rows)")
         return [], [], [], [], [], None
     rows.sort(key=lambda x: x[0])
     t0 = rows[0][0]
@@ -102,5 +104,5 @@ def build_events_from_rows(rows: list[tuple]):
     # Tile each event's end to its neighbour's start so there are no gaps.
     for i in range(len(events) - 1):
         events[i].end = events[i + 1].start
-    print("[viewer] build_events_from_rows done", flush=True)
+    dbg("viewer", "build_events_from_rows done")
     return events, display_rows, source_keys, state_keys, message_keys, t0

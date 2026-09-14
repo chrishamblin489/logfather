@@ -10,6 +10,8 @@ import os
 from pathlib import Path
 from typing import Callable, Optional
 
+from logfather.core.log import dbg, log
+
 from logfather.paths import bundle_root
 from logfather.ui import theme
 from logfather.ui.progress import StageProgress
@@ -2130,8 +2132,8 @@ def analyze_video_offset(
             change_frame, initial_date, new_date = change
             start_frame = max(start_frame, change_frame)
             base_dt = base_dt.replace(year=new_date.year, month=new_date.month, day=new_date.day)
-            print(f"[ocr] camera date {initial_date} -> {new_date} at frame {change_frame} ({change_frame / fps:.1f}s); clock read from there", flush=True)
-        print(f"[ocr] date check: {(perf_counter() - t_stage) * 1000:.0f}ms", flush=True)
+            log("ocr", f"camera date {initial_date} -> {new_date} at frame {change_frame} ({change_frame / fps:.1f}s); clock read from there")
+        dbg("ocr", f"date check: {(perf_counter() - t_stage) * 1000:.0f}ms")
         if should_abort is not None and should_abort():
             cap.release()
             return None
@@ -2214,18 +2216,18 @@ def estimate_offset(
                 read_clock=read_clock, start_frame=start_frame, hooks=scan_hooks,
             )
         best_start = pick_best_start(samples)
-        print(
-            f"[ocr] {kind} scan {seconds}s: {(perf_counter() - t_stage) * 1000:.0f}ms "
+        dbg(
+            "ocr",
+            f"{kind} scan {seconds}s: {(perf_counter() - t_stage) * 1000:.0f}ms "
             f"samples={len(samples)} found={best_start is not None}",
-            flush=True,
         )
         if best_start is not None or _stopped():
             break
     if _stopped():
-        print(f"[ocr] analyze total: {(perf_counter() - t_total) * 1000:.0f}ms (cancelled)", flush=True)
+        log("ocr", f"analyze total: {(perf_counter() - t_total) * 1000:.0f}ms (cancelled)")
         return OcrSyncOutcome(None, OCR_SYNC_CANCELLED)
     if best_start is None:
-        print(f"[ocr] analyze total: {(perf_counter() - t_total) * 1000:.0f}ms (no result)", flush=True)
+        log("ocr", f"analyze total: {(perf_counter() - t_total) * 1000:.0f}ms (no result)")
         return OcrSyncOutcome(None, OCR_SYNC_NO_SAMPLES)
 
     offset_seconds = (best_start - base_dt).total_seconds()
@@ -2233,11 +2235,11 @@ def estimate_offset(
     frame_offset, report = _verify_frame_offset_for_cap(
         cap, fps, frame_count, best_start, read_clock, start_frame=start_frame,
     )
-    print(f"[ocr] verify: {(perf_counter() - t_stage) * 1000:.0f}ms", flush=True)
-    print(
-        f"[ocr] analyze total: {(perf_counter() - t_total) * 1000:.0f}ms "
+    dbg("ocr", f"verify: {(perf_counter() - t_stage) * 1000:.0f}ms")
+    log(
+        "ocr",
+        f"analyze total: {(perf_counter() - t_total) * 1000:.0f}ms "
         f"(offset={offset_seconds:+.3f}s frames={frame_offset})",
-        flush=True,
     )
     return OcrSyncOutcome(OcrOffsetResult(
         video_start_dt=best_start,
@@ -2403,7 +2405,7 @@ def pick_best_start(samples: list[tuple[int, float, datetime, str]]) -> datetime
         best_start, median_start, outliers = transition
         for outlier_start, outlier_text in outliers:
             delta = (outlier_start - median_start).total_seconds()
-            print(f"[ocr] disregarded transition {outlier_text} (offset {delta:+.2f}s)", flush=True)
+            log("ocr", f"disregarded transition {outlier_text} (offset {delta:+.2f}s)")
         return best_start
     if not samples:
         return None
@@ -2418,7 +2420,7 @@ def pick_best_start(samples: list[tuple[int, float, datetime, str]]) -> datetime
         if abs(delta) <= OCR_SAMPLE_INLIER_SECONDS:
             inliers.append(start)
         else:
-            print(f"[ocr] disregarded sample {text} (offset {delta:+.2f}s)", flush=True)
+            log("ocr", f"disregarded sample {text} (offset {delta:+.2f}s)")
     return inliers[len(inliers) // 2]
 
 

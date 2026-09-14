@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from logfather.core.log import dbg, log
 from logfather.data.elastic_client import (
     api_headers,
     get_thread_session as _get_thread_session,
@@ -119,23 +120,23 @@ def fetch_buffer_events(
     from datetime import timedelta
 
     robot_id = _get_robot_id(pikpak_root)
-    print(f"[buffer] robot_id={robot_id!r}  pikpak_root={pikpak_root}")
+    dbg("buffer", f"robot_id={robot_id!r}  pikpak_root={pikpak_root}")
     if not robot_id:
-        print("[buffer] no robot_id - aborting")
+        log("buffer", "no robot_id - aborting")
         return []
     url = settings.elastic_url or KIBANA_BASE_DEFAULT
     api_key = settings.elastic_api_key or ""
     index_id = _normalize_index_id(None)
-    print(f"[buffer] url={url!r}  index_id={index_id!r}  api_key={'set' if api_key else 'MISSING'}")
+    dbg("buffer", f"url={url!r}  index_id={index_id!r}  api_key={'set' if api_key else 'MISSING'}")
     if not url or not api_key or not index_id:
-        print("[buffer] missing url/api_key/index_id - aborting")
+        log("buffer", "missing url/api_key/index_id - aborting")
         return []
 
     window_start = _ensure_utc(clip_start) - timedelta(minutes=lookback_minutes)
     window_end   = _ensure_utc(clip_end)
     start_iso = window_start.isoformat().replace("+00:00", "Z")
     end_iso   = window_end.isoformat().replace("+00:00", "Z")
-    print(f"[buffer] window {start_iso} -> {end_iso}")
+    dbg("buffer", f"window {start_iso} -> {end_iso}")
     ts_fields = list(ELASTIC_TIMESTAMP_FIELDS)
     sort_field = ts_fields[0] if ts_fields else "@timestamp"
     headers = api_headers(api_key)
@@ -184,9 +185,9 @@ def fetch_buffer_events(
             motion.append((ts, src))
 
     motion.sort(key=lambda x: x[0])
-    print(
-        f"[buffer] {len(targeting)} targeting events, "
-        f"{len(motion)} queue events for {start_iso} -> {end_iso}"
+    log(
+        "buffer",
+        f"{len(targeting)} targeting events, {len(motion)} queue events for {start_iso} -> {end_iso}",
     )
 
     # Build PickTargets.

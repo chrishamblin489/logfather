@@ -21,6 +21,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
+from logfather.core.log import log
 from logfather.core.time_alignment import plausible_ocr_offset
 from logfather.data.ocr_offset_store import OcrOffsetStore
 from logfather.ui.time_ocr import parse_filename_datetime
@@ -142,10 +143,10 @@ class OcrChannel:
         except Exception:
             offset_seconds, frame_offset = None, 0
         if offset_seconds is not None and not plausible_ocr_offset(offset_seconds):
-            print(
-                f"[ocr] cached {self.label} offset {offset_seconds:.0f}s for {key} is not "
+            log(
+                "ocr",
+                f"cached {self.label} offset {offset_seconds:.0f}s for {key} is not "
                 "plausible; dropped, using the filename time",
-                flush=True,
             )
             try:
                 self.store.remove(key)

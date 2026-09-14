@@ -20,6 +20,7 @@ from typing import Callable
 
 from PySide6.QtCore import QObject, Signal
 
+from logfather.core.log import log
 from logfather.data.conveyor_calibration import ConveyorCalibration, load_calibration
 from logfather.ui.conveyor_calibration_dialog import ConveyorCalibrationDialog
 from logfather.ui.qt_worker import JobSlot
@@ -111,7 +112,7 @@ class TargetOverlayController(QObject):
         if pikpak_root is None or clip_start is None or clip_end is None:
             return
 
-        print(f"[buffer] starting load for {pikpak_root}  {clip_start} -> {clip_end}")
+        log("buffer", f"starting load for {pikpak_root}  {clip_start} -> {clip_end}")
         settings = self._settings_provider()
         self._buffer_slot.start(
             lambda job: fetch_buffer_events(settings, pikpak_root, clip_start, clip_end),
@@ -120,7 +121,7 @@ class TargetOverlayController(QObject):
         )
 
     def _on_buffer_events_failed(self, message: str) -> None:
-        print(f"[buffer] load failed: {message}")
+        log("buffer", f"load failed: {message}")
         self._on_buffer_events_loaded([])
 
     def _on_buffer_events_loaded(self, events: list) -> None:
@@ -129,7 +130,7 @@ class TargetOverlayController(QObject):
         self._buffer_widget.set_buffer_events(events)
         self._buffer_widget.set_alerted_target_ids(self._close_gap_target_ids)
         self._buffer_widget.set_wide_gap_target_ids(self._wide_gap_target_ids)
-        print(f"[buffer] {len(events)} buffer state transitions loaded")
+        log("buffer", f"{len(events)} buffer state transitions loaded")
         if self._last_playhead_dt:
             if self.panel_visible:
                 self._buffer_widget.update_for_time(self._last_playhead_dt)
@@ -188,8 +189,8 @@ class TargetOverlayController(QObject):
     def reload_calibration(self) -> None:
         sid = self._calibration_system_id_provider()
         self._conveyor_cal = load_calibration(sid)
-        print(f"[cal] loaded calibration for '{sid}', "
-              f"{'tracking line ready' if self._conveyor_cal.has_tracking_line() else 'no tracking line'}")
+        log("cal", f"loaded calibration for '{sid}', "
+                   f"{'tracking line ready' if self._conveyor_cal.has_tracking_line() else 'no tracking line'}")
         self.calibration_ready.emit(self.has_calibration())
 
     def open_calibration_dialog(self) -> None:

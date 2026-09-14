@@ -14,6 +14,7 @@ from typing import Callable
 import requests
 from requests.adapters import HTTPAdapter
 
+from logfather.core.log import log
 from logfather.data.elastic_errors import ElasticFetchError
 
 _thread_local = threading.local()
@@ -94,10 +95,10 @@ def msearch_first_pages(
         resp.raise_for_status()
         responses = resp.json().get("responses")
     except Exception as exc:
-        print(f"[elastic] {label} failed; falling back to per-query requests: {exc}")
+        log("elastic", f"{label} failed; falling back to per-query requests: {exc}")
         return None
     if not isinstance(responses, list) or len(responses) != len(bodies):
-        print(f"[elastic] {label} returned unexpected shape; falling back")
+        log("elastic", f"{label} returned unexpected shape; falling back")
         return None
     results: list[list[dict] | None] = []
     for item in responses:
@@ -171,7 +172,8 @@ def paginate(
     timeout_retries = 0
 
     def _give_up(message: str, cause: Exception | None) -> PageOutcome:
-        print(message)
+        log("elastic", message)
+        message = f"[elastic] {message}"  # the exception/warning text keeps the tag
         if on_error == "raise":
             raise ElasticFetchError(message, outcome.hits) from cause
         outcome.warning = message
@@ -195,21 +197,23 @@ def paginate(
             if page_size > min_page_size:
                 page_size = max(min_page_size, page_size // 2)
                 timeout_sec = min(30, timeout_sec + 3)
-                print(
-                    f"[elastic] {label} timed out on page {outcome.pages}; "
-                    f"reducing page size to {page_size} (timeout {timeout_sec}s) and retrying..."
+                log(
+                    "elastic",
+                    f"{label} timed out on page {outcome.pages}; "
+                    f"reducing page size to {page_size} (timeout {timeout_sec}s) and retrying...",
                 )
                 continue
             if timeout_retries < 2:
                 timeout_retries += 1
                 timeout_sec = min(30, timeout_sec + 3)
-                print(
-                    f"[elastic] {label} timed out on page {outcome.pages} "
-                    f"(page size {page_size}); retry {timeout_retries}/2..."
+                log(
+                    "elastic",
+                    f"{label} timed out on page {outcome.pages} "
+                    f"(page size {page_size}); retry {timeout_retries}/2...",
                 )
                 continue
             return _give_up(
-                f"[elastic] {label} giving up after repeated timeouts "
+                f"{label} giving up after repeated timeouts "
                 f"(page {outcome.pages}, size {page_size})",
                 exc,
             )
@@ -221,7 +225,7 @@ def paginate(
                 except Exception:
                     err_text = ""
             return _give_up(
-                f"[elastic] {label} failed on page {outcome.pages}: {exc} {err_text}".rstrip(),
+                f"{label} failed on page {outcome.pages}: {exc} {err_text}".rstrip(),
                 exc,
             )
 

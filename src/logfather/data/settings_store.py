@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Optional, List
 import re
 
+from logfather.core.log import log
+
 
 @dataclass
 class Condition:
@@ -199,7 +201,7 @@ class Settings:
             # A corrupt settings file must NOT silently become a factory
             # reset (losing the API key, customers, and all conditions).
             # Preserve the evidence, then try the backup save() keeps.
-            print(f"[settings] FAILED to load {path}: {exc}", flush=True)
+            log("settings", f"FAILED to load {path}: {exc}")
             warning = f"Settings file could not be read ({exc})."
             try:
                 quarantine = path.with_name(
@@ -207,7 +209,7 @@ class Settings:
                 )
                 shutil.copy2(path, quarantine)
                 warning += f"\nThe unreadable file was kept as {quarantine.name}."
-                print(f"[settings] corrupt file preserved as {quarantine}", flush=True)
+                log("settings", f"corrupt file preserved as {quarantine}")
             except Exception:
                 pass
             backup = path.with_name(path.name + ".bak")
@@ -216,10 +218,10 @@ class Settings:
                     settings = cls._from_dict(json.loads(backup.read_text()))
                     warning += "\nSettings were restored from the last backup."
                     settings.load_warning = warning
-                    print(f"[settings] restored from backup {backup}", flush=True)
+                    log("settings", f"restored from backup {backup}")
                     return settings
                 except Exception as backup_exc:
-                    print(f"[settings] backup also unreadable: {backup_exc}", flush=True)
+                    log("settings", f"backup also unreadable: {backup_exc}")
             settings = cls(
                 elastic_url="https://leap-deployment.kb.europe-west2.gcp.elastic-cloud.com:9243",
                 elastic_api_key=None,
@@ -426,7 +428,7 @@ class Settings:
                     pass
             os.replace(tmp_path, path)
         except Exception as exc:
-            print(f"[settings] FAILED to save {path}: {exc}", flush=True)
+            log("settings", f"FAILED to save {path}: {exc}")
 
     def export_shareable(self, path: Path) -> None:
         payload = {

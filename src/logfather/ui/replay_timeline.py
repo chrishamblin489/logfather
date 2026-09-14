@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 import math
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,6 +10,7 @@ from typing import Callable, Iterable, Optional, Dict, Tuple, List
 
 from PySide6.QtCore import Qt, Signal, QEvent, QRectF, QPointF, QTimer, QSize
 
+from logfather.core.log import dbg
 from logfather.ui.qt_worker import JobSlot
 from logfather.ui.progress import BusyDialog
 from logfather.ui import theme
@@ -78,14 +77,12 @@ from logfather.core.timeline_model import (  # noqa: F401
     parse_time_from_name,
 )
 
-TIMELINE_TIMING_LOGS = True
 SHOW_TIMELINE_INFO_TEXT = False
 SHOW_TIMELINE_TOP_BUTTONS = False
 
 
 def _timeline_perf_log(message: str) -> None:
-    if TIMELINE_TIMING_LOGS:
-        print(f"[timeline-perf] {message}", flush=True)
+    dbg("timeline-perf", message)
 
 
 # Condition tracks that share one row to save height (Chris, 2026-09-10):
@@ -98,8 +95,8 @@ SHARED_ROW_LABEL = "Start / Op stop / E-stop"
 # shown by default whenever the day has any.
 NORMAL_CONDITION_NAMES = ("eject crate",)
 TRACK_SPACING = 20
-# LOGFATHER_DEBUG_PLAYHEAD=1 traces the green playhead (2026-09-12).
-_DEBUG_PLAYHEAD = bool(os.environ.get("LOGFATHER_DEBUG_PLAYHEAD"))
+# LOGFATHER_DEBUG=playhead (or the older LOGFATHER_DEBUG_PLAYHEAD=1) traces
+# the green playhead through dbg("playhead", ...) (2026-09-12).
 
 
 class _EventTickItem(QGraphicsRectItem):
@@ -397,7 +394,7 @@ class ReplayTimeline(QWidget):
         )
 
     def _redraw_timeline(self):
-        print("[timeline] _redraw_timeline", flush=True)
+        dbg("timeline", "_redraw_timeline")
         self.scene.clear()
         self._video_rects = {}
         if not self._items or not self._current_date:
@@ -903,7 +900,7 @@ class ReplayTimeline(QWidget):
 
     def _fit_to_items(self):
         t0 = perf_counter()
-        print("[timeline] _fit_to_items", flush=True)
+        dbg("timeline", "_fit_to_items")
         if not self._items or not self._current_date:
             return
         day_start = local_day_start_utc(self._current_date)
@@ -1410,8 +1407,7 @@ class ReplayTimeline(QWidget):
         return None
 
     def set_playhead_datetime(self, dt: Optional[datetime]):
-        if _DEBUG_PLAYHEAD:
-            print(f"[playhead] set {dt!r} day={self._current_date} day_start={self._day_start}", flush=True)
+        dbg("playhead", f"set {dt!r} day={self._current_date} day_start={self._day_start}")
         self._playhead_time = dt
         if self._playhead_line is None and dt is None:
             return
@@ -1458,14 +1454,12 @@ class ReplayTimeline(QWidget):
                 except RuntimeError:
                     setattr(self, attr, None)
         if not self._day_start or not self._current_date or self._playhead_time is None:
-            if _DEBUG_PLAYHEAD:
-                print(f"[playhead] hidden: day_start={self._day_start} date={self._current_date} time={self._playhead_time!r}", flush=True)
+            dbg("playhead", f"hidden: day_start={self._day_start} date={self._current_date} time={self._playhead_time!r}")
             self._remove_playhead_items()
             return
         play_local = ensure_playhead_local(self._playhead_time)
         if play_local.date() != self._current_date:
-            if _DEBUG_PLAYHEAD:
-                print(f"[playhead] hidden: local date {play_local.date()} != timeline date {self._current_date}", flush=True)
+            dbg("playhead", f"hidden: local date {play_local.date()} != timeline date {self._current_date}")
             self._remove_playhead_items()
             return
         play_dt = ensure_utc(play_local)

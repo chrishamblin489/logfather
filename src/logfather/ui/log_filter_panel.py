@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from logfather.core.log import dbg
 from logfather.core.log_events import MESSAGE_COLUMN, SOURCE_COLUMN, STATE_COLUMN, LogEvent
 from logfather.data.settings_store import CustomFilterPreset, FilterPreset, Settings
 from logfather.ui import theme
@@ -522,9 +523,9 @@ class LogFilterPanel(QWidget):
         """Re-filter: tell the view (filters_changed), then refresh the
         match counts and tab colours. With manage_busy the busy dialog is
         shown around the work; the callers that already show it pass False."""
-        print("[viewer] apply_filters start", flush=True)
+        dbg("viewer", "apply_filters start")
         if not self._events:
-            print("[viewer] apply_filters no events", flush=True)
+            dbg("viewer", "apply_filters no events")
             if manage_busy:
                 self.busy_changed.emit(False, "")
             return
@@ -535,7 +536,7 @@ class LogFilterPanel(QWidget):
         self.update_tab_highlights()
         if manage_busy:
             self.busy_changed.emit(False, "")
-        print("[viewer] apply_filters done", flush=True)
+        dbg("viewer", "apply_filters done")
 
     def _current_selection(self) -> FilterSelection:
         """What the checkboxes allow right now. A message checkbox only
@@ -613,7 +614,7 @@ class LogFilterPanel(QWidget):
         self._checkbox_panel.setVisible(False)
 
     def _reset_filter_panel(self, kind: str) -> None:
-        print(f"[viewer] resetting {kind} panel", flush=True)
+        dbg("viewer", f"resetting {kind} panel")
         self._columns[kind].reset()
 
     def _column_keys(self, kind: str) -> list[str]:
@@ -653,11 +654,11 @@ class LogFilterPanel(QWidget):
         self.apply_filters(status_message="Applying filters...", manage_busy=False)
         self.busy_changed.emit(False, "")
         self._checkbox_panel.setVisible(True)
-        print(
-            "[viewer] filter checkboxes built ("
+        dbg(
+            "viewer",
+            "filter checkboxes built ("
             + ", ".join(f"{kind}s={len(self._checkboxes[kind])}" for kind in FILTER_KINDS)
             + ")",
-            flush=True,
         )
 
     def update_message_visibility_from_filters(self) -> None:

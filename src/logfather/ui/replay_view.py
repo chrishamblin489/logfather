@@ -28,6 +28,7 @@ from logfather.ui.annotated_video_widget import AnnotatedVideoWidget
 from logfather.data.clip_cache import ClipCache
 from logfather.data.ocr_offset_store import OcrOffsetStore
 from logfather.data.ui_state_store import load_ui_state, update_ui_state
+from logfather.core.log import dbg, log, timed
 from logfather.core.time_alignment import plausible_ocr_offset, TimeAlignment
 from logfather.ui import theme
 from logfather.ui.progress import BusyDialog, StageProgress
@@ -1528,11 +1529,11 @@ class ReplayView(QWidget):
         self.settings_saved.emit()
         t_emit = time.perf_counter()
         if (t_emit - t0) > 0.1:
-            print(
-                f"[settings-save] apply={((t_apply - t0) * 1000):.0f}ms "
+            dbg(
+                "settings-save",
+                f"apply={((t_apply - t0) * 1000):.0f}ms "
                 f"save={((t_save - t_apply) * 1000):.0f}ms "
                 f"reload-reaction={((t_emit - t_save) * 1000):.0f}ms",
-                flush=True,
             )
 
     def _flush_settings_autosave(self):
@@ -1700,7 +1701,7 @@ class ReplayView(QWidget):
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True)
             if proc.returncode == 0:
-                print(f"[viewer] video rewrapped with ffmpeg: {out_path.name}", flush=True)
+                log("viewer", f"video rewrapped with ffmpeg: {out_path.name}")
                 if stage_path != in_path:
                     stage_path.unlink(missing_ok=True)
                 self.update_cache_status()
@@ -1720,7 +1721,7 @@ class ReplayView(QWidget):
 
     def load_video_from_path(self, file_path: str) -> bool:
         t0 = time.perf_counter()
-        print(f"[viewer] load_video_from_path start: {file_path}", flush=True)
+        log("viewer", f"load_video_from_path start: {file_path}")
         # Supersede any download still pending from a previous clip choice.
         self._video_load_generation += 1
         self._pending_video_load = None
@@ -1788,10 +1789,10 @@ class ReplayView(QWidget):
         self._set_video_busy(False)
         if generation != self._video_load_generation:
             return  # a different clip was chosen while this one downloaded
-        print(
-            f"[viewer] async cache copy finished (ok={ok}) after "
+        log(
+            "viewer",
+            f"async cache copy finished (ok={ok}) after "
             f"{time.perf_counter() - self._video_load_t0:.2f}s",
-            flush=True,
         )
         open_path = str(p_cache) if ok and p_cache.exists() else str(p_source)
         self._open_downloaded_video(open_path, p_source, self._video_load_t0)
@@ -1815,13 +1816,13 @@ class ReplayView(QWidget):
                 self.cap.release()
             self.cap = None
             return False
-        print(f"[viewer] video opened: {self.current_video_path}", flush=True)
-        print(f"[viewer] VideoCapture open took {time.perf_counter() - t_open:.2f}s", flush=True)
+        log("viewer", f"video opened: {self.current_video_path}")
+        dbg("viewer", f"VideoCapture open took {time.perf_counter() - t_open:.2f}s")
 
         t_meta = time.perf_counter()
         self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 25.0
         self.frame_count = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
-        print(f"[viewer] metadata read took {time.perf_counter() - t_meta:.2f}s", flush=True)
+        dbg("viewer", f"metadata read took {time.perf_counter() - t_meta:.2f}s")
         self.current_frame = 0
         self.time_offset = 0.0
         self.set_offset_value(0.0)
@@ -1860,7 +1861,7 @@ class ReplayView(QWidget):
             QTimer.singleShot(
                 0, lambda: self.seek_to_seconds(seek_seconds, pause=seek_pause)
             )
-        print(f"[viewer] load_video_from_path total {time.perf_counter() - t0:.2f}s", flush=True)
+        log("viewer", f"load_video_from_path total {time.perf_counter() - t0:.2f}s")
         if self._play_after_open:
             self._play_after_open = False
             QTimer.singleShot(0, self.play)
@@ -1968,7 +1969,7 @@ class ReplayView(QWidget):
         self.log_filter_panel.set_tabs_enabled(False)
 
     def _apply_loaded_events(self, events, display_rows, source_keys, state_keys, message_keys, first_dt):
-        print("[viewer] _apply_loaded_events start", flush=True)
+        dbg("viewer", "_apply_loaded_events start")
         self._set_log_busy(True, "Processing Elastic events...")
         self.all_events = events or []
         self.all_log_display_rows = display_rows or []
@@ -1976,13 +1977,13 @@ class ReplayView(QWidget):
         self.all_state_keys = state_keys or []
         self.all_message_keys = message_keys or []
         self._rebuild_ppm_model()
-        print(f"[viewer] array copies done (events={len(self.all_events)})", flush=True)
+        dbg("viewer", f"array copies done (events={len(self.all_events)})")
 
         self.sync_offset = 0.0
         self.time_offset = 0.0
         self.set_offset_value(0.0)
 
-        print(f"[viewer] total events: {len(self.all_events)}, display rows: {len(self.all_log_display_rows)}", flush=True)
+        dbg("viewer", f"total events: {len(self.all_events)}, display rows: {len(self.all_log_display_rows)}")
         self.log_filter_panel.set_events(
             self.all_events, self.all_log_display_rows,
             self.all_source_keys, self.all_state_keys, self.all_message_keys,
@@ -2061,9 +2062,9 @@ class ReplayView(QWidget):
         self.log_filter_panel.set_tabs_enabled(False)
 
     def populate_log_list(self):
-        print(f"[viewer] populate_log_list start (rows={len(self.log_display_rows)})", flush=True)
+        dbg("viewer", f"populate_log_list start (rows={len(self.log_display_rows)})")
         self._log_model.reset_data(self.log_display_rows)
-        print("[viewer] populate_log_list done", flush=True)
+        dbg("viewer", "populate_log_list done")
 
     def _event_seconds_to_video_seconds(self, event_seconds: float) -> float:
         return self.alignment.event_to_video(event_seconds)
@@ -2489,11 +2490,8 @@ class ReplayView(QWidget):
             self.cap, self._seq_cap is self.cap, self._seq_next_frame, frame_index
         ):
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-        t_read = time.perf_counter()
-        ret, frame = self.cap.read()
-        read_dt = time.perf_counter() - t_read
-        if read_dt > 0.5:
-            print(f"[viewer] frame read took {read_dt:.2f}s", flush=True)
+        with timed("viewer", "frame read", threshold_s=0.5):
+            ret, frame = self.cap.read()
         if not ret or frame is None:
             self._seq_cap = None
             # The metadata frame_count often exceeds the frames that can
@@ -2512,10 +2510,10 @@ class ReplayView(QWidget):
                 if 0 < self.frame_count and frame_index >= self.frame_count - 60:
                     real_count = int(last_shown) + 1
                     if real_count < self.frame_count:
-                        print(
-                            f"[viewer] end of stream at frame {last_shown}: "
+                        log(
+                            "viewer",
+                            f"end of stream at frame {last_shown}: "
                             f"frame_count {self.frame_count} -> {real_count}",
-                            flush=True,
                         )
                         self.frame_count = real_count
                         self.seek_slider.blockSignals(True)
@@ -2552,7 +2550,7 @@ class ReplayView(QWidget):
         self.update_log_highlight(t)
         dt_total = time.perf_counter() - t_total
         if dt_total > 0.5:
-            print(f"[viewer] show_frame total took {dt_total:.2f}s", flush=True)
+            dbg("viewer", f"show_frame total took {dt_total:.2f}s")
 
     def update_video_label(self):
         if self._updating_video_label:
@@ -2607,7 +2605,7 @@ class ReplayView(QWidget):
             self._updating_video_label = False
             dt = time.perf_counter() - t0
             if dt > 0.5:
-                print(f"[viewer] update_video_label took {dt:.2f}s", flush=True)
+                dbg("viewer", f"update_video_label took {dt:.2f}s")
 
     def _request_video_label_update(self):
         if self._pending_video_label_update:
@@ -3733,12 +3731,12 @@ class ReplayView(QWidget):
             if self.additional_cap is None:
                 dt = time.perf_counter() - t0
                 if dt > 0.5:
-                    print(f"[viewer] secondary update took {dt:.2f}s (no secondary)", flush=True)
+                    dbg("viewer", f"secondary update took {dt:.2f}s (no secondary)")
                 return
         if self.additional_fps <= 0:
             dt = time.perf_counter() - t0
             if dt > 0.5:
-                print(f"[viewer] secondary update took {dt:.2f}s (no fps)", flush=True)
+                dbg("viewer", f"secondary update took {dt:.2f}s (no fps)")
             return
         if self.video_start_dt is not None and self.additional_video_start_dt is not None:
             abs_time = self.alignment.clock_datetime(self.video_start_dt, t_seconds)
@@ -3762,11 +3760,8 @@ class ReplayView(QWidget):
             frame_index,
         ):
             self.additional_cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
-        t_read = time.perf_counter()
-        ret, frame = self.additional_cap.read()
-        read_dt = time.perf_counter() - t_read
-        if read_dt > 0.5:
-            print(f"[viewer] secondary frame read took {read_dt:.2f}s", flush=True)
+        with timed("viewer", "secondary frame read", threshold_s=0.5):
+            ret, frame = self.additional_cap.read()
         if ret:
             self._seq_additional_cap = self.additional_cap
             self._seq_additional_next_frame = frame_index + 1
@@ -3775,7 +3770,7 @@ class ReplayView(QWidget):
         if not ret:
             dt = time.perf_counter() - t0
             if dt > 0.5:
-                print(f"[viewer] secondary update took {dt:.2f}s (read fail)", flush=True)
+                dbg("viewer", f"secondary update took {dt:.2f}s (read fail)")
             return
         if not frame.flags["C_CONTIGUOUS"]:
             frame = np.ascontiguousarray(frame)
@@ -3790,7 +3785,7 @@ class ReplayView(QWidget):
         ).copy()
         dt = time.perf_counter() - t0
         if dt > 0.5:
-            print(f"[viewer] secondary update took {dt:.2f}s", flush=True)
+            dbg("viewer", f"secondary update took {dt:.2f}s")
 
     def _offset_cache_key(self, path: Path, *, tag: str | None = None) -> str:
         pikpak_id = self._extract_pikpak_id(path) or "unknown"
@@ -3874,10 +3869,7 @@ class ReplayView(QWidget):
                 copy_secs = time.perf_counter() - t_copy
                 mb = done_bytes / (1024 * 1024)
                 rate = mb / copy_secs if copy_secs > 0 else 0.0
-                print(
-                    f"[ocr] clip copy: {mb:.0f} MB in {copy_secs:.1f}s ({rate:.1f} MB/s)",
-                    flush=True,
-                )
+                log("ocr", f"clip copy: {mb:.0f} MB in {copy_secs:.1f}s ({rate:.1f} MB/s)")
             return copy_to
         except Exception:
             try:
@@ -4098,10 +4090,10 @@ class ReplayView(QWidget):
                 self.open_sync_cctv_time_for(channel, auto_start=False)
                 return
             if not plausible_ocr_offset(result.offset_seconds):
-                print(
-                    f"[ocr] automatic {channel.label} offset {result.offset_seconds:.0f}s is not "
+                log(
+                    "ocr",
+                    f"automatic {channel.label} offset {result.offset_seconds:.0f}s is not "
                     "plausible; ignored, using the filename time",
-                    flush=True,
                 )
                 return
             self._apply_ocr_offset(channel, key, result.video_start_dt, result.offset_seconds, result.frame_offset)
@@ -4109,7 +4101,7 @@ class ReplayView(QWidget):
         channel.slot.start(
             _analyze,
             on_result=_apply,
-            on_error=lambda msg: print(f"[ocr] {channel.label} auto-sync failed: {msg}"),
+            on_error=lambda msg: log("ocr", f"{channel.label} auto-sync failed: {msg}"),
             on_progress=lambda payload: self._on_ocr_sync_progress(payload, cam_label=channel.cam_label),
             on_finished=lambda: self._hide_ocr_sync_progress(cam_label=channel.cam_label),
         )
@@ -4169,7 +4161,7 @@ class ReplayView(QWidget):
             return
         self._cancel_log_future()
         self._active_log_request_key = request_key
-        print("[viewer] load_logs_from_elastic starting", flush=True)
+        dbg("viewer", "load_logs_from_elastic starting")
         self._log_future_id += 1
         fetch_id = self._log_future_id
         settings = Settings.load()
@@ -4184,7 +4176,7 @@ class ReplayView(QWidget):
         )
         if show_busy:
             self._set_log_busy(True, "Fetching Elastic logs...")
-        print(f"[viewer] scheduled log fetch id {fetch_id}", flush=True)
+        dbg("viewer", f"scheduled log fetch id {fetch_id}")
         self._poll_log_future(fetch_id)
 
     @staticmethod
@@ -4202,7 +4194,7 @@ class ReplayView(QWidget):
             self._log_busy.hide()
 
     def _on_elastic_logs_ready(self, rows: list):
-        print(f"[viewer] _on_elastic_logs_ready (rows={len(rows)})", flush=True)
+        dbg("viewer", f"_on_elastic_logs_ready (rows={len(rows)})")
         self._set_log_busy(False)
         if not rows:
             QMessageBox.information(self, "No events", "No Elastic events found for this clip timeframe.")
@@ -4210,11 +4202,11 @@ class ReplayView(QWidget):
             return
         self._apply_loaded_events(*build_events_from_rows(rows))
         # Avoid modal dialog here; it can re-enter UI updates during heavy redraw.
-        print("[viewer] events loaded", flush=True)
+        dbg("viewer", "events loaded")
         self.log_filter_panel.reload_filters_if_wanted()
 
     def _on_elastic_logs_failed(self, message: str):
-        print(f"[viewer] _on_elastic_logs_failed: {message}", flush=True)
+        log("viewer", f"_on_elastic_logs_failed: {message}")
         self._set_log_busy(False)
         if message:
             QMessageBox.warning(self, "Elastic fetch failed", message)
@@ -4233,28 +4225,25 @@ class ReplayView(QWidget):
                 # on every retrigger.
                 request_key = self._active_log_request_key
                 self._active_log_request_key = None
-                print(f"[viewer] log future {fetch_id} partial failure: {exc}", flush=True)
+                log("viewer", f"log future {fetch_id} partial failure: {exc}")
                 if exc.items:
-                    print(
-                        f"[viewer] delivering {len(exc.items)} partial rows despite failure",
-                        flush=True,
-                    )
+                    log("viewer", f"delivering {len(exc.items)} partial rows despite failure")
                     self._loaded_log_request_key = request_key
                     self.logs_ready.emit(exc.items)
                 self.logs_failed.emit(str(exc))
                 return
             except Exception as exc:
                 self._active_log_request_key = None
-                print(f"[viewer] log future {fetch_id} failed: {exc}", flush=True)
+                log("viewer", f"log future {fetch_id} failed: {exc}")
                 self.logs_failed.emit(str(exc))
                 return
             else:
                 self._loaded_log_request_key = self._active_log_request_key
                 self._active_log_request_key = None
-                print(f"[viewer] log future {fetch_id} completed with {len(rows)} rows", flush=True)
-                print("[viewer] invoking _on_elastic_logs_ready", flush=True)
+                log("viewer", f"log future {fetch_id} completed with {len(rows)} rows")
+                dbg("viewer", "invoking _on_elastic_logs_ready")
                 self.logs_ready.emit(rows)
-                print("[viewer] returned from _on_elastic_logs_ready", flush=True)
+                dbg("viewer", "returned from _on_elastic_logs_ready")
         else:
             QTimer.singleShot(100, lambda fid=fetch_id: self._poll_log_future(fid))
 
@@ -4264,7 +4253,7 @@ class ReplayView(QWidget):
         self._active_log_request_key = None
         if future is None:
             return
-        print("[viewer] cancelling prior log future", flush=True)
+        log("viewer", "cancelling prior log future")
         future.cancel()
 
     def shutdown_workers(self):
@@ -4298,14 +4287,11 @@ class ReplayView(QWidget):
             ("viewer: secondary OCR slot", self.ocr_additional.slot.shutdown),
             ("viewer: log executor", _stop_log_executor),
         ):
-            t0 = time.perf_counter()
-            try:
-                step()
-            except Exception as exc:
-                print(f"[shutdown] '{label}' failed: {exc}", flush=True)
-            dt_ms = (time.perf_counter() - t0) * 1000
-            if dt_ms > 100:
-                print(f"[shutdown] '{label}' took {dt_ms:.0f}ms", flush=True)
+            with timed("shutdown", f"'{label}'", threshold_s=0.1):
+                try:
+                    step()
+                except Exception as exc:
+                    log("shutdown", f"'{label}' failed: {exc}")
 
     def closeEvent(self, event):
         self.shutdown_workers()

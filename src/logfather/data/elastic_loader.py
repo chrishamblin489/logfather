@@ -12,6 +12,7 @@ from typing import Iterable, List
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from logfather.core.log import dbg, debug_enabled, log
 from logfather.core.timeline_model import (
     TimelineItem,
     parse_time_from_name,
@@ -63,7 +64,6 @@ EVENTS_CACHE_SCHEMA_VERSION = 3
 ELASTIC_EVENT_PAGE_SIZE = 1500
 ELASTIC_EVENT_MIN_PAGE_SIZE = 300
 ELASTIC_EVENT_TIMEOUT_SEC = 12
-ELASTIC_TIMING_LOGS = True
 FLEETWIDE_OCCURRENCE_COOLDOWN_SECONDS = 30
 
 
@@ -595,8 +595,7 @@ def _merge_sku_items(base_items: list[TimelineItem], sku_items: list[TimelineIte
 
 
 def _perf_log(message: str) -> None:
-    if ELASTIC_TIMING_LOGS:
-        print(f"[elastic-perf] {message}", flush=True)
+    dbg("elastic-perf", message)
 
 
 def _build_sku_query(
@@ -731,22 +730,22 @@ def fetch_events(
     final band-capping step, letting the queries overlap the scan."""
     t_fetch_start = perf_counter()
     if not day or (pikpak_root is None and SYSTEM_ID_OVERRIDE is None):
-        print("[elastic] No PikPak or day selected; skipping event fetch.")
+        log("elastic", "No PikPak or day selected; skipping event fetch.")
         return []
     url = settings.elastic_url or KIBANA_BASE_DEFAULT
     api_key = settings.elastic_api_key or ""
     index_id = _normalize_index_id(None)
     if not url or not api_key:
-        print("[elastic] Missing URL or API key; skipping event fetch.")
+        log("elastic", "Missing URL or API key; skipping event fetch.")
         return []
     if not index_id:
-        print("[elastic] Missing index/pattern; set it in Settings.")
+        log("elastic", "Missing index/pattern; set it in Settings.")
         return []
 
 
     robot_id = _get_robot_id(pikpak_root)
     if not robot_id:
-        print(f"[elastic] Could not derive robot id from {pikpak_root}")
+        log("elastic", f"Could not derive robot id from {pikpak_root}")
         return []
     cache_path = _events_cache_path_for_robot(settings, robot_id, day, pikpak_root=pikpak_root)
     t_cache_read_start = perf_counter()
@@ -754,7 +753,7 @@ def fetch_events(
     _perf_log(f"cache read took {(perf_counter() - t_cache_read_start) * 1000:.0f}ms")
     if cached is not None:
         cached_items, sku_complete = cached
-        print(f"[elastic] Using cached events ({len(cached_items)} items).")
+        log("elastic", f"Using cached events ({len(cached_items)} items).")
         if sku_complete and _is_past_day(day):
             # Past days are immutable and this cache already holds the SKU
             # merge — no reason to re-query Elastic (~4s saved per load).
@@ -865,12 +864,13 @@ def fetch_events(
         if outcome.truncated and warning_msg is None:
             # Surface truncation as a warning so the day is neither cached
             # nor silently presented as complete.
-            warning_msg = (
-                f"[elastic] condition {idx+1} ({cond.name or cond.query}) truncated "
+            truncated = (
+                f"condition {idx+1} ({cond.name or cond.query}) truncated "
                 f"at {ELASTIC_EVENT_MAX_PAGES} pages ({len(hits_collected)} hits); day view incomplete"
             )
-            print(warning_msg)
-        print(f"[elastic] condition {idx+1} ({cond.name or cond.query}) collected {len(hits_collected)} hits")
+            log("elastic", truncated)
+            warning_msg = f"[elastic] {truncated}"
+        log("elastic", f"condition {idx+1} ({cond.name or cond.query}) collected {len(hits_collected)} hits")
         _perf_log(
             f"condition {idx+1} requests={outcome.requests_made} hits={len(hits_collected)} "
             f"time={(perf_counter() - t_cond_start) * 1000:.0f}ms"
@@ -919,9 +919,9 @@ def fetch_events(
                 warnings.append(warning)
 
     if not any_condition:
-        print("[elastic] No condition queries configured; nothing to fetch.")
+        log("elastic", "No condition queries configured; nothing to fetch.")
     if not items:
-        print("[elastic] No events returned for selected day/robot.")
+        log("elastic", "No events returned for selected day/robot.")
     t_sku_start = perf_counter()
     sku_ok = True
     try:
@@ -943,10 +943,7 @@ def fetch_events(
         # A partly-failed day must not be cached: past-day caches never
         # expire, so persisting here would serve the truncated timeline
         # forever. Skipping the save means the next load retries in full.
-        print(
-            f"[elastic] day fetch had {len(warnings)} warning(s); not caching",
-            flush=True,
-        )
+        log("elastic", f"day fetch had {len(warnings)} warning(s); not caching")
     else:
         _save_events_cache(cache_path, items, sku_complete=sku_ok and _is_past_day(day))
     _perf_log(f"cache write took {(perf_counter() - t_cache_write_start) * 1000:.0f}ms")
@@ -986,9 +983,9 @@ def fetch_sku_items(
     day,
     last_video_end: object = _LAST_VIDEO_END_UNSET,
 ) -> Iterable[TimelineItem]:
-    print("[sku-debug] fetch_sku_items start", flush=True)
+    dbg("sku-debug", "fetch_sku_items start")
     if not day or (pikpak_root is None and SYSTEM_ID_OVERRIDE is None):
-        print("[elastic] No PikPak or day selected; skipping SKU fetch.")
+        log("elastic", "No PikPak or day selected; skipping SKU fetch.")
         return []
     if last_video_end is _LAST_VIDEO_END_UNSET:
         last_video_end = _last_video_end(pikpak_root, day)
@@ -998,15 +995,15 @@ def fetch_sku_items(
     api_key = settings.elastic_api_key or ""
     index_id = _normalize_index_id(None)
     if not url or not api_key:
-        print("[elastic] Missing URL or API key; skipping SKU fetch.")
+        log("elastic", "Missing URL or API key; skipping SKU fetch.")
         return []
     if not index_id:
-        print("[elastic] Missing index/pattern; set it in Settings.")
+        log("elastic", "Missing index/pattern; set it in Settings.")
         return []
 
     robot_id = _get_robot_id(pikpak_root)
     if not robot_id:
-        print(f"[elastic] Could not derive robot id from {pikpak_root}")
+        log("elastic", f"Could not derive robot id from {pikpak_root}")
         return []
 
     start_iso, end_iso = _iso_range_for_day(day)
@@ -1079,11 +1076,12 @@ def fetch_sku_items(
         service_name = _extract_service_name(src)
         if state_name == "start_pnp":
             start_hits += 1
-            sku_dbg = src.get("data_collection") or src.get("sku") or {}
-            print(
-                f"[sku-debug] start_pnp {ts.isoformat()} system_id={src.get('system_id')} "
-                f"sku={sku_dbg}"
-            )
+            if debug_enabled("sku-debug"):
+                sku_dbg = src.get("data_collection") or src.get("sku") or {}
+                dbg(
+                    "sku-debug",
+                    f"start_pnp {ts.isoformat()} system_id={src.get('system_id')} sku={sku_dbg}",
+                )
         if _is_manual_state(state_name):
             events.append((ts, "manual", None, state_name))
         if _is_automatic_state(state_name):
@@ -1096,11 +1094,11 @@ def fetch_sku_items(
         elif selection:
             events.append((ts, "select", selection, state_name))
     if outcome.truncated:
-        print("[sku-debug] reached page cap; results may be truncated", flush=True)
+        dbg("sku-debug", "reached page cap; results may be truncated")
 
     if not events:
         if total_hits:
-            print(f"[sku-debug] hits={total_hits} start_pnp={start_hits} (no SKU events created)", flush=True)
+            dbg("sku-debug", f"hits={total_hits} start_pnp={start_hits} (no SKU events created)")
 
     manual_event_count = sum(1 for _ts, kind, _data, _state in events if kind == "manual")
     if manual_event_count == 0:
@@ -1156,9 +1154,9 @@ def fetch_sku_items(
                 elif _is_automatic_state(state_name):
                     events.append((ts, "auto", None, state_name))
             if hits:
-                print(f"[sku-debug] manual fallback hits={len(hits)}", flush=True)
+                dbg("sku-debug", f"manual fallback hits={len(hits)}")
         except Exception as exc:
-            print(f"[sku-debug] manual fallback query failed: {exc}", flush=True)
+            log("sku-debug", f"manual fallback query failed: {exc}")
 
     if start_hits <= 1:
         # Fallback: explicitly fetch start_pnp entries (Argus 2 nodes emit these on behaviour_node).
@@ -1193,7 +1191,7 @@ def fetch_sku_items(
             data = resp.json()
             hits = data.get("hits", {}).get("hits", [])
             if hits:
-                print(f"[sku-debug] fallback start_pnp hits={len(hits)}", flush=True)
+                dbg("sku-debug", f"fallback start_pnp hits={len(hits)}")
             for hit in hits:
                 src = hit.get("_source", {})
                 ts_val = src.get("@timestamp_ros") or src.get(sort_field) or src.get("@timestamp")
@@ -1204,7 +1202,7 @@ def fetch_sku_items(
                 selection = _extract_ui_selection(src)
                 events.append((ts, "start", selection, "start_pnp"))
         except Exception as exc:
-            print(f"[sku-debug] fallback start_pnp query failed: {exc}", flush=True)
+            log("sku-debug", f"fallback start_pnp query failed: {exc}")
 
     if callable(last_video_end):
         # A resolver from the timeline loader: blocks until the concurrent
@@ -1240,17 +1238,17 @@ def _fetch_logs_range_raw(
     max_hits: int = 50000,
 ) -> list[tuple[datetime, str, str, str, str]]:
     if not pikpak_root and not SYSTEM_ID_OVERRIDE:
-        print("[elastic] No PikPak root provided for log fetch.")
+        log("elastic", "No PikPak root provided for log fetch.")
         return []
     url = settings.elastic_url or KIBANA_BASE_DEFAULT
     api_key = settings.elastic_api_key or ""
     index_id = _normalize_index_id(None)
     if not url or not api_key or not index_id:
-        print("[elastic] Missing URL/API key/index; cannot fetch logs.")
+        log("elastic", "Missing URL/API key/index; cannot fetch logs.")
         return []
     robot_id = _get_robot_id(pikpak_root)
     if not robot_id:
-        print(f"[elastic] Could not derive robot id from {pikpak_root}")
+        log("elastic", f"Could not derive robot id from {pikpak_root}")
         return []
 
     start_iso = _ensure_utc(start_dt).isoformat().replace("+00:00", "Z")

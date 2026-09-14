@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from logfather.core.log import dbg
 from logfather.core.timeline_model import TimelineItem
 
 
@@ -26,7 +27,7 @@ def build_sku_bands(
 
     manual_event_count = sum(1 for _ts, kind, _data, _state in events if kind == "manual")
     if manual_event_count:
-        print(f"[sku-debug] manual events={manual_event_count}", flush=True)
+        dbg("sku-debug", f"manual events={manual_event_count}")
 
     order = {"stop": 0, "auto": 1, "manual": 2, "start": 3, "select": 4}
     events.sort(key=lambda item: (item[0], order.get(item[1], 9)))
@@ -132,5 +133,5 @@ def build_sku_bands(
         _close_current(cap_end)
     manual_item_count = sum(1 for itm in items if isinstance(itm.payload, dict) and itm.payload.get("_ui_manual"))
     if manual_item_count:
-        print(f"[sku-debug] manual items={manual_item_count}", flush=True)
+        dbg("sku-debug", f"manual items={manual_item_count}")
     return items

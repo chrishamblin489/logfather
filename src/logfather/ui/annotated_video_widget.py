@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from logfather.core.log import log
 from logfather.ui.viewer_widgets import _dist, _distance_to_segment
 
 
@@ -509,7 +510,7 @@ class AnnotatedVideoWidget(QWidget):
             qimg = QImage(warped.data, w, h, w * 3, QImage.Format_RGB888)
             return qimg.copy()
         except Exception as exc:
-            print(f"[tray] warp failed: {exc}", flush=True)
+            log("tray", f"warp failed: {exc}")
             return None
 
     def _update_birds_eye_popout(self, birds_eye: QImage | None):

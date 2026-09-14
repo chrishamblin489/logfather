@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QApplication, QSplashScreen, QWidget
 from logfather.ui.app_assets import resolve_asset_path as _resolve_asset_path
 from logfather.ui import theme
 from logfather.core.app_version import format_version_label, load_version_info
+from logfather.core.log import log
 
 SPLASH_IMAGE_FILENAME = "Logfather Argus II.jpg"
 
@@ -177,7 +178,7 @@ def _refresh_desktop_shortcut_name() -> None:
                 return
             if not target.exists():
                 link.rename(target)
-                print(f"[main] desktop shortcut renamed to {target.name}", flush=True)
+                log("main", f"desktop shortcut renamed to {target.name}")
             return
     except Exception:
         pass
@@ -210,7 +211,7 @@ def _start_instance_server(win: QWidget) -> QLocalServer | None:
     QLocalServer.removeServer(SINGLE_INSTANCE_KEY)
     server = QLocalServer(win)
     if not server.listen(SINGLE_INSTANCE_KEY):
-        print(f"[main] single-instance server failed: {server.errorString()}", flush=True)
+        log("main", f"single-instance server failed: {server.errorString()}")
         return None
 
     def _on_second_instance():
@@ -221,7 +222,7 @@ def _start_instance_server(win: QWidget) -> QLocalServer | None:
         win.show()
         win.raise_()
         win.activateWindow()
-        print("[main] second launch detected; fronting this window", flush=True)
+        log("main", "second launch detected; fronting this window")
 
     server.newConnection.connect(_on_second_instance)
     return server
@@ -231,7 +232,7 @@ def main():
     app = QApplication(sys.argv)
     theme.apply_app_theme(app)
     if _activate_running_instance():
-        print("[main] already running - switched to the open instance", flush=True)
+        log("main", "already running - switched to the open instance")
         return
     icon_path = _resolve_asset_path("logfather.ico")
     if icon_path:

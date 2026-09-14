@@ -26,6 +26,8 @@ from typing import Callable, Iterable
 
 from PySide6.QtCore import QObject, Signal
 
+from logfather.core.log import log
+
 CACHE_META_SUFFIX = ".meta.json"
 CACHE_MAX_BYTES = 30 * 1024 * 1024 * 1024
 CACHE_MAX_AGE_DAYS = 30
@@ -388,7 +390,7 @@ class ClipCache(QObject):
         try:
             self._prune_locked()
         except Exception as exc:
-            print(f"[cache] prune failed: {exc}", flush=True)
+            log("cache", f"prune failed: {exc}")
         finally:
             self._prune_lock.release()
 
