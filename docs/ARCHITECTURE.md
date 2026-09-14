@@ -178,8 +178,8 @@ The main window that wires every screen together, and the helpers they share.
 
 | File | Lines | Purpose |
 |---|---:|---|
-| `ui/Main_Window.py` | 2132 | The hub: builds the Overview / PikPak Replay / Search stack, the top bar (PikPak and date choosers, first-product, Drift, Sync, Conveyor, Track, Targets, Data, Errors / Stops, Software, gear), the date picker and timeline splitters, session resume, clip opening and prefetch, and the jump from the Overview to a moment in a clip. |
-| `ui/target_overlay_controller.py` | 482 | Loads the clip's pick-queue events, classifies tight and wide gaps, owns the conveyor calibration and the Conveyor dialog, and builds the product overlays the Track button draws. |
+| `ui/Main_Window.py` | 2126 | The hub: builds the Overview / PikPak Replay / Search stack, the top bar (PikPak and date choosers, first-product, Drift, Sync, Conveyor, Track, Targets, Data, Errors / Stops, Software, gear), the date picker and timeline splitters, session resume, clip opening and prefetch, and the jump from the Overview to a moment in a clip. |
+| `ui/target_overlay_controller.py` | 419 | Loads the clip's pick-queue events, classifies tight and wide gaps, owns the conveyor calibration and the Conveyor dialog, and builds the product overlays the Track button draws. |
 | `ui/qt_worker.py` | 165 | The one background-job pattern (Job on a QThread, JobSlot to retire stale results) used by every loader. |
 | `ui/gear_menu.py` | 96 | The gear dropdown shared by the windows: Data sources, Settings, Stop report, Fit, zoom, About. |
 | `ui/day_selection.py` | 30 | The one shared day range that the Overview, Errors / Stops and Data windows follow together. |
@@ -194,7 +194,7 @@ The main window that wires every screen together, and the helpers they share.
 | `ui/pulse.py` | 66 | The gentle breathing highlight on a button that needs attention (Sync: ?). |
 | `ui/window_placement.py` | 67 | Keeps secondary windows on screen and over their parent. |
 | `ui/app_assets.py` | 39 | Finds bundled assets (logo, diagram, placeholder) in a source checkout or a frozen build. |
-| `ui/about_page.py` | 432 | This dialog: the version linked to its GitHub commit, the schematic, and these summaries. |
+| `ui/about_page.py` | 436 | This dialog: the version linked to its GitHub commit, the schematic, and these summaries. |
 
 ### UI - the screens and windows
 
@@ -204,13 +204,14 @@ One module per thing you can open.
 |---|---:|---|
 | `ui/overview_widget.py` | 2413 | The Overview: one row per PikPak drawn on a graphics scene (SKU runs, manual, stops, CCTV coverage), the day range, the PikPaks filter, drag to reorder, hover thumbnails, and the incremental refresh with its on-disk cache. |
 | `ui/data_boxes.py` | 790 | The Data and Additional data boxes and their reading strips (a SignalChannel per Grafana or Elastic reading), shared by the Overview and the PikPak Replay timeline. |
-| `ui/replay_view.py` | 5530 | The PikPak Replay: video playback with the log list, the filters and presets, the Elastic log load, the OCR offset applied to the main and the Additional CCTV, the Sync and Overlay tool strips, the Analysis tab, annotations, Bird's Eye, and export with overlays burnt in. |
-| `ui/replay_timeline.py` | 2086 | The timeline chart under the replay: the day's clips, event ticks, SKU bands, the Errors box rows, the label gutter, the playhead, the View menu, zoom and the Data strips. |
+| `ui/replay_view.py` | 4556 | The PikPak Replay: video playback with the log list, the Elastic log load, the OCR offset applied to the main and the Additional CCTV, the Sync and Overlay tool strips, the Analysis tab, annotations, Bird's Eye, and export with overlays burnt in. |
+| `ui/log_filter_panel.py` | 956 | The replay's Filters and Custom tabs: the source / state / message checkbox columns, the 15 filter presets, the five custom filter-in / filter-out blocks, their Settings persistence, and the row matching the log list is filtered by. |
+| `ui/replay_timeline.py` | 1927 | The timeline chart under the replay: the day's clips, event ticks, SKU bands, the Errors box rows, the label gutter, the playhead, the View menu, zoom and the Data strips. |
 | `ui/annotated_video_widget.py` | 925 | The video canvas: the frame, drawing and measuring annotations, the info text, the product overlays and the Bird's Eye tray view. |
 | `ui/viewer_widgets.py` | 489 | Small replay widgets: the seek and clip-range sliders, the marker bars, the log list model, the drift slider. |
 | `ui/target_buffer_widget.py` | 397 | The Targets panel: one card per product in the robot's queue, updating as the clip plays. |
 | `ui/telemetry_strip.py` | 204 | The Telemetry tab in the replay: the day's Grafana tracks in groups. |
-| `ui/time_ocr.py` | 2944 | The Sync CCTV Time window and the OCR engine behind it: the draggable Date and Time boxes, the date procedure A-H, the second-boundary search, the readings table with its 60 s drift checks, the help flowchart, and the headless analysis the automatic sync runs. |
+| `ui/time_ocr.py` | 2593 | The Sync CCTV Time window and the OCR engine behind it: the draggable Date and Time boxes, the date procedure A-H, the second-boundary search, the readings table with its 60 s drift checks, the help flowchart, and the headless analysis the automatic sync runs. |
 | `ui/conveyor_calibration_dialog.py` | 857 | The Conveyor window: click the same belt landmark on two frames to set the tracking line and speed. |
 | `ui/fleetwide_elastic_search_widget.py` | 769 | The Search screen: saved searches over every PikPak for a day range, cards and graphs per system. |
 | `ui/errors_stops_window.py` | 618 | The Errors / Stops window: stops per day and errors per day by category, with the PikPaks filter. |
@@ -219,7 +220,7 @@ One module per thing you can open.
 | `ui/elastic_catalog_dialog.py` | 265 | The Elastic ? catalogue window and the field-values drill-down. |
 | `ui/grafana_catalog_dialog.py` | 204 | The Grafana ? catalogue window and the metric detail. |
 | `ui/data_sources_dialog.py` | 200 | Data sources: the CCTV share, Elastic and Grafana connections, each with a test button. |
-| `ui/settings_dialog.py` | 453 | The Settings tabs inside the replay: connection, the condition presets, the customer/PikPak layout, and the read-me. |
+| `ui/settings_dialog.py` | 450 | The Settings tabs inside the replay: connection, the condition presets, the customer/PikPak layout, and the read-me. |
 | `ui/stop_report.py` | 590 | The Stop report: gathers the day's stops off the GUI thread, then builds the thumbnailed list. |
 
 ### Tools and tests
@@ -235,7 +236,7 @@ Outside the app.
 | `tools/elastic-log-download.py` | 302 | Standalone CSV download of a robot's logs through Kibana Reporting (API key from the environment). |
 | `tools/Vid_Frame_Differencing.py` | 685 | The original motion-analysis prototype; its maths now lives in core/frame_analysis.py. |
 | `tools/logs_to_srt.py` | 155 | Legacy: a CSV log export turned into subtitles. Superseded by the replay. |
-| `tests/` | 3323 (all) | 26 pytest modules over the pure logic: parsing, caches, alignment, the OCR engine, errors and stops, telemetry, Grafana, software history, the offset store. |
+| `tests/` | 3806 (all) | 26 pytest modules over the pure logic: parsing, caches, alignment, the OCR engine, errors and stops, telemetry, Grafana, software history, the offset store. |
 | `build.ps1 + spec/iss` | 124 | The release pipeline: stamp version.json, PyInstaller-bundle The Logfather, build the installer. |
 
 <!-- END FILE TABLE -->

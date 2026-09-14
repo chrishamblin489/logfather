@@ -198,9 +198,13 @@ FILE_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
          "The Data and Additional data boxes and their reading strips (a SignalChannel per Grafana or "
          "Elastic reading), shared by the Overview and the PikPak Replay timeline."),
         ("ui/replay_view.py", "src/logfather/ui/replay_view.py",
-         "The PikPak Replay: video playback with the log list, the filters and presets, the Elastic log "
-         "load, the OCR offset applied to the main and the Additional CCTV, the Sync and Overlay tool "
-         "strips, the Analysis tab, annotations, Bird's Eye, and export with overlays burnt in."),
+         "The PikPak Replay: video playback with the log list, the Elastic log load, the OCR offset "
+         "applied to the main and the Additional CCTV, the Sync and Overlay tool strips, the Analysis "
+         "tab, annotations, Bird's Eye, and export with overlays burnt in."),
+        ("ui/log_filter_panel.py", "src/logfather/ui/log_filter_panel.py",
+         "The replay's Filters and Custom tabs: the source / state / message checkbox columns, the 15 "
+         "filter presets, the five custom filter-in / filter-out blocks, their Settings persistence, "
+         "and the row matching the log list is filtered by."),
         ("ui/replay_timeline.py", "src/logfather/ui/replay_timeline.py",
          "The timeline chart under the replay: the day's clips, event ticks, SKU bands, the Errors box rows, "
          "the label gutter, the playhead, the View menu, zoom and the Data strips."),
