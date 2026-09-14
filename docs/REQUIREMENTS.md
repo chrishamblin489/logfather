@@ -24,6 +24,18 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ### 2026-09-14
 
+- Review items 6-8 done (Chris, 2026-09-14): (6) one PaneAnimator
+  (ui/pane_animator.py) behind the Targets panel, date picker, timeline
+  height and right-tabs slides - same durations and sizes, the two bare
+  except-pass wrappers gone; (7) one OcrChannel (ui/ocr_channel.py) for the
+  main camera and the Additional CCTV: one open-Sync-window and one
+  automatic-sync path, both cameras now get the plausibility drop with its
+  log line and the filename fallback ladder, store files and keys
+  unchanged; (8) core/log.py: `log(tag, msg)` always prints, `dbg` and
+  `timed` only with LOGFATHER_DEBUG set (1 or a tag list) - the 137
+  prints are converted, the informational lines (version, calibration,
+  Elastic counts, OCR plausibility, clip load times) still print by
+  default and the redraw, per-frame and filter-click chatter is opt-in.
 - Review items 4 and 5 done (Chris, 2026-09-14): (4) the log filtering
   (Filters and Custom tabs, the 15 presets, the custom filters and their
   persistence, the tab highlights, the row matching) moved out of the
