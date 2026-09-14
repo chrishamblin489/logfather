@@ -8,8 +8,7 @@ import math
 import re
 import os
 from pathlib import Path
-from typing import Callable, Iterable, Optional
-import sys
+from typing import Callable, Optional
 
 from logfather.paths import bundle_root
 
@@ -24,18 +23,13 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QDialog,
-    QDialogButtonBox,
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QProgressDialog,
     QPushButton,
     QSlider,
-    QTextBrowser,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -183,10 +177,6 @@ class RoiEditorLabel(ScrubbableLabel):
         self._drag: tuple[str, str, QPoint, Roi] | None = None  # box, handle, press, base
         self.setMouseTracking(True)
 
-    @property
-    def _roi(self) -> Roi | None:
-        return self._boxes.get("time")
-
     def set_picture(self, frame: QPixmap | None, view: QRect, roi: Roi | None, date_roi: Roi | None = None) -> None:
         self._frame = frame
         self._view = QRect(view)
@@ -240,10 +230,6 @@ class RoiEditorLabel(ScrubbableLabel):
         scale, x0, y0 = self._placement()
         return x0 + (fx - self._view.x()) * scale, y0 + (fy - self._view.y()) * scale
 
-    def _to_frame(self, lx: float, ly: float) -> tuple[float, float]:
-        scale, x0, y0 = self._placement()
-        return self._view.x() + (lx - x0) / scale, self._view.y() + (ly - y0) / scale
-
     def _box_rect(self, name: str):
         roi = self._boxes.get(name)
         if roi is None or self._placement() is None:
@@ -251,9 +237,6 @@ class RoiEditorLabel(ScrubbableLabel):
         x1, y1 = self._to_label(roi.x, roi.y)
         x2, y2 = self._to_label(roi.x + roi.w, roi.y + roi.h)
         return QRect(int(round(x1)), int(round(y1)), max(1, int(round(x2 - x1))), max(1, int(round(y2 - y1))))
-
-    def _roi_label_rect(self):
-        return self._box_rect("time")
 
     def _hit(self, pos: QPoint) -> str | None:
         found = self._hit_box(pos)
@@ -687,39 +670,6 @@ def _read_frame(
     return frame, int(frame_index), float(fps)
 
 
-def ocr_time_from_video(
-    video_path: Path | str,
-    *,
-    frame_index: Optional[int] = None,
-    time_seconds: Optional[float] = None,
-    roi: Optional[Roi] = None,
-    ocr_cfg: Optional[OcrConfig] = None,
-) -> str:
-    frame, _, _ = _read_frame(video_path, frame_index=frame_index, time_seconds=time_seconds)
-    return ocr_time_from_frame(frame, roi=roi, ocr_cfg=ocr_cfg)
-
-
-def ocr_time_from_video_samples(
-    video_path: Path | str,
-    *,
-    frame_indices: Optional[Iterable[int]] = None,
-    time_seconds_list: Optional[Iterable[float]] = None,
-    roi: Optional[Roi] = None,
-    ocr_cfg: Optional[OcrConfig] = None,
-) -> list[str]:
-    if frame_indices is None and time_seconds_list is None:
-        frame_indices = [0]
-
-    results: list[str] = []
-    if frame_indices is not None:
-        for idx in frame_indices:
-            results.append(ocr_time_from_video(video_path, frame_index=idx, roi=roi, ocr_cfg=ocr_cfg))
-    if time_seconds_list is not None:
-        for t in time_seconds_list:
-            results.append(ocr_time_from_video(video_path, time_seconds=t, roi=roi, ocr_cfg=ocr_cfg))
-    return results
-
-
 _TIME_RE = re.compile(r"^(?P<hour>\d{2}):(?P<minute>\d{2}):(?P<second>\d{2})$")
 
 
@@ -1135,16 +1085,6 @@ class SyncCctvTimeWindow(QWidget):
         painter.end()
         return pm
 
-    def _open_video_dialog(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open Video",
-            "",
-            "Video Files (*.mp4 *.avi *.mkv *.mov);;All Files (*)",
-        )
-        if path:
-            self.open_video(path)
-
     def closeEvent(self, event):
         self._closing = True
         try:
@@ -1385,12 +1325,6 @@ class SyncCctvTimeWindow(QWidget):
             self.time_label.setText(actual_dt.strftime("Time: %d/%m/%Y %H:%M:%S.") + f"{ms:03}")
         else:
             self.time_label.setText(f"Time: {hours:02}:{minutes:02}:{seconds:02}.{ms:03}")
-
-    def _current_actual_time_str(self) -> str:
-        total_ms, hours, minutes, seconds, ms, actual_dt = self._display_time_parts()
-        if actual_dt:
-            return actual_dt.strftime("%H:%M:%S.") + f"{ms:03}"
-        return f"{hours:02}:{minutes:02}:{seconds:02}.{ms:03}"
 
     def _update_tesseract_status(self):
         if pytesseract is None:
@@ -1994,49 +1928,6 @@ def parse_filename_datetime(video_path: str | Path) -> datetime | None:
     if not match:
         return None
     return datetime.strptime(match.group(1), "%Y%m%d%H%M%S")
-
-
-def show_verification_dialog(parent: QWidget, report: list[tuple[str, str]]) -> bool:
-    dlg = QDialog(parent)
-    dlg.setWindowTitle("Offset verification")
-    dlg.resize(720, 520)
-
-    browser = QTextBrowser()
-    browser.setOpenExternalLinks(False)
-    browser.setReadOnly(True)
-    html_lines = []
-    for text, status in report:
-        if not text:
-            html_lines.append("<div style='height:6px'></div>")
-            continue
-        if status == "ok":
-            color = "#1f6f1f"
-        elif status == "miss":
-            color = "#7a1f1f"
-        else:
-            color = "#202020"
-        safe = (
-            text.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        )
-        html_lines.append(
-            f"<div style='background:{color}; padding:4px 6px; "
-            f"margin:2px 0; color:#ffffff; font-family:monospace;'>{safe}</div>"
-        )
-    browser.setHtml("".join(html_lines))
-
-    buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-    buttons.button(QDialogButtonBox.Ok).setText("Approve offset")
-    buttons.button(QDialogButtonBox.Cancel).setText("Reject")
-    buttons.accepted.connect(dlg.accept)
-    buttons.rejected.connect(dlg.reject)
-
-    layout = QVBoxLayout()
-    layout.addWidget(browser, 1)
-    layout.addWidget(buttons)
-    dlg.setLayout(layout)
-    return dlg.exec() == QDialog.Accepted
 
 
 class _Aborted(Exception):
