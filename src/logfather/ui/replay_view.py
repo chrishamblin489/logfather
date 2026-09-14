@@ -67,6 +67,7 @@ from PySide6.QtWidgets import (
 )
 
 from logfather.ui.time_ocr import additional_camera_roi_key, analyze_video_offset, SyncCctvTimeWindow, parse_filename_datetime
+from logfather.ui.ocr_channel import OcrChannel, OcrClipRef, channel_property
 from logfather.ui.qt_worker import JobSlot
 
 SKIP_INITIAL_FRAME_RENDER = False
@@ -130,6 +131,21 @@ class ReplayView(QWidget):
     activity_progress = Signal(str, str, object, object)
     activity_cleared = Signal(str)
     playing_changed = Signal(bool)
+
+    # The OCR clock-sync state lives on the two OcrChannels (ocr_main /
+    # ocr_additional, see ocr_channel.py); these keep the old names for the
+    # readers outside the OCR section (Main_Window, the overlay controller,
+    # the alignment properties, the Sync button style).
+    video_start_dt = channel_property("ocr_main", "video_start_dt")
+    ocr_offset_seconds = channel_property("ocr_main", "offset_seconds")
+    ocr_frame_offset = channel_property("ocr_main", "frame_offset")
+    offset_store = channel_property("ocr_main", "store")
+    _main_sync_done = channel_property("ocr_main", "sync_done")
+    additional_video_start_dt = channel_property("ocr_additional", "video_start_dt")
+    additional_ocr_offset_seconds = channel_property("ocr_additional", "offset_seconds")
+    additional_ocr_frame_offset = channel_property("ocr_additional", "frame_offset")
+    additional_offset_store = channel_property("ocr_additional", "store")
+    _additional_sync_done = channel_property("ocr_additional", "sync_done")
 
     def __init__(self):
         super().__init__()
@@ -198,9 +214,34 @@ class ReplayView(QWidget):
         self._pending_additional_timer.timeout.connect(self._poll_pending_additional_cache)
         self._pending_additional_last_size: int | None = None
         self._pending_additional_stable_count = 0
-        self.additional_video_start_dt: datetime | None = None
-        self.additional_ocr_offset_seconds: float | None = None
-        self.additional_ocr_frame_offset = 0
+        # One OcrChannel per picture holds the clock-sync state and wiring
+        # (ocr_channel.py); the old attribute names are properties over
+        # them. The stores get their files and the slots their threads once
+        # the cache root and the widget exist.
+        self.ocr_main = OcrChannel(
+            name="main",
+            label="main camera",
+            dialog_title="OCR",
+            clip_noun="a video",
+            cam_label="",
+            cache_key_tag=None,
+            store_source=None,
+            settings_key=lambda pikpak_id: pikpak_id,
+            clip_ref=self._main_ocr_clip,
+            on_applied=self._apply_auto_sync_if_possible,
+        )
+        self.ocr_additional = OcrChannel(
+            name="additional",
+            label="additional camera",
+            dialog_title="Additional CCTV OCR",
+            clip_noun="an additional CCTV clip",
+            cam_label=" (2nd cam)",
+            cache_key_tag="additional",
+            store_source="additional",
+            settings_key=additional_camera_roi_key,
+            clip_ref=self._additional_ocr_clip,
+            on_applied=self._refresh_additional_after_sync,
+        )
         self.additional_manual_offset_frames = 0
         self._updating_video_label = False
         self._pending_video_label_update = False
@@ -234,13 +275,8 @@ class ReplayView(QWidget):
         self.close_gap_threshold_max = 1.00
         self.close_gap_threshold_step = 0.05
         self.first_log_dt: datetime | None = None
-        self.video_start_dt: datetime | None = None
-        self.ocr_offset_seconds: float | None = None
-        self.ocr_frame_offset = 0
         self._ocr_sync_prompt_choice: bool | None = None
         self.ocr_settings_path: Path | None = None
-        self.offset_store = OcrOffsetStore()
-        self.additional_offset_store = OcrOffsetStore()
         self.pending_pikpak_path: str | None = None
         self.pending_start_iso: str | None = None
         self.pending_end_iso: str | None = None
@@ -252,8 +288,6 @@ class ReplayView(QWidget):
         self._pending_log_autoload_timer.setSingleShot(True)
         self._pending_log_autoload_timer.setInterval(350)
         self._pending_log_autoload_timer.timeout.connect(self._auto_load_pending_logs)
-        self._auto_ocr_attempted_key: str | None = None
-        self._auto_additional_ocr_attempted_key: str | None = None
 
         # First log time (string like "HH:MM:SS.mmm")
         self.first_log_time_str: str | None = None
@@ -298,8 +332,8 @@ class ReplayView(QWidget):
         self._ocr_tool_dialog = None
         # OCR auto-sync runs off the UI thread (SMB copy + Tesseract);
         # one slot per video so main/secondary syncs can overlap.
-        self._ocr_sync_slot = JobSlot(self)
-        self._ocr_additional_sync_slot = JobSlot(self)
+        self.ocr_main.slot = JobSlot(self)
+        self.ocr_additional.slot = JobSlot(self)
 
     def _build_filter_panel(self):
         """The Filters and Custom tabs live in LogFilterPanel; the view only
@@ -347,7 +381,6 @@ class ReplayView(QWidget):
         # 2026-09-12); a press opens the OCR window.
         self._sync_pulser = Pulser(self)
         self.video_sync_btn.clicked.connect(self.open_sync_cctv_time)
-        self._main_sync_done = False
 
         self.additional_video_label = VideoFrameLabel("Additional CCTV not loaded")
         self.additional_video_label.setAlignment(Qt.AlignCenter)
@@ -365,7 +398,6 @@ class ReplayView(QWidget):
         self.additional_sync_btn.setFixedWidth(135)
         self.additional_sync_btn.setEnabled(False)
         self.additional_sync_btn.clicked.connect(self.open_additional_sync_cctv_time)
-        self._additional_sync_done = False
         self.additional_lock_toggle = QLabel("--Lock--")
         self.additional_lock_toggle.setAlignment(Qt.AlignCenter)
         self.additional_lock_toggle.setEnabled(False)
@@ -435,8 +467,8 @@ class ReplayView(QWidget):
         self.cache_root = self.clip_cache.root
         settings_root = DEFAULT_SETTINGS_PATH.parent
         self.ocr_settings_path = settings_root / "ocr_settings.json"
-        self.offset_store = OcrOffsetStore(self.cache_root / "ocr_offsets.json")
-        self.additional_offset_store = OcrOffsetStore(self.cache_root / "ocr_offsets_additional.json")
+        self.ocr_main.store = OcrOffsetStore(self.cache_root / "ocr_offsets.json")
+        self.ocr_additional.store = OcrOffsetStore(self.cache_root / "ocr_offsets_additional.json")
         self._load_pinned_annotations()
         self.cache_status_label = QLabel("")
         self.cache_status_label.setStyleSheet(theme.DIM_LABEL)
@@ -1807,10 +1839,8 @@ class ReplayView(QWidget):
         self.update_sync_button_label()
         self.update_cache_status()
         self.set_timeline_markers([])
-        self.video_start_dt = None
-        self.ocr_offset_seconds = None
-        self.ocr_frame_offset = 0
-        self._main_sync_done = False
+        self.ocr_main.clear_offset()
+        self.ocr_main.sync_done = False
         self._update_sync_button_style()
         self.video_sync_btn.setEnabled(False)
         self.current_video_filename_dt = parse_filename_datetime(path_obj)
@@ -1821,27 +1851,7 @@ class ReplayView(QWidget):
         # copy path, or a stale previous clip) hashes to a different key.
         self.current_video_original_path = path_obj
         self._load_clip_annotations()
-        key = self._offset_cache_key(Path(self.current_video_path))
-        cached = self.offset_store.get(key)
-        if cached:
-            try:
-                self.ocr_offset_seconds = float(cached.get("offset_seconds"))
-                self.ocr_frame_offset = int(cached.get("frame_offset", 0))
-            except Exception:
-                self.ocr_offset_seconds = None
-                self.ocr_frame_offset = 0
-            if self.ocr_offset_seconds is not None and not plausible_ocr_offset(self.ocr_offset_seconds):
-                print(f"[ocr] cached offset {self.ocr_offset_seconds:.0f}s for {key} is not plausible; dropped, using the filename time", flush=True)
-                self.offset_store.remove(key)
-                self.ocr_offset_seconds = None
-                self.ocr_frame_offset = 0
-            if self.ocr_offset_seconds is not None:
-                filename_dt = parse_filename_datetime(self.current_video_path)
-                if filename_dt:
-                    self.video_start_dt = filename_dt + timedelta(seconds=self.ocr_offset_seconds)
-                    self._apply_auto_sync_if_possible()
-                    self._main_sync_done = True
-                    self._update_sync_button_style()
+        self._load_cached_offset(self.ocr_main)
         if self.ocr_offset_seconds is None:
             settings = Settings.load()
             if settings.auto_ocr_open_on_missing:
@@ -1945,10 +1955,8 @@ class ReplayView(QWidget):
         self.video_label.set_status_lines([])
         if self._popout_label is not None:
             self._popout_label.set_status_lines([])
-        self.video_start_dt = None
-        self.ocr_offset_seconds = None
-        self.ocr_frame_offset = 0
-        self._auto_ocr_attempted_key = None
+        self.ocr_main.clear_offset()
+        self.ocr_main.auto_attempted_key = None
         self.current_video_original_path = None
         self.current_video_filename_dt = None
         self._reset_additional_video()
@@ -3573,12 +3581,10 @@ class ReplayView(QWidget):
         self._pending_additional_last_size = None
         self._pending_additional_stable_count = 0
         self.additional_video_filename_dt = None
-        self.additional_video_start_dt = None
-        self.additional_ocr_offset_seconds = None
-        self.additional_ocr_frame_offset = 0
+        self.ocr_additional.clear_offset()
         self.additional_manual_offset_frames = 0
-        self._auto_additional_ocr_attempted_key = None
-        self._additional_sync_done = False
+        self.ocr_additional.auto_attempted_key = None
+        self.ocr_additional.sync_done = False
         self._update_sync_button_style()
         self.additional_video_label.setText("Additional CCTV not loaded")
         self.additional_video_label.setVisible(False)
@@ -3644,35 +3650,7 @@ class ReplayView(QWidget):
         if self._pending_additional_timer.isActive():
             self._pending_additional_timer.stop()
         self.additional_locked = True
-        key_path = self.additional_video_original_path or Path(self.additional_video_path)
-        key = self._offset_cache_key(key_path, tag="additional")
-        cached = self.additional_offset_store.get(key)
-        if isinstance(cached, dict) and cached.get("source") == "additional":
-            try:
-                self.additional_ocr_offset_seconds = float(cached.get("offset_seconds"))
-                self.additional_ocr_frame_offset = int(cached.get("frame_offset", 0))
-            except Exception:
-                self.additional_ocr_offset_seconds = None
-                self.additional_ocr_frame_offset = 0
-            if self.additional_ocr_offset_seconds is not None and not plausible_ocr_offset(self.additional_ocr_offset_seconds):
-                print(f"[ocr] cached additional-camera offset {self.additional_ocr_offset_seconds:.0f}s for {key} is not plausible; dropped", flush=True)
-                self.additional_offset_store.remove(key)
-                self.additional_ocr_offset_seconds = None
-                self.additional_ocr_frame_offset = 0
-            if self.additional_ocr_offset_seconds is not None:
-                filename_dt = self.additional_video_filename_dt
-                if filename_dt is None:
-                    filename_dt = parse_filename_datetime(key_path)
-                if filename_dt is None and self.additional_video_original_path is not None:
-                    try:
-                        filename_dt = datetime.fromtimestamp(self.additional_video_original_path.stat().st_mtime)
-                    except Exception:
-                        filename_dt = None
-                if filename_dt:
-                    self.additional_video_start_dt = filename_dt + timedelta(seconds=self.additional_ocr_offset_seconds)
-                    self._additional_sync_done = True
-                    self._update_sync_button_style()
-                    self._refresh_additional_after_sync()
+        self._load_cached_offset(self.ocr_additional)
         if self.additional_ocr_offset_seconds is None:
             settings = Settings.load()
             if settings.auto_ocr_open_on_missing or settings.auto_ocr_sync:
@@ -3914,110 +3892,90 @@ class ReplayView(QWidget):
                 pass
             return src
 
-    def open_sync_cctv_time(self, auto_start: bool = True, auto_close_on_success: bool = False):
+    # ---- OCR clock sync: one code path over an OcrChannel ----------------------
+    #
+    # The main camera and the Additional CCTV were parallel copies of the
+    # methods below until 2026-09-14 (review doc, item 7); everything that
+    # differs between them sits on the channel (ocr_channel.py). The old
+    # method names are the one-line wrappers at the end of the section.
+
+    def _main_ocr_clip(self) -> OcrClipRef | None:
         if not self.current_video_path:
-            QMessageBox.information(self, "No video", "Load a video first.")
-            return
-        pikpak_id = self._extract_pikpak_id(Path(self.current_video_path))
-        if not pikpak_id:
-            QMessageBox.information(self, "No PikPak ID", "Unable to detect PikPak ID.")
-            return
-        key = self._offset_cache_key(Path(self.current_video_path))
-        dlg = None
-
-        def _on_offset_approved(video_start_dt, offset_seconds, frame_offset):
-            if not plausible_ocr_offset(offset_seconds):
-                QMessageBox.warning(self, "OCR offset", f"An offset of {float(offset_seconds) / 60:+.0f} minutes is not plausible (the clock and the filename differ by seconds). Not applied.")
-                return
-            try:
-                self.ocr_offset_seconds = float(offset_seconds)
-                self.ocr_frame_offset = int(frame_offset)
-                self.video_start_dt = video_start_dt
-                self.offset_store.set(key, offset_seconds, frame_offset)
-                self._apply_auto_sync_if_possible()
-                self._main_sync_done = True
-                self._update_sync_button_style()
-            except Exception as exc:
-                QMessageBox.warning(
-                    self,
-                    "OCR sync apply failed",
-                    f"OCR found an offset, but applying it failed:\n{exc}",
-                )
-            finally:
-                if auto_close_on_success and dlg is not None and self._ocr_tool_dialog is dlg:
-                    QTimer.singleShot(0, dlg.close)
-
-        if self._ocr_tool_dialog is not None:
-            try:
-                self._ocr_tool_dialog.close()
-            except Exception:
-                pass
-        dlg = SyncCctvTimeWindow(
-            settings_path=self.ocr_settings_path,
-            settings_key=pikpak_id,
-            auto_analyze=auto_start,
-            on_offset_approved=_on_offset_approved,
-        )
-        dlg.video_label.setText("Preparing video...")
-        dlg.setAttribute(Qt.WA_DeleteOnClose, True)
-        dlg.destroyed.connect(lambda _=None: setattr(self, "_ocr_tool_dialog", None))
-        dlg.resize(900, 600)
-        # The dialog stays hidden until the clip copy lands (Chris,
-        # 2026-09-04: the OCR window must not pop up mid-download); the
-        # activity bar shows the download meanwhile.
-        self._ocr_tool_dialog = dlg
-        src, copy_to, wait_dl = self._plan_ocr_video_source(Path(self.current_video_path))
-
-        def _open_when_ready(ready_path):
-            if self._ocr_tool_dialog is not dlg:
-                return
-            dlg.show()
-            dlg.open_video(str(ready_path))
-
-        self._ocr_sync_slot.start(
-            lambda job, src=src, copy_to=copy_to, wait_dl=wait_dl: self._ocr_video_source(
-                src,
-                copy_to,
-                should_abort=job.interrupted,
-                on_progress=lambda done, total: job.emit_progress(("ocr-copy", done, total)),
-                wait_for_download=wait_dl,
-            ),
-            on_result=_open_when_ready,
-            on_progress=self._on_ocr_sync_progress,
-            on_finished=self._hide_ocr_sync_progress,
+            return None
+        path = Path(self.current_video_path)
+        return OcrClipRef(
+            video_path=path,
+            key_path=path,
+            filename_dt=self.current_video_filename_dt,
+            original_path=self.current_video_original_path,
         )
 
-    def open_additional_sync_cctv_time(self, auto_start: bool = True, auto_close_on_success: bool = False):
+    def _additional_ocr_clip(self) -> OcrClipRef | None:
         if not self.additional_video_path:
-            QMessageBox.information(self, "No video", "Load an additional CCTV clip first.")
+            return None
+        path = Path(self.additional_video_path)
+        return OcrClipRef(
+            video_path=path,
+            key_path=self.additional_video_original_path or path,
+            filename_dt=self.additional_video_filename_dt,
+            original_path=self.additional_video_original_path,
+        )
+
+    def _load_cached_offset(self, channel: OcrChannel) -> bool:
+        """Apply the store's offset for the channel's clip as it opens:
+        parse, plausibility drop and the filename ladder are
+        OcrChannel.load_cached; then the channel's refresh and the Sync
+        button. True when an offset is in force afterwards."""
+        clip = channel.clip_ref()
+        if clip is None:
+            return False
+        key = self._offset_cache_key(clip.key_path, tag=channel.cache_key_tag)
+        if not channel.load_cached(key, clip):
+            return False
+        channel.on_applied()
+        self._update_sync_button_style()
+        return True
+
+    def _apply_ocr_offset(self, channel: OcrChannel, key: str, video_start_dt, offset_seconds, frame_offset) -> None:
+        """An offset for the channel's clip, from the Sync CCTV Time window
+        or the automatic run: remember it, save it, refresh what depends on
+        it, and turn the Sync button green (Chris, 2026-09-12: after an
+        automatic run too)."""
+        channel.set_offset(video_start_dt, offset_seconds, frame_offset)
+        channel.save_offset(key, offset_seconds, frame_offset)
+        channel.on_applied()
+        self._update_sync_button_style()
+
+    def open_sync_cctv_time_for(self, channel: OcrChannel, auto_start: bool = True, auto_close_on_success: bool = False):
+        """The Sync CCTV Time window for one camera. The window stays hidden
+        until the clip copy lands (Chris, 2026-09-04: it must not pop up
+        mid-download); the activity bar shows the download meanwhile."""
+        clip = channel.clip_ref()
+        if clip is None:
+            QMessageBox.information(self, "No video", f"Load {channel.clip_noun} first.")
             return
-        key_path = self.additional_video_original_path or Path(self.additional_video_path)
-        pikpak_id = self._extract_pikpak_id(key_path)
+        pikpak_id = self._extract_pikpak_id(clip.key_path)
         if not pikpak_id:
             QMessageBox.information(self, "No PikPak ID", "Unable to detect PikPak ID.")
             return
-        key = self._offset_cache_key(key_path, tag="additional")
-
+        key = self._offset_cache_key(clip.key_path, tag=channel.cache_key_tag)
         dlg = None
 
         def _on_offset_approved(video_start_dt, offset_seconds, frame_offset):
             if not plausible_ocr_offset(offset_seconds):
-                QMessageBox.warning(self, "OCR offset", f"An offset of {float(offset_seconds) / 60:+.0f} minutes is not plausible for the additional camera (the clock and the filename differ by seconds). Not applied.")
+                QMessageBox.warning(
+                    self,
+                    "OCR offset",
+                    f"An offset of {float(offset_seconds) / 60:+.0f} minutes is not plausible for the "
+                    f"{channel.label} (the clock and the filename differ by seconds). Not applied.",
+                )
                 return
             try:
-                self.additional_ocr_offset_seconds = float(offset_seconds)
-                self.additional_ocr_frame_offset = int(frame_offset)
-                self.additional_video_start_dt = video_start_dt
-                self.additional_offset_store.set(
-                    key, offset_seconds, frame_offset, source="additional"
-                )
-                self._refresh_additional_after_sync()
-                self._additional_sync_done = True
-                self._update_sync_button_style()
+                self._apply_ocr_offset(channel, key, video_start_dt, offset_seconds, frame_offset)
             except Exception as exc:
                 QMessageBox.warning(
                     self,
-                    "Additional CCTV OCR apply failed",
+                    f"{channel.dialog_title} apply failed",
                     f"OCR found an offset, but applying it failed:\n{exc}",
                 )
             finally:
@@ -4031,7 +3989,7 @@ class ReplayView(QWidget):
                 pass
         dlg = SyncCctvTimeWindow(
             settings_path=self.ocr_settings_path,
-            settings_key=additional_camera_roi_key(pikpak_id),
+            settings_key=channel.settings_key(pikpak_id),
             auto_analyze=auto_start,
             on_offset_approved=_on_offset_approved,
         )
@@ -4039,9 +3997,8 @@ class ReplayView(QWidget):
         dlg.setAttribute(Qt.WA_DeleteOnClose, True)
         dlg.destroyed.connect(lambda _=None: setattr(self, "_ocr_tool_dialog", None))
         dlg.resize(900, 600)
-        # Hidden until the clip copy lands — see open_sync_cctv_time.
         self._ocr_tool_dialog = dlg
-        src, copy_to, wait_dl = self._plan_ocr_video_source(Path(self.additional_video_path))
+        src, copy_to, wait_dl = self._plan_ocr_video_source(clip.video_path)
 
         def _open_when_ready(ready_path):
             if self._ocr_tool_dialog is not dlg:
@@ -4049,7 +4006,7 @@ class ReplayView(QWidget):
             dlg.show()
             dlg.open_video(str(ready_path))
 
-        self._ocr_additional_sync_slot.start(
+        channel.slot.start(
             lambda job, src=src, copy_to=copy_to, wait_dl=wait_dl: self._ocr_video_source(
                 src,
                 copy_to,
@@ -4058,8 +4015,8 @@ class ReplayView(QWidget):
                 wait_for_download=wait_dl,
             ),
             on_result=_open_when_ready,
-            on_progress=lambda payload: self._on_ocr_sync_progress(payload, cam_label=" (2nd cam)"),
-            on_finished=lambda: self._hide_ocr_sync_progress(cam_label=" (2nd cam)"),
+            on_progress=lambda payload: self._on_ocr_sync_progress(payload, cam_label=channel.cam_label),
+            on_finished=lambda: self._hide_ocr_sync_progress(cam_label=channel.cam_label),
         )
 
     def _on_ocr_sync_progress(self, payload, cam_label: str = ""):
@@ -4082,44 +4039,29 @@ class ReplayView(QWidget):
     def _hide_ocr_sync_progress(self, cam_label: str = ""):
         self.activity_cleared.emit(f"ocr{cam_label}")
 
-    def _auto_sync_with_ocr(self, force: bool = False):
-        if not self.current_video_path:
+    def _auto_sync_for(self, channel: OcrChannel, force: bool = False):
+        """The automatic sync for one camera: a cached offset if there is
+        one (dropped when implausible), else the Sync window when the
+        setting asks for it (once per clip), else the headless analysis on
+        the channel's worker, applied when it lands if the clip is still
+        the one showing."""
+        clip = channel.clip_ref()
+        if clip is None:
             return
-        path = Path(self.current_video_path)
-        pikpak_id = self._extract_pikpak_id(path)
-        key = self._offset_cache_key(path)
+        pikpak_id = self._extract_pikpak_id(clip.key_path)
+        key = self._offset_cache_key(clip.key_path, tag=channel.cache_key_tag)
         settings = Settings.load()
-        cached = None if force else self.offset_store.get(key)
-        if cached:
-            try:
-                self.ocr_offset_seconds = float(cached.get("offset_seconds"))
-                self.ocr_frame_offset = int(cached.get("frame_offset", 0))
-            except Exception:
-                self.ocr_offset_seconds = None
-                self.ocr_frame_offset = 0
-            if self.ocr_offset_seconds is not None and not plausible_ocr_offset(self.ocr_offset_seconds):
-                print(f"[ocr] cached offset {self.ocr_offset_seconds:.0f}s is not plausible; dropped", flush=True)
-                try:
-                    self.offset_store.remove(self._offset_cache_key(Path(self.current_video_path)))
-                except Exception:
-                    pass
-                self.ocr_offset_seconds = None
-                self.ocr_frame_offset = 0
-            if self.ocr_offset_seconds is not None:
-                filename_dt = parse_filename_datetime(self.current_video_path)
-                if filename_dt:
-                    self.video_start_dt = filename_dt + timedelta(seconds=self.ocr_offset_seconds)
-                    self._apply_auto_sync_if_possible()
-                return
+        if not force and self._load_cached_offset(channel):
+            return
         if settings.auto_ocr_open_on_missing:
             if not pikpak_id:
                 return
             if self._ocr_tool_dialog is not None:
                 return
-            if self._auto_ocr_attempted_key == key:
+            if channel.auto_attempted_key == key:
                 return
-            self._auto_ocr_attempted_key = key
-            self.open_sync_cctv_time(auto_start=True, auto_close_on_success=True)
+            channel.auto_attempted_key = key
+            self.open_sync_cctv_time_for(channel, auto_start=True, auto_close_on_success=True)
             return
         if not settings.auto_ocr_sync and not force:
             return
@@ -4127,10 +4069,11 @@ class ReplayView(QWidget):
             return
         # SMB copy + Tesseract run off the UI thread; the offset is applied
         # when the job lands, if this clip is still the one showing.
-        src, copy_to, wait_dl = self._plan_ocr_video_source(path)
+        src, copy_to, wait_dl = self._plan_ocr_video_source(clip.video_path)
         settings_path = self.ocr_settings_path
+        settings_key = channel.settings_key(pikpak_id)
 
-        def _analyze(job, src=src, copy_to=copy_to, wait_dl=wait_dl, pikpak_id=pikpak_id):
+        def _analyze(job, src=src, copy_to=copy_to, wait_dl=wait_dl, settings_key=settings_key):
             video_path = self._ocr_video_source(
                 src,
                 copy_to,
@@ -4141,145 +4084,53 @@ class ReplayView(QWidget):
             return analyze_video_offset(
                 str(video_path),
                 settings_path=settings_path,
-                settings_key=pikpak_id,
+                settings_key=settings_key,
                 parent=None,
                 should_abort=job.interrupted,
                 on_stage=lambda label: job.emit_progress(("ocr-stage", label)),
             )
 
         def _apply(result, src=src, key=key):
-            if not self.current_video_path or Path(self.current_video_path) != src:
+            current = channel.clip_ref()
+            if current is None or current.video_path != src:
                 return  # user moved on to another clip
             if result is None:
                 QMessageBox.information(
                     self,
-                    "OCR failed",
+                    f"{channel.dialog_title} failed",
                     "OCR sync failed. Please adjust the ROI and try again.",
                 )
-                self.open_sync_cctv_time(auto_start=False)
+                self.open_sync_cctv_time_for(channel, auto_start=False)
                 return
             if not plausible_ocr_offset(result.offset_seconds):
-                print(f"[ocr] automatic offset {result.offset_seconds:.0f}s is not plausible; ignored, using the filename time", flush=True)
-                return
-            self.ocr_offset_seconds = result.offset_seconds
-            self.ocr_frame_offset = result.frame_offset
-            self.video_start_dt = result.video_start_dt
-            self.offset_store.set(key, result.offset_seconds, result.frame_offset)
-            self._apply_auto_sync_if_possible()
-            # The button goes green after an automatic sync too (Chris, 2026-09-12).
-            self._main_sync_done = True
-            self._update_sync_button_style()
-
-        self._ocr_sync_slot.start(
-            _analyze,
-            on_result=_apply,
-            on_error=lambda msg: print(f"[ocr] auto-sync failed: {msg}"),
-            on_progress=self._on_ocr_sync_progress,
-            on_finished=self._hide_ocr_sync_progress,
-        )
-
-    def _auto_sync_additional_with_ocr(self, force: bool = False):
-        if not self.additional_video_path:
-            return
-        cache_path = Path(self.additional_video_path)
-        key_path = self.additional_video_original_path or cache_path
-        pikpak_id = self._extract_pikpak_id(key_path)
-        key = self._offset_cache_key(key_path, tag="additional")
-        settings = Settings.load()
-        cached = None if force else self.additional_offset_store.get(key)
-        if isinstance(cached, dict) and cached.get("source") != "additional":
-            cached = None
-        if cached:
-            try:
-                self.additional_ocr_offset_seconds = float(cached.get("offset_seconds"))
-                self.additional_ocr_frame_offset = int(cached.get("frame_offset", 0))
-            except Exception:
-                self.additional_ocr_offset_seconds = None
-                self.additional_ocr_frame_offset = 0
-            if self.additional_ocr_offset_seconds is not None and not plausible_ocr_offset(self.additional_ocr_offset_seconds):
-                print(f"[ocr] cached additional-camera offset {self.additional_ocr_offset_seconds:.0f}s is not plausible; dropped", flush=True)
-                self.additional_offset_store.remove(key)
-                self.additional_ocr_offset_seconds = None
-                self.additional_ocr_frame_offset = 0
-            if self.additional_ocr_offset_seconds is not None:
-                filename_dt = parse_filename_datetime(key_path)
-                if filename_dt is None:
-                    filename_dt = self.additional_video_filename_dt
-                if filename_dt is None and self.additional_video_original_path is not None:
-                    filename_dt = parse_filename_datetime(self.additional_video_original_path)
-                if filename_dt is None and self.additional_video_original_path is not None:
-                    try:
-                        filename_dt = datetime.fromtimestamp(self.additional_video_original_path.stat().st_mtime)
-                    except Exception:
-                        filename_dt = None
-                if filename_dt:
-                    self.additional_video_start_dt = filename_dt + timedelta(seconds=self.additional_ocr_offset_seconds)
-                    self._refresh_additional_after_sync()
-                return
-        if settings.auto_ocr_open_on_missing:
-            if not pikpak_id:
-                return
-            if self._ocr_tool_dialog is not None:
-                return
-            if self._auto_additional_ocr_attempted_key == key:
-                return
-            self._auto_additional_ocr_attempted_key = key
-            self.open_additional_sync_cctv_time(auto_start=True, auto_close_on_success=True)
-            return
-        if not settings.auto_ocr_sync and not force:
-            return
-        if not pikpak_id:
-            return
-        src, copy_to, wait_dl = self._plan_ocr_video_source(cache_path)
-        settings_path = self.ocr_settings_path
-
-        def _analyze(job, src=src, copy_to=copy_to, wait_dl=wait_dl, pikpak_id=pikpak_id):
-            video_path = self._ocr_video_source(
-                src,
-                copy_to,
-                should_abort=job.interrupted,
-                on_progress=lambda done, total: job.emit_progress(("ocr-copy", done, total)),
-                wait_for_download=wait_dl,
-            )
-            return analyze_video_offset(
-                str(video_path),
-                settings_path=settings_path,
-                settings_key=additional_camera_roi_key(pikpak_id),
-                parent=None,
-                should_abort=job.interrupted,
-                on_stage=lambda label: job.emit_progress(("ocr-stage", label)),
-            )
-
-        def _apply(result, src=src, key=key):
-            if not self.additional_video_path or Path(self.additional_video_path) != src:
-                return  # secondary clip changed while OCR ran
-            if result is None:
-                QMessageBox.information(
-                    self,
-                    "Additional CCTV OCR failed",
-                    "OCR sync failed for the additional CCTV clip.",
+                print(
+                    f"[ocr] automatic {channel.label} offset {result.offset_seconds:.0f}s is not "
+                    "plausible; ignored, using the filename time",
+                    flush=True,
                 )
                 return
-            if not plausible_ocr_offset(result.offset_seconds):
-                print(f"[ocr] automatic additional-camera offset {result.offset_seconds:.0f}s is not plausible; ignored", flush=True)
-                return
-            self.additional_ocr_offset_seconds = result.offset_seconds
-            self.additional_ocr_frame_offset = result.frame_offset
-            self.additional_video_start_dt = result.video_start_dt
-            self.additional_offset_store.set(
-                key, result.offset_seconds, result.frame_offset, source="additional"
-            )
-            self._refresh_additional_after_sync()
-            self._additional_sync_done = True
-            self._update_sync_button_style()
+            self._apply_ocr_offset(channel, key, result.video_start_dt, result.offset_seconds, result.frame_offset)
 
-        self._ocr_additional_sync_slot.start(
+        channel.slot.start(
             _analyze,
             on_result=_apply,
-            on_error=lambda msg: print(f"[ocr] secondary auto-sync failed: {msg}"),
-            on_progress=lambda payload: self._on_ocr_sync_progress(payload, cam_label=" (2nd cam)"),
-            on_finished=lambda: self._hide_ocr_sync_progress(cam_label=" (2nd cam)"),
+            on_error=lambda msg: print(f"[ocr] {channel.label} auto-sync failed: {msg}"),
+            on_progress=lambda payload: self._on_ocr_sync_progress(payload, cam_label=channel.cam_label),
+            on_finished=lambda: self._hide_ocr_sync_progress(cam_label=channel.cam_label),
         )
+
+    # The names the buttons, the View menu and the clip-open paths call.
+    def open_sync_cctv_time(self, auto_start: bool = True, auto_close_on_success: bool = False):
+        self.open_sync_cctv_time_for(self.ocr_main, auto_start, auto_close_on_success)
+
+    def open_additional_sync_cctv_time(self, auto_start: bool = True, auto_close_on_success: bool = False):
+        self.open_sync_cctv_time_for(self.ocr_additional, auto_start, auto_close_on_success)
+
+    def _auto_sync_with_ocr(self, force: bool = False):
+        self._auto_sync_for(self.ocr_main, force)
+
+    def _auto_sync_additional_with_ocr(self, force: bool = False):
+        self._auto_sync_for(self.ocr_additional, force)
 
     def _refresh_additional_after_sync(self):
         if self.additional_cap is None or self.additional_fps <= 0:
@@ -4448,8 +4299,8 @@ class ReplayView(QWidget):
             ("viewer: flush settings", self._flush_settings_autosave),
             ("viewer: cancel log fetch", self._cancel_log_future),
             ("viewer: close tool windows", _close_tool_windows),
-            ("viewer: OCR sync slot", self._ocr_sync_slot.shutdown),
-            ("viewer: secondary OCR slot", self._ocr_additional_sync_slot.shutdown),
+            ("viewer: OCR sync slot", self.ocr_main.slot.shutdown),
+            ("viewer: secondary OCR slot", self.ocr_additional.slot.shutdown),
             ("viewer: log executor", _stop_log_executor),
         ):
             t0 = time.perf_counter()
