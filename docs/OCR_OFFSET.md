@@ -174,11 +174,33 @@ shown: offsets are applied unattended.
 
 ### The additional camera
 
-The second picture keeps its own `additional_video_start_dt`,
-`additional_ocr_offset_seconds` and `additional_ocr_frame_offset`, a
-separate store file, and its own Sync Time button
-(`open_additional_sync_cctv_time`). Once both cameras have a start, the second
-camera is slaved to the first:
+Both pictures run the same code since 2026-09-14
+(`src/logfather/ui/ocr_channel.py`). The viewer holds an `OcrChannel` per
+camera, `ocr_main` and `ocr_additional`, carrying what differs between
+them: the offset store (section 5), the worker `JobSlot` (one each, so the
+two syncs can overlap), the store key tag (`:additional`) and the
+`source="additional"` tag its entries must carry, the ROI settings key
+(`PikPak007` against `PikPak007/additional`), the message wording, a
+`clip_ref()` that says which clip the channel is showing, and the refresh
+to run once an offset is in force (`_apply_auto_sync_if_possible` for the
+main camera, `_refresh_additional_after_sync` for the second). The
+per-clip state sits on the channel too: `offset_seconds`, `frame_offset`,
+`video_start_dt`, `sync_done` (the Sync button goes green) and the
+auto-open guard. `ReplayView.open_sync_cctv_time_for(channel)` and
+`_auto_sync_for(channel)` are the one implementation of the Sync Time
+window and the automatic run; `open_sync_cctv_time`,
+`open_additional_sync_cctv_time`, `_auto_sync_with_ocr` and
+`_auto_sync_additional_with_ocr` are one-line wrappers, and
+`viewer.video_start_dt`, `additional_video_start_dt`,
+`ocr_offset_seconds`, `additional_ocr_frame_offset` and the rest are
+properties over the channel state, so the readers elsewhere (the main
+window, the overlay controller, `alignment` / `additional_alignment`) did
+not change. Where the two copies had drifted apart they now share the
+union: the plausibility drop with its log line and the filename fallback
+ladder (section 5) run for both, and a failed automatic run opens the Sync
+window for either camera with "Please adjust the ROI and try again."
+
+Once both cameras have a start, the second camera is slaved to the first:
 
     clock = clock_datetime(video_start_dt, t)
     t2    = video_seconds_for_clock(additional_video_start_dt, clock)
@@ -198,8 +220,23 @@ clip cache's pruning: `ocr_offsets.json` (main camera) and
 
 The key is `PikPakNNN:YYYYMMDDHHMMSS` from the clip path
 (`_offset_cache_key`), so the share copy and the cached copy of a clip
-share one entry. Entries are written when an offset is applied and
+share one entry. Entries are written when an offset is applied
+(`OcrChannel.save_offset`, which adds the channel's `source` tag) and
 removed only by the plausibility check.
+
+Reading an entry back is `OcrChannel.load_cached(key, clip)`, the same
+for both cameras: the entry must carry the channel's `source` tag (the
+additional store's `"additional"`; the main store has none), an
+implausible value is deleted and printed, and the start is the clip's
+filename time plus the offset. That filename time is tried four ways
+(`resolve_filename_start`): the 14-digit stamp in the key path, then the
+start the viewer recorded when the clip was chosen, then the stamp in the
+share path, then the share file's mtime. Before 2026-09-14 only the
+additional camera had this ladder; the main camera stopped at the first
+step. An entry with an offset but no filename time to anchor it keeps the
+offset (so no automatic run starts) but gives no start.
+`tests/test_ocr_channel.py` covers the read, the drop and the ladder with
+a fake store.
 
 Since 2026-09-12 the plausibility check runs on both cameras: a cached
 offset at clip open and in the automatic path (a failing entry is deleted
@@ -290,5 +327,6 @@ tools.
 | OCR engine, ROI tool, filename parser | `src/logfather/ui/time_ocr.py` |
 | Offset store | `src/logfather/data/ocr_offset_store.py` |
 | Clip open, automatic sync, Sync Time buttons, second camera | `src/logfather/ui/replay_view.py` |
+| One camera's sync state and wiring, cached-offset read, filename ladder | `src/logfather/ui/ocr_channel.py` |
 | Settings flags `auto_ocr_sync`, `auto_ocr_open_on_missing` | `src/logfather/data/settings_store.py`, `src/logfather/ui/settings_dialog.py` |
-| Tests | `tests/test_time_alignment.py`, `tests/test_ocr_offset_plausibility.py`, `tests/test_parsing.py` (store) |
+| Tests | `tests/test_time_alignment.py`, `tests/test_ocr_offset_plausibility.py`, `tests/test_ocr_channel.py`, `tests/test_parsing.py` (store) |

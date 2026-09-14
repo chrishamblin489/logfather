@@ -194,7 +194,7 @@ The main window that wires every screen together, and the helpers they share.
 | `ui/pulse.py` | 66 | The gentle breathing highlight on a button that needs attention (Sync: ?). |
 | `ui/window_placement.py` | 67 | Keeps secondary windows on screen and over their parent. |
 | `ui/app_assets.py` | 39 | Finds bundled assets (logo, diagram, placeholder) in a source checkout or a frozen build. |
-| `ui/about_page.py` | 436 | This dialog: the version linked to its GitHub commit, the schematic, and these summaries. |
+| `ui/about_page.py` | 440 | This dialog: the version linked to its GitHub commit, the schematic, and these summaries. |
 
 ### UI - the screens and windows
 
@@ -204,7 +204,7 @@ One module per thing you can open.
 |---|---:|---|
 | `ui/overview_widget.py` | 2413 | The Overview: one row per PikPak drawn on a graphics scene (SKU runs, manual, stops, CCTV coverage), the day range, the PikPaks filter, drag to reorder, hover thumbnails, and the incremental refresh with its on-disk cache. |
 | `ui/data_boxes.py` | 790 | The Data and Additional data boxes and their reading strips (a SignalChannel per Grafana or Elastic reading), shared by the Overview and the PikPak Replay timeline. |
-| `ui/replay_view.py` | 4556 | The PikPak Replay: video playback with the log list, the Elastic log load, the OCR offset applied to the main and the Additional CCTV, the Sync and Overlay tool strips, the Analysis tab, annotations, Bird's Eye, and export with overlays burnt in. |
+| `ui/replay_view.py` | 4380 | The PikPak Replay: video playback with the log list, the Elastic log load, the OCR offset applied to the main and the Additional CCTV, the Sync and Overlay tool strips, the Analysis tab, annotations, Bird's Eye, and export with overlays burnt in. |
 | `ui/log_filter_panel.py` | 956 | The replay's Filters and Custom tabs: the source / state / message checkbox columns, the 15 filter presets, the five custom filter-in / filter-out blocks, their Settings persistence, and the row matching the log list is filtered by. |
 | `ui/replay_timeline.py` | 1919 | The timeline chart under the replay: the day's clips, event ticks, SKU bands, the Errors box rows, the label gutter, the playhead, the View menu, zoom and the Data strips. |
 | `ui/annotated_video_widget.py` | 925 | The video canvas: the frame, drawing and measuring annotations, the info text, the product overlays and the Bird's Eye tray view. |
@@ -212,6 +212,7 @@ One module per thing you can open.
 | `ui/target_buffer_widget.py` | 397 | The Targets panel: one card per product in the robot's queue, updating as the clip plays. |
 | `ui/telemetry_strip.py` | 204 | The Telemetry tab in the replay: the day's Grafana tracks in groups. |
 | `ui/time_ocr.py` | 2549 | The Sync CCTV Time window and the OCR engine behind it: the draggable Date and Time boxes, the date procedure A-H, the second-boundary search, the readings table with its 60 s drift checks, the help flowchart, and the headless analysis the automatic sync runs. |
+| `ui/ocr_channel.py` | 173 | One camera's OCR clock sync (main or Additional CCTV): its offset store, worker slot, key tag, ROI settings key and per-clip offset, plus the cached-offset read with the plausibility drop and the filename fallback ladder the replay runs for both pictures. |
 | `ui/conveyor_calibration_dialog.py` | 857 | The Conveyor window: click the same belt landmark on two frames to set the tracking line and speed. |
 | `ui/fleetwide_elastic_search_widget.py` | 769 | The Search screen: saved searches over every PikPak for a day range, cards and graphs per system. |
 | `ui/errors_stops_window.py` | 618 | The Errors / Stops window: stops per day and errors per day by category, with the PikPaks filter. |
@@ -236,7 +237,7 @@ Outside the app.
 | `tools/elastic-log-download.py` | 302 | Standalone CSV download of a robot's logs through Kibana Reporting (API key from the environment). |
 | `tools/Vid_Frame_Differencing.py` | 685 | The original motion-analysis prototype; its maths now lives in core/frame_analysis.py. |
 | `tools/logs_to_srt.py` | 155 | Legacy: a CSV log export turned into subtitles. Superseded by the replay. |
-| `tests/` | 4033 (all) | 26 pytest modules over the pure logic: parsing, caches, alignment, the OCR engine, errors and stops, telemetry, Grafana, software history, the offset store. |
+| `tests/` | 4213 (all) | 26 pytest modules over the pure logic: parsing, caches, alignment, the OCR engine, errors and stops, telemetry, Grafana, software history, the offset store. |
 | `build.ps1 + spec/iss` | 124 | The release pipeline: stamp version.json, PyInstaller-bundle The Logfather, build the installer. |
 
 <!-- END FILE TABLE -->

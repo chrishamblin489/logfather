@@ -221,6 +221,10 @@ FILE_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
          "The Sync CCTV Time window and the OCR engine behind it: the draggable Date and Time boxes, the "
          "date procedure A-H, the second-boundary search, the readings table with its 60 s drift checks, "
          "the help flowchart, and the headless analysis the automatic sync runs."),
+        ("ui/ocr_channel.py", "src/logfather/ui/ocr_channel.py",
+         "One camera's OCR clock sync (main or Additional CCTV): its offset store, worker slot, key tag, "
+         "ROI settings key and per-clip offset, plus the cached-offset read with the plausibility drop and "
+         "the filename fallback ladder the replay runs for both pictures."),
         ("ui/conveyor_calibration_dialog.py", "src/logfather/ui/conveyor_calibration_dialog.py",
          "The Conveyor window: click the same belt landmark on two frames to set the tracking line and speed."),
         ("ui/fleetwide_elastic_search_widget.py", "src/logfather/ui/fleetwide_elastic_search_widget.py",
