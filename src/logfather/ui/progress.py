@@ -134,15 +134,30 @@ class StageProgress:
         self._dialog.show()
         return self
 
+    def _gone(self) -> bool:
+        """The dialog's C++ object can be destroyed underneath us while a
+        loop pumps events: the parent window closes (the Sync CCTV Time
+        window auto-closes once the offset is applied, 2026-09-14) and
+        takes its child dialog with it. Treat that as a cancel."""
+        self._dialog = None
+        return True
+
     def set(self, value: int) -> None:
         if self._dialog is None:
             return
-        self._dialog.setValue(min(self._maximum, int(value)))
+        try:
+            self._dialog.setValue(min(self._maximum, int(value)))
+        except RuntimeError:
+            self._gone()
+            return
         _pump()
 
     def set_label(self, text: str) -> None:
         if self._dialog is not None:
-            self._dialog.setLabelText(text)
+            try:
+                self._dialog.setLabelText(text)
+            except RuntimeError:
+                self._gone()
 
     def was_cancelled(self) -> bool:
         if self._should_abort is not None and self._should_abort():
@@ -150,7 +165,11 @@ class StageProgress:
         if self._dialog is None:
             return False
         _pump()
-        if not self._dialog.wasCanceled():
+        try:
+            cancelled = self._dialog.wasCanceled()
+        except RuntimeError:
+            return self._gone()
+        if not cancelled:
             return False
         if not self._cancel_reported:
             self._cancel_reported = True
@@ -162,7 +181,10 @@ class StageProgress:
         dlg = self._dialog
         self._dialog = None
         if dlg is not None:
-            dlg.close()
+            try:
+                dlg.close()
+            except RuntimeError:
+                pass  # already destroyed with its parent
 
 
 def _default_parse_progress(payload) -> tuple[str | None, int, int] | None:

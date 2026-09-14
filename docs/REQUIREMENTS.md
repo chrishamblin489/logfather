@@ -24,6 +24,13 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ### 2026-09-14
 
+- Fixes after the refactor (Chris, 2026-09-14): the Overview PikPaks
+  filter applies even when a load is still running - closing the popup
+  now retires the running load before reloading (before, the refresh was
+  skipped and the old load kept filling in every system); the shared
+  StageProgress helper treats a dialog destroyed underneath it (the Sync
+  CCTV Time window auto-closing mid readings table) as a cancel instead
+  of raising, and the readings table stops when the window is closing.
 - Review item 10 done (Chris, 2026-09-14), the last known cross-thread
   data path: the module global SYSTEM_ID_OVERRIDE in elastic_loader (set
   by the date picker's SIM Logs mode on the UI thread, read by the fetch

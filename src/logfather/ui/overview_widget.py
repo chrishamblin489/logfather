@@ -1031,6 +1031,11 @@ class OverviewWidget(QWidget):
         # decides what gets fetched, so it is a fresh load.
         if self._filter_dirty:
             self._filter_dirty = False
+            # A load still running for the old selection would keep
+            # filling in every system and make refresh() skip the reload
+            # (Chris, 2026-09-14: one PikPak ticked, all still shown).
+            # Retire it so its rows can no longer arrive, then reload.
+            self._overview_slot.retire()
             self._reset_loaded_data()
             self.refresh(force_full=True)
 

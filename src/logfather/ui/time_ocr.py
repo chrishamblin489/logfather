@@ -1410,7 +1410,7 @@ class SyncCctvTimeWindow(QWidget):
         cancelled = False
         try:
             for i, (span_start, span_end, every) in enumerate(spans):
-                if progress.was_cancelled():
+                if self._closing or progress.was_cancelled():
                     cancelled = True
                     break
                 progress.set(i)

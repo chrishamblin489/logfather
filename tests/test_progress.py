@@ -223,3 +223,18 @@ def test_job_progress_default_parser_accepts_pairs_and_ignores_junk(parent):
     slot.started["on_progress"](("Halfway", 6, 12))
     assert dlg.labelText() == "Halfway" and dlg.value() == 6
     slot.started["on_result"](None)
+
+
+def test_stage_progress_survives_its_dialog_being_destroyed(parent):
+    """The parent window can close mid-loop (the Sync CCTV Time window
+    auto-closes once the offset is applied) and take the dialog with it:
+    the helper then reports cancelled instead of raising (2026-09-14)."""
+    import shiboken6
+
+    progress = StageProgress(parent, "Readings").begin("Reading...", 5)
+    shiboken6.delete(progress.dialog)
+    assert progress.was_cancelled() is True
+    progress.set(3)  # no error
+    progress.set_label("still fine")
+    progress.close()
+    assert progress.dialog is None
