@@ -12,6 +12,7 @@ from typing import Callable, Optional
 
 from logfather.paths import bundle_root
 from logfather.ui import theme
+from logfather.ui.progress import StageProgress
 
 import cv2
 import numpy as np
@@ -28,7 +29,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QProgressDialog,
     QPushButton,
     QSlider,
     QVBoxLayout,
@@ -1381,18 +1381,15 @@ class SyncCctvTimeWindow(QWidget):
             self.readings_list.addItem(QListWidgetItem("(clip too short for a check)"))
             return
         step = max(1, int(round(self.fps * OCR_SYNC_COARSE_STEP_SECONDS)))
-        progress = QProgressDialog(f"Reading the first {OCR_TABLE_SECONDS} s, then a drift check every {OCR_TABLE_INTERVAL_SECONDS} s...", "Cancel", 0, len(spans), self)
-        progress.setWindowTitle("Readings")
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
+        progress = StageProgress(self, "Readings").begin(
+            f"Reading the first {OCR_TABLE_SECONDS} s, then a drift check every {OCR_TABLE_INTERVAL_SECONDS} s...", len(spans)
+        )
         cache: dict[int, str | None] = {}
 
         def read_text(frame_idx: int) -> str | None:
             if frame_idx in cache:
                 return cache[frame_idx]
-            QApplication.processEvents()
-            if progress.wasCanceled():
+            if progress.was_cancelled():
                 raise _Aborted()
             text = None
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
@@ -1411,11 +1408,10 @@ class SyncCctvTimeWindow(QWidget):
         cancelled = False
         try:
             for i, (span_start, span_end, every) in enumerate(spans):
-                if progress.wasCanceled():
+                if progress.was_cancelled():
                     cancelled = True
                     break
-                progress.setValue(i)
-                QApplication.processEvents()
+                progress.set(i)
                 boundaries = find_second_boundaries(read_text, span_start, span_end, step)
                 if not boundaries:
                     misses += 1
@@ -1618,20 +1614,11 @@ class SyncCctvTimeWindow(QWidget):
         frame_h, frame_w = first.shape[:2]
         date_roi = self._current_date_roi(frame_w, frame_h)
         # Wording and a Cancel button (Chris, 2026-09-13).
-        progress = QProgressDialog("Comparing displayed date to filename date...", "Cancel", 0, max(1, self.frame_count), self)
-        progress.setWindowTitle("Camera date")
-        progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
-
-        def _on_progress(frame_idx: int) -> None:
-            progress.setValue(min(self.frame_count, int(frame_idx)))
-            QApplication.processEvents()
-
+        progress = StageProgress(self, "Camera date").begin("Comparing displayed date to filename date...", self.frame_count)
         try:
-            change = find_date_change_frame(self.cap, self.fps, self.frame_count, date_roi, should_abort=progress.wasCanceled, on_progress=_on_progress)
+            change = find_date_change_frame(self.cap, self.fps, self.frame_count, date_roi, should_abort=progress.was_cancelled, on_progress=progress.set)
         finally:
-            cancelled = progress.wasCanceled()
+            cancelled = progress.was_cancelled()
             progress.close()
         if cancelled:
             self._run_cancelled = True
@@ -2067,42 +2054,11 @@ class OcrSyncOutcome:
     reason: str = ""
 
 
-class _ScanProgress:
+def _scan_progress(hooks: SyncHooks, label: str, maximum: int) -> StageProgress:
     """One scan's progress dialog with Cancel, shown over hooks.parent when
-    there is one. stop() also polls hooks.should_abort, so a headless run
-    is interrupted the same way; a Cancel is reported once to
-    hooks.on_cancel."""
-
-    def __init__(self, hooks: SyncHooks, label: str, maximum: int):
-        self._hooks = hooks
-        self._maximum = int(maximum)
-        self._dialog = None
-        if hooks.parent is not None:
-            dialog = QProgressDialog(label, "Cancel", 0, self._maximum, hooks.parent)
-            dialog.setWindowTitle("OCR Analysis")
-            dialog.setWindowModality(Qt.WindowModal)
-            dialog.setMinimumDuration(0)
-            dialog.setValue(0)
-            self._dialog = dialog
-
-    def stop(self) -> bool:
-        if self._hooks.should_abort is not None and self._hooks.should_abort():
-            return True
-        if self._dialog is not None and self._dialog.wasCanceled():
-            if self._hooks.on_cancel is not None:
-                self._hooks.on_cancel()
-            return True
-        return False
-
-    def advance(self, done: int) -> None:
-        if self._dialog is not None:
-            self._dialog.setValue(int(done))
-            QApplication.processEvents()
-
-    def close(self) -> None:
-        if self._dialog is not None:
-            self._dialog.setValue(self._maximum)
-            self._dialog.close()
+    there is one; headless (no parent) it is interrupted only by
+    hooks.should_abort. A Cancel is reported once to hooks.on_cancel."""
+    return StageProgress(hooks.parent, "OCR Analysis", should_abort=hooks.should_abort, on_cancel=hooks.on_cancel).begin(label, maximum)
 
 
 def analyze_video_offset(
@@ -2355,9 +2311,9 @@ def _collect_ocr_samples_for_cap(
         return []
     first, last = span
     samples: list[tuple[int, float, datetime, str]] = []
-    progress = _ScanProgress(hooks, f"Analyzing first {seconds}s...", last - first + 1)
+    progress = _scan_progress(hooks, f"Analyzing first {seconds}s...", last - first + 1)
     for frame_idx in range(first, last + 1):
-        if progress.stop():
+        if progress.was_cancelled():
             break
         cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
         ret, frame = cap.read()
@@ -2365,7 +2321,7 @@ def _collect_ocr_samples_for_cap(
             continue
         if hooks.on_frame is not None:
             hooks.on_frame(frame_idx, frame)
-        progress.advance(frame_idx - first + 1)
+        progress.set(frame_idx - first + 1)
         sample = _sample_from_frame(frame_idx, frame, fps, base_dt, read_clock)
         if sample is not None:
             samples.append(sample)
@@ -2400,20 +2356,20 @@ def _find_second_boundary_samples_for_cap(
     if frame_indices[-1] != last:
         frame_indices.append(last)
 
-    progress = _ScanProgress(hooks, f"Scanning first {seconds}s (coarse)...", len(frame_indices))
+    progress = _scan_progress(hooks, f"Scanning first {seconds}s (coarse)...", len(frame_indices))
     found: list[tuple[int, float, datetime, str]] = []
     prev: tuple[int, float, datetime, str] | None = None
     for idx, frame_idx in enumerate(frame_indices):
-        if progress.stop():
+        if progress.was_cancelled():
             break
         sample = _ocr_sample_for_frame(cap, frame_idx, fps, base_dt, read_clock)
-        progress.advance(idx + 1)
+        progress.set(idx + 1)
         if sample is None:
             continue
         if prev is not None and _is_next_second(prev[3], sample[3]):
             boundary_sample = sample
             for frame_scan in range(prev[0], sample[0] + 1):
-                if progress.stop():
+                if progress.was_cancelled():
                     break
                 scanned = _ocr_sample_for_frame(cap, frame_scan, fps, base_dt, read_clock)
                 if scanned and scanned[3] == sample[3]:
