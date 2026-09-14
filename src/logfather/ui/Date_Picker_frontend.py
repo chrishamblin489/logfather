@@ -31,7 +31,6 @@ class DatePicker(QWidget):
     # Emits (pikpak_root: Path | None, day: date | None)
     date_selected = Signal(object, object)
     system_id_selected = Signal(object)
-    settings_requested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -438,9 +437,6 @@ class DatePicker(QWidget):
 
     def emit_date_selected(self):
         self.date_selected.emit(self.top_dir if self.top_dir else None, self.active_day)
-
-    def _emit_settings_requested(self):
-        self.settings_requested.emit()
 
 
 def main():

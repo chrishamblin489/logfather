@@ -503,14 +503,6 @@ def display_line_name(settings: Settings, system_name: str) -> str:
     return layout.production_line.strip()
 
 
-def format_system_button_text(settings: Settings, system_name: str) -> str:
-    customer = display_customer_name(settings, system_name)
-    line = display_line_name(settings, system_name)
-    if line:
-        return f"{customer}\n{line} | {system_name}"
-    return f"{customer}\n{system_name}"
-
-
 def customer_logo_bytes(settings: Settings, customer: str) -> bytes | None:
     key = str(customer or "").strip()
     if not key:

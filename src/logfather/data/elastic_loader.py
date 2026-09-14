@@ -46,7 +46,6 @@ from logfather.data.elastic_schema import (
 
 # Defaults (can be overridden in settings dialog). Index must be provided by user if default is incorrect.
 KIBANA_BASE_DEFAULT = "https://leap-deployment.kb.europe-west2.gcp.elastic-cloud.com:9243"
-DISCOVER_INDEX_ID_DEFAULT = None
 ELASTIC_INDEX_PATTERN = "logstash-*,pikpak,pikpak-*"
 ELASTIC_TIMESTAMP_FIELDS = ["@timestamp_ros", "@timestamp"]
 SYSTEM_ID_OVERRIDE: str | None = None
@@ -127,13 +126,6 @@ def _events_cache_path_for_robot(
         return None
     filename = f"events_{robot_id}_{day_key}_{digest}.json"
     return cache_root / filename
-
-
-def _events_cache_path(settings: Settings, pikpak_root: Path, day) -> Path | None:
-    robot_id = _extract_robot_id(pikpak_root)
-    if not robot_id:
-        return None
-    return _events_cache_path_for_robot(settings, robot_id, day, pikpak_root=pikpak_root)
 
 
 def _extract_robot_id(pikpak_root: Path) -> str | None:

@@ -181,9 +181,6 @@ class TelemetryPanel(QWidget):
         self._scroll.setWidget(self._body)
         layout.addWidget(self._scroll, 1)
 
-    def set_status(self, text: str) -> None:
-        self._status.setText(text)
-
     def set_data(self, data: TelemetryDay | None, status: str | None = None) -> None:
         self._data = data
         for chart in self._charts:

@@ -1866,17 +1866,6 @@ class ReplayView(QWidget):
             show_busy=False,
         )
 
-    def load_pending_logs(self):
-        if not self.pending_pikpak_path or not self.pending_start_iso or not self.pending_end_iso:
-            QMessageBox.information(self, "No logs", "No pending log range found.")
-            return
-        self.load_logs_from_elastic(
-            self.pending_pikpak_path,
-            self.pending_start_iso,
-            self.pending_end_iso,
-            show_busy=True,
-        )
-
     # ---- ffmpeg rewrap helper ----
 
     def try_rewrap_video_with_ffmpeg(self, file_path: str) -> str | None:
@@ -3052,13 +3041,6 @@ class ReplayView(QWidget):
         self.pause()
         self.current_frame = frame
         self.show_frame(self.current_frame)
-
-    def add_playback_right_widget(self, widget: QWidget):
-        if widget is None:
-            return
-        if self.playback_layout is None:
-            return
-        self.playback_layout.addWidget(widget)
 
     # ---- Playback control ----
 
@@ -4331,12 +4313,6 @@ class ReplayView(QWidget):
     def _cache_path_for(self, original_path: Path) -> Path:
         return self.clip_cache.cache_path_for(original_path)
 
-    def _clip_annotation_path_for_cache(self, cache_path: Path) -> Path:
-        return self.clip_cache.annotation_path_for(cache_path)
-
-    def _invalidate_cached_copy(self, cache_path: Path) -> None:
-        self.clip_cache.invalidate(cache_path)
-
     def _touch_cache_entry(self, cache_path: Path) -> None:
         self.clip_cache.touch_entry(cache_path)
 
@@ -4345,9 +4321,6 @@ class ReplayView(QWidget):
 
     def _ensure_cached_copy(self, source_path: Path, cache_path: Path) -> bool:
         return self.clip_cache.ensure_cached_copy(source_path, cache_path)
-
-    def _copy_to_cache(self, source_path: Path, cache_path: Path) -> bool:
-        return self.clip_cache.copy_to_cache(source_path, cache_path)
 
     def get_valid_cached_path(self, original_path: Path) -> Path | None:
         return self.clip_cache.get_valid_cached_path(original_path)
@@ -4522,61 +4495,6 @@ class ReplayView(QWidget):
             if re.match(r"^PikPak\d+$", part, flags=re.IGNORECASE):
                 return Path(*path.parts[: idx + 1])
         return None
-
-    def _find_additional_cctv_clip(
-        self,
-        main_path: Path,
-        main_start: datetime | None,
-        main_duration: float | None,
-    ) -> Path | None:
-        pikpak_root = self._find_pikpak_root(main_path)
-        if pikpak_root is None:
-            return None
-        day_dir = main_path.parent
-        if len(day_dir.parts) < 3:
-            return None
-        month_dir = day_dir.parent
-        year_dir = month_dir.parent
-        additional_day = pikpak_root / "AdditionalCCTV" / year_dir.name / month_dir.name / day_dir.name
-        if not additional_day.exists():
-            return None
-        allowed = {".mp4", ".mov", ".mkv", ".avi"}
-        candidates = []
-        for entry in additional_day.iterdir():
-            if not entry.is_file() or entry.suffix.lower() not in allowed:
-                continue
-            start_dt = parse_filename_datetime(entry)
-            if start_dt is None:
-                try:
-                    start_dt = datetime.fromtimestamp(entry.stat().st_mtime)
-                except Exception:
-                    continue
-            candidates.append((start_dt, entry))
-        if not candidates:
-            return None
-        if main_start is None or main_duration is None:
-            after = [c for c in candidates if main_start and c[0] >= main_start]
-            if after:
-                return min(after, key=lambda t: t[0])[1]
-            return min(candidates, key=lambda t: t[0])[1]
-        main_end = main_start + timedelta(seconds=main_duration)
-        best_entry = None
-        best_overlap = -1.0
-        for start_dt, entry in candidates:
-            duration = self._get_video_duration_seconds(entry)
-            if duration is None:
-                continue
-            end_dt = start_dt + timedelta(seconds=duration)
-            overlap = (min(main_end, end_dt) - max(main_start, start_dt)).total_seconds()
-            if overlap > best_overlap:
-                best_overlap = overlap
-                best_entry = entry
-        if best_entry is not None:
-            return best_entry
-        after = [c for c in candidates if c[0] >= main_start]
-        if after:
-            return min(after, key=lambda t: t[0])[1]
-        return min(candidates, key=lambda t: t[0])[1]
 
     def load_additional_cctv_from_path(self, path: Path):
         if not path.exists():

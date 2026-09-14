@@ -6,18 +6,15 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QByteArray, QBuffer, QIODevice, Signal
 from PySide6.QtGui import QGuiApplication, QImage, QPixmap, QIcon
 from PySide6.QtWidgets import (
-    QDialog,
     QVBoxLayout,
     QFormLayout,
     QLineEdit,
-    QDialogButtonBox,
     QPushButton,
     QHBoxLayout,
     QLabel,
     QGridLayout,
     QCheckBox,
     QWidget,
-    QTabWidget,
     QPlainTextEdit,
     QTableWidget,
     QTableWidgetItem,
@@ -125,34 +122,6 @@ class SettingsPanel(QWidget):
             color = DEFAULT_COLORS[idx % len(DEFAULT_COLORS)]
             new_conditions.append(Condition(color=color))
         settings.conditions = new_conditions[:target_len]
-
-
-class SettingsDialog(QDialog):
-    def __init__(self, settings: Settings, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Settings")
-        self.settings = settings
-
-        self.panel = SettingsPanel(settings, self)
-        self.system_panel = SystemLayoutPanel(settings, self)
-        self.readme_panel = ReadmePanel(self)
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-
-        layout = QVBoxLayout()
-        tabs = QTabWidget(self)
-        tabs.addTab(self.panel, "Settings")
-        tabs.addTab(self.system_panel, "Systems")
-        tabs.addTab(self.readme_panel, "Readme")
-        layout.addWidget(tabs)
-        layout.addWidget(buttons)
-        self.setLayout(layout)
-
-    def apply(self):
-        self.panel.apply_to(self.settings)
-        self.system_panel.apply_to(self.settings)
 
 
 class SystemLayoutPanel(QWidget):
@@ -275,13 +244,6 @@ class SystemLayoutPanel(QWidget):
         self.customer_table.removeRow(row)
         self._refresh_customer_dropdowns()
         self.changed.emit()
-
-    def _selected_customer_name(self) -> str:
-        row = self.customer_table.currentRow()
-        if row < 0:
-            return ""
-        item = self.customer_table.item(row, 0)
-        return item.text().strip() if item else ""
 
     def paste_logo_for_selected_customer(self):
         row = self.customer_table.currentRow()

@@ -348,9 +348,6 @@ class ReplayTimeline(QWidget):
         self._resize_redraw_timer.setInterval(120)
         self._resize_redraw_timer.timeout.connect(self._fit_to_items)
 
-    def set_loader(self, func: Callable[[Path, date], Iterable[Path]]):
-        self._load_func = func
-
     @property
     def current_root(self) -> Optional[Path]:
         return self._current_root
@@ -1055,9 +1052,6 @@ class ReplayTimeline(QWidget):
 
     def _stop_loader_thread(self):
         self._loader_slot.retire()
-
-    def is_loading(self) -> bool:
-        return self._loader_slot.is_running()
 
     def _on_load_result(self, payload):
         if payload is None:

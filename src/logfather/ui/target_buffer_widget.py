@@ -76,20 +76,6 @@ def _detail_rows(src: dict) -> list[tuple[str, str]]:
     return rows
 
 
-def _elapsed(added_at: datetime, now: datetime) -> str:
-    delta = now - added_at
-    total = int(delta.total_seconds())
-    if total < 0:
-        return "just now"
-    if total < 60:
-        return f"{total}s"
-    m, s = divmod(total, 60)
-    if m < 60:
-        return f"{m}m {s:02d}s"
-    h, m = divmod(m, 60)
-    return f"{h}h {m:02d}m"
-
-
 def _make_row(k: str, v: str) -> QHBoxLayout:
     row = QHBoxLayout()
     row.setSpacing(6)
