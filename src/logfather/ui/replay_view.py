@@ -7,7 +7,7 @@ import time
 import json
 import re
 from bisect import bisect_left, bisect_right
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import Future
 from pathlib import Path
 from datetime import timedelta, datetime, timezone
 try:
@@ -16,11 +16,10 @@ except Exception:
     ZoneInfo = None
 
 from logfather.data.settings_store import Settings, DEFAULT_SETTINGS_PATH
-from logfather.data.elastic_loader import fetch_logs_for_range
-from logfather.data.elastic_errors import ElasticFetchError
 from logfather.ui.app_assets import load_placeholder_image as _load_placeholder_image
 from logfather.ui.analysis_panel import AnalysisPanel
 from logfather.ui.clip_export import export_clip_with_overlays, find_ffmpeg
+from logfather.ui.elastic_log_session import ElasticLogSession
 from logfather.ui.annotated_video_widget import AnnotatedVideoWidget
 from logfather.data.clip_cache import ClipCache
 from logfather.data.ocr_offset_store import OcrOffsetStore
@@ -114,8 +113,6 @@ def _position_capture_sequential(cap, in_sequence: bool, next_frame: int, target
 # -------- GUI APPLICATION --------
 
 class ReplayView(QWidget):
-    logs_ready = Signal(list)
-    logs_failed = Signal(str)
     current_time_changed = Signal(object)
     annotation_status_changed = Signal(object, bool)
     cache_prefetch_done = Signal()
@@ -277,8 +274,6 @@ class ReplayView(QWidget):
         self.pending_end_iso: str | None = None
         self.auto_load_clip_logs = True
         self._pending_log_request_key: tuple[str, str, str] | None = None
-        self._active_log_request_key: tuple[str, str, str] | None = None
-        self._loaded_log_request_key: tuple[str, str, str] | None = None
         self._pending_log_autoload_timer = QTimer(self)
         self._pending_log_autoload_timer.setSingleShot(True)
         self._pending_log_autoload_timer.setInterval(350)
@@ -290,7 +285,11 @@ class ReplayView(QWidget):
         # Timer for playback
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.next_frame)
-        self._log_executor = ThreadPoolExecutor(max_workers=1)
+        # The clip's Elastic log fetch (elastic_log_session.py): rows and
+        # failures arrive on the UI thread through its signals.
+        self.log_session = ElasticLogSession(self, has_rows=lambda: bool(self.all_events))
+        self.log_session.ready.connect(self._on_elastic_logs_ready)
+        self.log_session.failed.connect(self._on_elastic_logs_failed)
         # All clip copy/prefetch/prune machinery lives in ClipCache. The
         # click-download executor is aliased because other code submits its
         # own jobs to it (stop report thumbnails, secondary-clip copies).
@@ -315,10 +314,6 @@ class ReplayView(QWidget):
         self._video_load_generation = 0
         self._video_load_t0 = 0.0
         self._video_busy = BusyDialog(self, "Loading clip")
-        self._log_future: Future | None = None
-        self._log_future_id = 0
-        self.logs_ready.connect(self._on_elastic_logs_ready)
-        self.logs_failed.connect(self._on_elastic_logs_failed)
         self.external_markers: list[tuple[float, str]] = []
         self.external_marker_source: str | None = None
         self._sku_timeline_items: list[object] = []
@@ -1207,11 +1202,6 @@ class ReplayView(QWidget):
     def _auto_load_pending_logs(self):
         if not self.pending_pikpak_path or not self.pending_start_iso or not self.pending_end_iso:
             return
-        request_key = (str(self.pending_pikpak_path), str(self.pending_start_iso), str(self.pending_end_iso))
-        if self._loaded_log_request_key == request_key and self.all_events:
-            return
-        if self._active_log_request_key == request_key and self._log_future is not None:
-            return
         self.load_logs_from_elastic(
             self.pending_pikpak_path,
             self.pending_start_iso,
@@ -1471,7 +1461,7 @@ class ReplayView(QWidget):
         self.pause()
         if show_loading:
             self.set_footage_notice(None)
-        self._cancel_log_future()
+        self.log_session.cancel()
         if self.cap is not None:
             self.cap.release()
             self.cap = None
@@ -1526,8 +1516,7 @@ class ReplayView(QWidget):
         self.pending_start_iso = None
         self.pending_end_iso = None
         self._pending_log_request_key = None
-        self._active_log_request_key = None
-        self._loaded_log_request_key = None
+        self.log_session.forget()
         self._pending_log_autoload_timer.stop()
         self.populate_log_list()
         self.log_filter_panel.clear_events()
@@ -3582,43 +3571,16 @@ class ReplayView(QWidget):
     # ---- Elastic log loading ----
 
     def load_logs_from_elastic(self, pikpak_path: str, start_iso: str, end_iso: str, show_busy: bool = True):
-        request_key = (str(pikpak_path), str(start_iso), str(end_iso))
-        if self._loaded_log_request_key == request_key and self.all_events:
-            return
-        if self._active_log_request_key == request_key and self._log_future is not None:
-            return
+        """Fetch the clip's Elastic rows (elastic_log_session.py); the rows
+        land in _on_elastic_logs_ready. A request already satisfied is a
+        no-op; unparseable stamps are reported and nothing starts."""
         try:
-            start_dt = self._parse_iso(start_iso)
-            end_dt = self._parse_iso(end_iso)
+            started = self.log_session.start(pikpak_path, start_iso, end_iso)
         except Exception:
             QMessageBox.warning(self, "Invalid time range", "Could not parse provided timestamps.")
             return
-        self._cancel_log_future()
-        self._active_log_request_key = request_key
-        dbg("viewer", "load_logs_from_elastic starting")
-        self._log_future_id += 1
-        fetch_id = self._log_future_id
-        settings = Settings.load()
-        if self._log_executor is None:
-            self._log_executor = ThreadPoolExecutor(max_workers=1)
-        self._log_future = self._log_executor.submit(
-            fetch_logs_for_range,
-            settings,
-            Path(pikpak_path),
-            start_dt,
-            end_dt,
-        )
-        if show_busy:
+        if started and show_busy:
             self._set_log_busy(True, "Fetching Elastic logs...")
-        dbg("viewer", f"scheduled log fetch id {fetch_id}")
-        self._poll_log_future(fetch_id)
-
-    @staticmethod
-    def _parse_iso(value: str) -> datetime:
-        val = value.strip()
-        if val.endswith("Z"):
-            val = val[:-1] + "+00:00"
-        return datetime.fromisoformat(val)
 
     def _set_log_busy(self, busy: bool, message: str | None = None):
         if busy:
@@ -3645,51 +3607,6 @@ class ReplayView(QWidget):
         if message:
             QMessageBox.warning(self, "Elastic fetch failed", message)
 
-    def _poll_log_future(self, fetch_id: int):
-        future = self._log_future
-        if future is None or fetch_id != self._log_future_id:
-            return
-        if future.done():
-            self._log_future = None
-            try:
-                rows = future.result()
-            except ElasticFetchError as exc:
-                # Record the key BEFORE clearing it: assigning after the
-                # clear stored None, so the same partial range was refetched
-                # on every retrigger.
-                request_key = self._active_log_request_key
-                self._active_log_request_key = None
-                log("viewer", f"log future {fetch_id} partial failure: {exc}")
-                if exc.items:
-                    log("viewer", f"delivering {len(exc.items)} partial rows despite failure")
-                    self._loaded_log_request_key = request_key
-                    self.logs_ready.emit(exc.items)
-                self.logs_failed.emit(str(exc))
-                return
-            except Exception as exc:
-                self._active_log_request_key = None
-                log("viewer", f"log future {fetch_id} failed: {exc}")
-                self.logs_failed.emit(str(exc))
-                return
-            else:
-                self._loaded_log_request_key = self._active_log_request_key
-                self._active_log_request_key = None
-                log("viewer", f"log future {fetch_id} completed with {len(rows)} rows")
-                dbg("viewer", "invoking _on_elastic_logs_ready")
-                self.logs_ready.emit(rows)
-                dbg("viewer", "returned from _on_elastic_logs_ready")
-        else:
-            QTimer.singleShot(100, lambda fid=fetch_id: self._poll_log_future(fid))
-
-    def _cancel_log_future(self):
-        future = self._log_future
-        self._log_future = None
-        self._active_log_request_key = None
-        if future is None:
-            return
-        log("viewer", "cancelling prior log future")
-        future.cancel()
-
     def shutdown_workers(self):
         """Flush settings and stop all executors. Called by
         MainWindow.closeEvent — a child widget's closeEvent never fires when
@@ -3704,21 +3621,16 @@ class ReplayView(QWidget):
                 if window is not None:
                     window.close()
 
-        def _stop_log_executor():
-            if self._log_executor is not None:
-                self._log_executor.shutdown(wait=False, cancel_futures=True)
-                self._log_executor = None
-
         for label, step in (
             # Clip cache first: aborting an in-flight SMB copy frees the
             # link before anything below touches the share or settings.
             ("viewer: clip cache", self.clip_cache.shutdown),
             ("viewer: flush settings", self._flush_settings_autosave),
-            ("viewer: cancel log fetch", self._cancel_log_future),
+            ("viewer: cancel log fetch", self.log_session.cancel),
             ("viewer: close tool windows", _close_tool_windows),
             ("viewer: OCR sync slot", self.ocr_main.slot.shutdown),
             ("viewer: secondary OCR slot", self.ocr_additional.slot.shutdown),
-            ("viewer: log executor", _stop_log_executor),
+            ("viewer: log executor", self.log_session.shutdown),
         ):
             with timed("shutdown", f"'{label}'", threshold_s=0.1):
                 try:

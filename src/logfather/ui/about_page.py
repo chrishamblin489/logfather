@@ -222,6 +222,10 @@ FILE_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
          "Export Clip: a clip range rendered through the video canvas with the annotations, info lines "
          "and product overlays burnt in, then the source audio muxed back with ffmpeg; one cleanup path "
          "for success, Cancel and every refusal."),
+        ("ui/elastic_log_session.py", "src/logfather/ui/elastic_log_session.py",
+         "The clip's Elastic log fetch: submit on a worker, poll from the event loop, deliver the rows "
+         "(or a partial result and its message) through signals; repeats of a satisfied request are "
+         "skipped and a new one cancels the old."),
         ("ui/replay_timeline.py", "src/logfather/ui/replay_timeline.py",
          "The timeline chart under the replay: the day's clips, event ticks, SKU bands, the Errors box rows, "
          "the label gutter, the playhead, the View menu, zoom and the Data strips."),
