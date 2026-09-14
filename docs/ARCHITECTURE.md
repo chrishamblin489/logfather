@@ -151,23 +151,23 @@ Everything that talks to a server or a file. No GUI imports.
 |---|---:|---|
 | `data/elastic_client.py` | 241 | Shared HTTP plumbing for Elastic: sessions, URLs, headers, the search_after pagination and retry ladder. |
 | `data/elastic_schema.py` | 220 | The one place that knows the Argus 1 vs Argus 2 log schema: robot ids (leap_robot_id / system_id), state names, what counts as manual, automatic, shutdown or a stop. |
-| `data/elastic_loader.py` | 1717 | The gateway to Elastic: the query builders, the day events fetch with its on-disk cache (past days never expire; bump EVENTS_CACHE_SCHEMA_VERSION when the logic changes), SKU items, raw logs for a clip, the Overview chunks and the Search histograms. |
+| `data/elastic_loader.py` | 1706 | The gateway to Elastic: the query builders, the day events fetch with its on-disk cache (past days never expire; bump EVENTS_CACHE_SCHEMA_VERSION when the logic changes), SKU items, raw logs for a clip, the Overview chunks and the Search histograms. |
 | `data/elastic_errors.py` | 10 | One exception that carries the rows a half-failed query did manage to fetch. |
 | `data/errors_stops.py` | 304 | Errors and line stops per day per PikPak: stop kinds, error categories, and the 2-second clustering. |
 | `data/software_history.py` | 372 | Package and commit history per PikPak, built into version spans, with a local raw cache. |
 | `data/data_inventory.py` | 894 | The Data window's numbers: Elastic volume per day, running days, CCTV clips on the share, with a cache. |
 | `data/elastic_catalog.py` | 344 | What kinds of documents Elastic holds, and the values a field takes - the Elastic ? catalogue. |
 | `data/event_counts.py` | 85 | Running totals of a logged event per PikPak (Motor overcurrent trips, crate change errors) as strips. |
-| `data/pick_rate.py` | 98 | Picks per minute from Elastic for PikPaks that Grafana does not cover. |
+| `data/pick_rate.py` | 94 | Picks per minute from Elastic for PikPaks that Grafana does not cover. |
 | `data/target_buffer_loader.py` | 305 | Replays the 'new pick target' log messages to rebuild the robot's pick queue at any instant of a clip. |
-| `data/grafana_client.py` | 155 | The Grafana HTTP client (service-account token): health, dashboards, Prometheus queries. |
+| `data/grafana_client.py` | 150 | The Grafana HTTP client (service-account token): health, dashboards, Prometheus queries. |
 | `data/grafana_inventory.py` | 156 | How much telemetry Grafana holds per PikPak per day. |
 | `data/grafana_catalog.py` | 186 | What metrics Grafana holds and what each looks like - the Grafana ? catalogue. |
 | `data/telemetry_loader.py` | 97 | The six PromQL queries for one PikPak-day, and the fleet signals for the Data strips (routing the Elastic-derived ones to pick_rate and event_counts). |
 | `data/clip_cache.py` | 451 | The local CCTV clip cache: copies from the share, prefetches the next clips, prunes by age and size. |
 | `data/day_listing_cache.py` | 82 | Caches each past day's clip listing so the share is not walked twice. |
 | `data/overview_event_cache.py` | 158 | Today's raw Overview events on disk, so a restart fetches only the tail. |
-| `data/settings_store.py` | 531 | Everything the app remembers: video root, Elastic and Grafana connection, the 15 condition presets, customers and PikPak layout, fleetwide searches - saved to ~/.cctv_picker_settings.json. |
+| `data/settings_store.py` | 523 | Everything the app remembers: video root, Elastic and Grafana connection, the 15 condition presets, customers and PikPak layout, fleetwide searches - saved to ~/.cctv_picker_settings.json. |
 | `data/ui_state_store.py` | 76 | Per-user window state (ticks, collapsed boxes, hidden systems) kept out of Settings so a stale instance cannot clobber it. |
 | `data/ocr_offset_store.py` | 104 | The per-camera JSON of OCR clock offsets: atomic writes, corrupt files set aside rather than replaced. |
 | `data/conveyor_calibration.py` | 143 | The belt model: the tracking line and its speed per PikPak, saved under ~/.logfather/calibrations. |
@@ -178,23 +178,23 @@ The main window that wires every screen together, and the helpers they share.
 
 | File | Lines | Purpose |
 |---|---:|---|
-| `ui/Main_Window.py` | 2134 | The hub: builds the Overview / PikPak Replay / Search stack, the top bar (PikPak and date choosers, first-product, Drift, Sync, Conveyor, Track, Targets, Data, Errors / Stops, Software, gear), the date picker and timeline splitters, session resume, clip opening and prefetch, and the jump from the Overview to a moment in a clip. |
+| `ui/Main_Window.py` | 2132 | The hub: builds the Overview / PikPak Replay / Search stack, the top bar (PikPak and date choosers, first-product, Drift, Sync, Conveyor, Track, Targets, Data, Errors / Stops, Software, gear), the date picker and timeline splitters, session resume, clip opening and prefetch, and the jump from the Overview to a moment in a clip. |
 | `ui/target_overlay_controller.py` | 482 | Loads the clip's pick-queue events, classifies tight and wide gaps, owns the conveyor calibration and the Conveyor dialog, and builds the product overlays the Track button draws. |
 | `ui/qt_worker.py` | 165 | The one background-job pattern (Job on a QThread, JobSlot to retire stale results) used by every loader. |
 | `ui/gear_menu.py` | 96 | The gear dropdown shared by the windows: Data sources, Settings, Stop report, Fit, zoom, About. |
 | `ui/day_selection.py` | 30 | The one shared day range that the Overview, Errors / Stops and Data windows follow together. |
 | `ui/day_range_dialog.py` | 157 | The From / To day picker with presets. |
 | `ui/day_popup.py` | 106 | The single-day calendar popup behind the top bar's date button. |
-| `ui/Date_Picker_frontend.py` | 455 | The left panel: PikPak buttons grouped by customer with logos, and a calendar of days with footage. |
+| `ui/Date_Picker_frontend.py` | 451 | The left panel: PikPak buttons grouped by customer with logos, and a calendar of days with footage. |
 | `ui/system_filter.py` | 195 | The PikPaks filter popup (tick many) and the PikPak picker (choose one). |
 | `ui/charts.py` | 600 | The stacked per-day bar chart with hover detail used by Errors / Stops and Data. |
 | `ui/chart_scroll.py` | 153 | One scrollbar and zoom shared by several day charts, with an edge signal to load more days. |
-| `ui/theme.py` | 489 | Every colour token and stylesheet, the app zoom, and the one place a restyle should happen. |
-| `ui/icons.py` | 506 | The painted icons (no image files): gear, calendar, conveyor, punnet, sync, first product, question block... |
+| `ui/theme.py` | 496 | Every colour token and stylesheet, the app zoom, and the one place a restyle should happen. |
+| `ui/icons.py` | 460 | The painted icons (no image files): gear, calendar, conveyor, punnet, sync, first product, question block... |
 | `ui/pulse.py` | 66 | The gentle breathing highlight on a button that needs attention (Sync: ?). |
 | `ui/window_placement.py` | 67 | Keeps secondary windows on screen and over their parent. |
 | `ui/app_assets.py` | 39 | Finds bundled assets (logo, diagram, placeholder) in a source checkout or a frozen build. |
-| `ui/about_page.py` | 434 | This dialog: the version linked to its GitHub commit, the schematic, and these summaries. |
+| `ui/about_page.py` | 432 | This dialog: the version linked to its GitHub commit, the schematic, and these summaries. |
 
 ### UI - the screens and windows
 
@@ -202,26 +202,25 @@ One module per thing you can open.
 
 | File | Lines | Purpose |
 |---|---:|---|
-| `ui/overview_widget.py` | 2506 | The Overview: one row per PikPak drawn on a graphics scene (SKU runs, manual, stops, CCTV coverage), the day range, the PikPaks filter, drag to reorder, hover thumbnails, and the incremental refresh with its on-disk cache. |
-| `ui/data_boxes.py` | 791 | The Data and Additional data boxes and their reading strips (a SignalChannel per Grafana or Elastic reading), shared by the Overview and the PikPak Replay timeline. |
-| `ui/replay_view.py` | 5658 | The PikPak Replay: video playback with the log list, the filters and presets, the Elastic log load, the OCR offset applied to the main and the Additional CCTV, the Sync and Overlay tool strips, the Analysis tab, annotations, Bird's Eye, and export with overlays burnt in. |
-| `ui/replay_timeline.py` | 2093 | The timeline chart under the replay: the day's clips, event ticks, SKU bands, the Errors box rows, the label gutter, the playhead, the View menu, zoom and the Data strips. |
-| `ui/annotated_video_widget.py` | 930 | The video canvas: the frame, drawing and measuring annotations, the info text, the product overlays and the Bird's Eye tray view. |
+| `ui/overview_widget.py` | 2413 | The Overview: one row per PikPak drawn on a graphics scene (SKU runs, manual, stops, CCTV coverage), the day range, the PikPaks filter, drag to reorder, hover thumbnails, and the incremental refresh with its on-disk cache. |
+| `ui/data_boxes.py` | 790 | The Data and Additional data boxes and their reading strips (a SignalChannel per Grafana or Elastic reading), shared by the Overview and the PikPak Replay timeline. |
+| `ui/replay_view.py` | 5530 | The PikPak Replay: video playback with the log list, the filters and presets, the Elastic log load, the OCR offset applied to the main and the Additional CCTV, the Sync and Overlay tool strips, the Analysis tab, annotations, Bird's Eye, and export with overlays burnt in. |
+| `ui/replay_timeline.py` | 2086 | The timeline chart under the replay: the day's clips, event ticks, SKU bands, the Errors box rows, the label gutter, the playhead, the View menu, zoom and the Data strips. |
+| `ui/annotated_video_widget.py` | 925 | The video canvas: the frame, drawing and measuring annotations, the info text, the product overlays and the Bird's Eye tray view. |
 | `ui/viewer_widgets.py` | 489 | Small replay widgets: the seek and clip-range sliders, the marker bars, the log list model, the drift slider. |
-| `ui/target_buffer_widget.py` | 413 | The Targets panel: one card per product in the robot's queue, updating as the clip plays. |
-| `ui/telemetry_strip.py` | 207 | The Telemetry tab in the replay: the day's Grafana tracks in groups. |
+| `ui/target_buffer_widget.py` | 397 | The Targets panel: one card per product in the robot's queue, updating as the clip plays. |
+| `ui/telemetry_strip.py` | 204 | The Telemetry tab in the replay: the day's Grafana tracks in groups. |
 | `ui/time_ocr.py` | 2944 | The Sync CCTV Time window and the OCR engine behind it: the draggable Date and Time boxes, the date procedure A-H, the second-boundary search, the readings table with its 60 s drift checks, the help flowchart, and the headless analysis the automatic sync runs. |
 | `ui/conveyor_calibration_dialog.py` | 857 | The Conveyor window: click the same belt landmark on two frames to set the tracking line and speed. |
-| `ui/fleetwide_elastic_search_widget.py` | 770 | The Search screen: saved searches over every PikPak for a day range, cards and graphs per system. |
-| `ui/errors_stops_window.py` | 621 | The Errors / Stops window: stops per day and errors per day by category, with the PikPaks filter. |
+| `ui/fleetwide_elastic_search_widget.py` | 769 | The Search screen: saved searches over every PikPak for a day range, cards and graphs per system. |
+| `ui/errors_stops_window.py` | 618 | The Errors / Stops window: stops per day and errors per day by category, with the PikPaks filter. |
 | `ui/software_window.py` | 288 | The Software window: version spans per PikPak on a timeline. |
-| `ui/data_inventory_dialog.py` | 1089 | The Data window: Elastic, Grafana and CCTV volume per PikPak per day, and the two ? buttons. |
+| `ui/data_inventory_dialog.py` | 1087 | The Data window: Elastic, Grafana and CCTV volume per PikPak per day, and the two ? buttons. |
 | `ui/elastic_catalog_dialog.py` | 265 | The Elastic ? catalogue window and the field-values drill-down. |
 | `ui/grafana_catalog_dialog.py` | 204 | The Grafana ? catalogue window and the metric detail. |
 | `ui/data_sources_dialog.py` | 200 | Data sources: the CCTV share, Elastic and Grafana connections, each with a test button. |
-| `ui/settings_dialog.py` | 489 | The Settings tabs inside the replay: connection, the condition presets, the customer/PikPak layout, and the read-me. |
+| `ui/settings_dialog.py` | 453 | The Settings tabs inside the replay: connection, the condition presets, the customer/PikPak layout, and the read-me. |
 | `ui/stop_report.py` | 590 | The Stop report: gathers the day's stops off the GUI thread, then builds the thumbnailed list. |
-| `ui/target_scope_widget.py` | 224 | A radar of recent pick targets in camera space. Dormant: nothing opens it (candidate for deletion). |
 
 ### Tools and tests
 

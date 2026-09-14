@@ -238,8 +238,6 @@ FILE_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
          "and the read-me."),
         ("ui/stop_report.py", "src/logfather/ui/stop_report.py",
          "The Stop report: gathers the day's stops off the GUI thread, then builds the thumbnailed list."),
-        ("ui/target_scope_widget.py", "src/logfather/ui/target_scope_widget.py",
-         "A radar of recent pick targets in camera space. Dormant: nothing opens it (candidate for deletion)."),
     ]),
     ("Tools and tests", "Outside the app.", [
         ("tools/smoke_test.py", "tools/smoke_test.py",

@@ -543,7 +543,7 @@ class _FakeBufferEvent:
         self.buffer_snapshot = [SimpleNamespace(target_id=target_id)]
 
 
-class TestGapAndBuckets:
+class TestGapTargetIds:
     def _ts(self, seconds):
         from datetime import datetime, timezone, timedelta
         return datetime(2026, 9, 1, 9, 0, 0, tzinfo=timezone.utc) + timedelta(seconds=seconds)
@@ -567,21 +567,6 @@ class TestGapAndBuckets:
         events = [_FakeBufferEvent(self._ts(s), f"t{i}") for i, s in enumerate(times)]
         _close, wide = compute_gap_target_ids(events, threshold=0.5)
         assert "t5" in wide
-
-    def test_buckets_count_and_span(self):
-        from logfather.ui.target_overlay_controller import clip_target_rate_buckets_from_buffer_events
-        start, end = self._ts(0), self._ts(120)
-        events = [_FakeBufferEvent(self._ts(s), f"t{s}") for s in (1, 2, 3, 61, 119, 500)]
-        buckets = clip_target_rate_buckets_from_buffer_events(events, start, end)
-        assert buckets[0]["start"] == start
-        assert buckets[-1]["end"] == end
-        assert sum(b["count"] for b in buckets) == 5  # the 500s event is outside
-
-    def test_bucket_seconds_scale_with_span(self):
-        from logfather.ui.target_overlay_controller import choose_clip_target_rate_bucket_seconds
-        assert choose_clip_target_rate_bucket_seconds(self._ts(0), self._ts(240)) == 1
-        assert choose_clip_target_rate_bucket_seconds(self._ts(0), self._ts(2400)) == 10
-        assert choose_clip_target_rate_bucket_seconds(self._ts(0), self._ts(100000)) == 60
 
 
 class TestResolveTrackingLine:

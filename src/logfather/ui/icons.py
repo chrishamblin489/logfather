@@ -300,21 +300,6 @@ def search_icon(size: int = 24) -> QIcon:
     return QIcon(pm)
 
 
-def grid_icon(size: int = 24) -> QIcon:
-    """Four tiles: the whole fleet at a glance (the Overview icon)."""
-    pm, painter, s = _start(size)
-    painter.setPen(Qt.NoPen)
-    painter.setBrush(QColor(theme.TEXT_BRIGHT))
-    tile = s * 0.30
-    gap = s * 0.10
-    x0 = (s - 2 * tile - gap) / 2
-    for i in range(2):
-        for j in range(2):
-            painter.drawRoundedRect(QRectF(x0 + i * (tile + gap), x0 + j * (tile + gap), tile, tile), s * 0.05, s * 0.05)
-    painter.end()
-    return QIcon(pm)
-
-
 def rows_icon(size: int = 24) -> QIcon:
     """Three rows with a dot each: a list of systems (an Overview option)."""
     pm, painter, s = _start(size)
@@ -324,37 +309,6 @@ def rows_icon(size: int = 24) -> QIcon:
     for k, y in enumerate((0.20, 0.43, 0.66)):
         painter.drawEllipse(QRectF(s * 0.14, s * y, h, h))
         painter.drawRoundedRect(QRectF(s * 0.36, s * y + h * 0.15, s * 0.50, h * 0.70), h * 0.3, h * 0.3)
-    painter.end()
-    return QIcon(pm)
-
-
-def bars_icon(size: int = 24) -> QIcon:
-    """Three rising bars: the fleet's numbers (an Overview option)."""
-    pm, painter, s = _start(size)
-    painter.setPen(Qt.NoPen)
-    painter.setBrush(QColor(theme.TEXT_BRIGHT))
-    w = s * 0.18
-    for k, hgt in enumerate((0.34, 0.54, 0.72)):
-        x = s * 0.16 + k * (w + s * 0.07)
-        painter.drawRoundedRect(QRectF(x, s * 0.84 - s * hgt, w, s * hgt), s * 0.03, s * 0.03)
-    painter.end()
-    return QIcon(pm)
-
-
-def radar_icon(size: int = 24) -> QIcon:
-    """A radar sweep: watching the fleet (an Overview option)."""
-    pm, painter, s = _start(size)
-    pen = QPen(QColor(theme.TEXT_BRIGHT))
-    pen.setWidthF(s * 0.09)
-    painter.setPen(pen)
-    painter.setBrush(Qt.NoBrush)
-    c = QPointF(s / 2, s / 2)
-    painter.drawEllipse(c, s * 0.36, s * 0.36)
-    painter.drawEllipse(c, s * 0.18, s * 0.18)
-    painter.drawLine(c, QPointF(s * 0.80, s * 0.24))
-    painter.setPen(Qt.NoPen)
-    painter.setBrush(QColor(theme.TEXT_BRIGHT))
-    painter.drawEllipse(c, s * 0.07, s * 0.07)
     painter.end()
     return QIcon(pm)
 

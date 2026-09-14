@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import threading
 import time
 from collections import OrderedDict
@@ -11,8 +10,8 @@ from typing import Callable, Iterable
 
 import cv2
 
-from PySide6.QtCore import QDate, QEvent, QPoint, QSize, QThread, Qt, Signal, QTimer, QRectF, QVariantAnimation, QEasingCurve, QUrl
-from PySide6.QtGui import QAction, QColor, QBrush, QPen, QFont, QFontMetrics, QImage, QPainterPath, QPalette, QPixmap, QTextCharFormat
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, Signal, QTimer, QRectF, QVariantAnimation, QEasingCurve, QUrl
+from PySide6.QtGui import QColor, QBrush, QPen, QFont, QFontMetrics, QImage, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
@@ -23,13 +22,9 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QButtonGroup,
-    QCalendarWidget,
     QDialog,
-    QDialogButtonBox,
     QGraphicsScene,
     QGraphicsView,
-    QGroupBox,
-    QMenu,
     QGraphicsRectItem,
     QStackedWidget,
     QToolButton,
@@ -40,12 +35,11 @@ from logfather.ui.replay_timeline import (
     parse_time_from_name,
     ensure_utc,
     MIN_BLOCK_DURATION,
-    LAST_BLOCK_DURATION,
     inferred_live_clip_end,
     _cache_key_for,
 )
 from logfather.data.elastic_loader import fetch_overview_event_chunks
-from logfather.data.elastic_schema import robot_id_from_folder
+from logfather.data.elastic_schema import is_stop_like_event, robot_id_from_folder
 from logfather.ui.app_assets import resolve_asset_path as _resolve_asset_path
 from logfather.data.day_listing_cache import load_day_files_cached
 from logfather.data.overview_event_cache import (
@@ -61,17 +55,10 @@ from logfather.data.ui_state_store import (
 from logfather.ui.day_range_dialog import DayRangeDialog, live_button_text
 from logfather.ui.icons import calendar_icon
 from logfather.data import grafana_client
-from logfather.ui.data_boxes import DataBoxes, SignalChannel
+from logfather.ui.data_boxes import DataBoxes
 from logfather.ui.system_filter import SystemFilterPopup, funnel_icon
 
 _OVERVIEW_HIDDEN_KEY = "overview_hidden_systems"
-_OVERVIEW_TEMPS_KEY = "overview_temperatures"
-_OVERVIEW_TEMP_STRIP_KEY = "overview_temp_strip_height"
-_OVERVIEW_CURRENTS_KEY = "overview_currents"
-_OVERVIEW_CURRENT_STRIP_KEY = "overview_current_strip_height"
-_OVERVIEW_PRESSURE_KEY = "overview_pressure"
-_OVERVIEW_PRESSURE_STRIP_KEY = "overview_pressure_strip_height"
-OVERVIEW_TEMP_STRIP_HEIGHT = 44
 # With temperatures on, the state lane gives up height to the strip
 # (Chris, 2026-09-07).
 OVERVIEW_ROW_HEIGHT_WITH_TEMPS = 36
@@ -95,10 +82,9 @@ OVERVIEW_INCREMENTAL_OVERLAP = timedelta(minutes=2)
 # Disk saves of the merged events are throttled to this interval; at most
 # this much tail is refetched after an app restart.
 OVERVIEW_CACHE_SAVE_MIN_SECONDS = 60.0
-# Historic day ranges: how far back the picker goes, and above how many
-# days the per-day clip listings on the WAN share are skipped (a year is
-# ~5000 listings; events alone still tell the story).
-OVERVIEW_MAX_RANGE_DAYS = 365
+# Historic day ranges: above how many days the per-day clip listings on
+# the WAN share are skipped (a year is ~5000 listings; events alone still
+# tell the story).
 OVERVIEW_CLIP_SCAN_MAX_DAYS = 14
 OVERVIEW_RANGE_ANIM_MS = 220
 OVERVIEW_LOADING_VIDEO = "Logfather animated splash screen Argus II.mp4"
@@ -128,7 +114,6 @@ _THUMBNAIL_CACHE: OrderedDict[str, tuple[int, QImage | None]] = OrderedDict()
 _THUMBNAIL_CACHE_MAX = 200
 OVERVIEW_THUMBNAIL_REFRESH_MINUTES = 5
 OVERVIEW_ROW_HEIGHT = 56
-OVERVIEW_THUMB_SIZE = (78, 44)
 OVERVIEW_THUMBNAIL_MAX_AGE = timedelta(minutes=30)
 
 
@@ -219,84 +204,6 @@ def _clip_window(start_dt: datetime, end_dt: datetime, window_start: datetime, w
     if clipped_end <= clipped_start:
         return None
     return clipped_start, clipped_end
-
-
-def _is_shutdown_message(message: str) -> bool:
-    msg = (message or "").strip().lower()
-    if not msg:
-        return False
-    return "shutting down system" in msg
-
-
-def _is_stop_like_event(state_name: str, message: str, service_name: str = "") -> bool:
-    lower_state = (state_name or "").strip().lower()
-    if (
-        "stop" in lower_state
-        or "estop" in lower_state
-        or "caution" in lower_state
-        or lower_state in {
-            "hardware_emergency_stop",
-            "protective_stop",
-            "emergency_stop",
-            "system_stop",
-            "stop_pnp",
-            "caution_led_on",
-        }
-    ):
-        return True
-    if (service_name or "").strip().lower() == "system_shutdown":
-        return True
-    return _is_shutdown_message(message)
-
-
-class _OverviewThumbItem(QGraphicsRectItem):
-    def __init__(self, rect: QRectF, state: OverviewSystemState, image: QImage | None, widget: "OverviewWidget"):
-        super().__init__(rect)
-        self._state = state
-        self._image = image
-        self._widget = widget
-        self._pixmap = None
-        self.setAcceptHoverEvents(True)
-        self.setPen(QPen(QColor("#31414d")))
-        self.setBrush(QBrush(QColor("#0f1419")))
-        if image is not None and not image.isNull():
-            self._pixmap = QPixmap.fromImage(image).scaled(
-                int(rect.width()),
-                int(rect.height()),
-                Qt.KeepAspectRatioByExpanding,
-                Qt.SmoothTransformation,
-            )
-            self.setToolTip(f"{state.name}\nNewest CCTV clip")
-        else:
-            self.setToolTip(f"{state.name}\nNo cached preview yet")
-
-    def paint(self, painter, option, widget=None):
-        super().paint(painter, option, widget)
-        if self._pixmap is not None:
-            painter.save()
-            painter.setClipRect(self.rect())
-            painter.drawPixmap(self.rect().topLeft(), self._pixmap)
-            painter.restore()
-            return
-        painter.save()
-        painter.setPen(QColor("#7f95a6"))
-        painter.drawText(self.rect(), Qt.AlignCenter, "No\nclip")
-        painter.restore()
-
-    def hoverEnterEvent(self, event):
-        self._widget.show_thumbnail_preview(self._state, self.sceneBoundingRect())
-        super().hoverEnterEvent(event)
-
-    def hoverLeaveEvent(self, event):
-        self._widget.hide_thumbnail_preview()
-        super().hoverLeaveEvent(event)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self._widget.open_requested.emit(self._state.root, self._widget.current_day(), None)
-            event.accept()
-            return
-        super().mousePressEvent(event)
 
 
 class _OverviewCustomerHeaderItem(QGraphicsRectItem):
@@ -1853,7 +1760,7 @@ class OverviewWidget(QWidget):
                 events.append((ts, "manual", None, state_name, message))
             if state_name == "controller_node_automatic_mode" or ("automatic" in lower_state and "mode" in lower_state):
                 events.append((ts, "auto", None, state_name, message))
-            if _is_stop_like_event(state_name, message, service_name):
+            if is_stop_like_event(state_name, message, service_name):
                 events.append((ts, "stop", None, state_name, message))
         events.sort(key=lambda item: (item[0], order.get(item[1], 9)))
 
@@ -2030,7 +1937,7 @@ class OverviewWidget(QWidget):
             state_name = str(evt.get("state_name") or "").strip().lower()
             message = str(evt.get("message") or "")
             service_name = str(evt.get("service_name") or "")
-            if _is_stop_like_event(state_name, message, service_name):
+            if is_stop_like_event(state_name, message, service_name):
                 ts = ensure_utc(ts)
                 if latest is None or ts > latest:
                     latest = ts

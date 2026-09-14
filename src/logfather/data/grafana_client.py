@@ -93,11 +93,6 @@ def list_datasources(settings: Settings) -> list[dict]:
     return data if isinstance(data, list) else []
 
 
-def search_dashboards(settings: Settings, query: str = "", limit: int = 200) -> list[dict]:
-    data = _request(settings, "GET", "/api/search", params={"type": "dash-db", "query": query, "limit": limit})
-    return data if isinstance(data, list) else []
-
-
 def get_dashboard(settings: Settings, uid: str) -> dict:
     """The dashboard model itself (panels, templating...), unwrapped."""
     return unwrap_dashboard(_request(settings, "GET", f"/api/dashboards/uid/{uid}"))

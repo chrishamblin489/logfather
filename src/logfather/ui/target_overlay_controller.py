@@ -14,65 +14,17 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_left
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import QObject, Signal
 
-from logfather.core.timeline_model import ensure_utc
 from logfather.data.conveyor_calibration import ConveyorCalibration, load_calibration
 from logfather.ui.conveyor_calibration_dialog import ConveyorCalibrationDialog
 from logfather.ui.qt_worker import JobSlot
 from logfather.data.target_buffer_loader import buffer_state_at, fetch_buffer_events
 from logfather.ui.target_buffer_widget import _detail_rows, _display_target_id, _summary_rows
-
-
-def choose_clip_target_rate_bucket_seconds(clip_start: datetime, clip_end: datetime) -> int:
-    span_seconds = max(1.0, (ensure_utc(clip_end) - ensure_utc(clip_start)).total_seconds())
-    raw = span_seconds / 240.0
-    candidates = [1, 2, 5, 10, 15, 30, 60]
-    for candidate in candidates:
-        if raw <= candidate:
-            return candidate
-    return 60
-
-
-def clip_target_rate_buckets_from_buffer_events(
-    events: list,
-    clip_start: datetime,
-    clip_end: datetime,
-) -> list[dict]:
-    clip_start_utc = ensure_utc(clip_start)
-    clip_end_utc = ensure_utc(clip_end)
-    if clip_end_utc <= clip_start_utc:
-        return []
-    bucket_seconds = choose_clip_target_rate_bucket_seconds(clip_start_utc, clip_end_utc)
-    span_seconds = (clip_end_utc - clip_start_utc).total_seconds()
-    bucket_count = max(1, int((span_seconds + bucket_seconds - 1) // bucket_seconds))
-    counts = [0] * bucket_count
-    for ev in events:
-        if ev.event_type != "target_added":
-            continue
-        ts = ev.timestamp
-        if not isinstance(ts, datetime):
-            continue
-        ts = ensure_utc(ts)
-        if ts < clip_start_utc or ts >= clip_end_utc:
-            continue
-        idx = int((ts - clip_start_utc).total_seconds() // bucket_seconds)
-        if 0 <= idx < bucket_count:
-            counts[idx] += 1
-    buckets: list[dict] = []
-    for idx, count in enumerate(counts):
-        start = clip_start_utc + timedelta(seconds=idx * bucket_seconds)
-        end = min(clip_end_utc, start + timedelta(seconds=bucket_seconds))
-        buckets.append({
-            "start": start,
-            "end": end,
-            "count": int(count),
-        })
-    return buckets
 
 
 def compute_gap_target_ids(events: list, threshold: float) -> tuple[set[str], set[str]]:
@@ -139,8 +91,6 @@ class TargetOverlayController(QObject):
         self.panel_visible = False
         self._buffer_slot = JobSlot(self)
         self._buffer_events: list = []
-        self._buffer_clip_start: datetime | None = None
-        self._buffer_clip_end: datetime | None = None
         self._conveyor_cal: ConveyorCalibration = ConveyorCalibration(system_id="")
         self._cal_dialog: ConveyorCalibrationDialog | None = None
         self._last_targets: list = []
@@ -153,14 +103,10 @@ class TargetOverlayController(QObject):
 
     def clear(self) -> None:
         self._buffer_events = []
-        self._buffer_clip_start = None
-        self._buffer_clip_end = None
         self._buffer_widget.clear()
 
     def load_buffer_events(self, pikpak_root: Path | None, clip_start, clip_end) -> None:
         self._buffer_events = []
-        self._buffer_clip_start = clip_start
-        self._buffer_clip_end = clip_end
         self._buffer_widget.clear()
         if pikpak_root is None or clip_start is None or clip_end is None:
             return
@@ -183,15 +129,6 @@ class TargetOverlayController(QObject):
         self._buffer_widget.set_buffer_events(events)
         self._buffer_widget.set_alerted_target_ids(self._close_gap_target_ids)
         self._buffer_widget.set_wide_gap_target_ids(self._wide_gap_target_ids)
-        if self._buffer_clip_start is not None and self._buffer_clip_end is not None:
-            buckets = clip_target_rate_buckets_from_buffer_events(
-                events,
-                self._buffer_clip_start,
-                self._buffer_clip_end,
-            )
-            self._replay_timeline.set_clip_target_rate_heat(
-                self._buffer_clip_start, self._buffer_clip_end, buckets
-            )
         print(f"[buffer] {len(events)} buffer state transitions loaded")
         if self._last_playhead_dt:
             if self.panel_visible:

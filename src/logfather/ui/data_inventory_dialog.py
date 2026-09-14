@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import os
 import webbrowser
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QPoint, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QButtonGroup,
     QDialog,
@@ -28,9 +28,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QToolButton,
-    QToolTip,
     QVBoxLayout,
-    QWidget,
 )
 
 from logfather.data.data_inventory import (

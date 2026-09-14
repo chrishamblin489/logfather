@@ -4,7 +4,6 @@ import re
 import os
 import json
 import hashlib
-import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import perf_counter
@@ -16,7 +15,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from logfather.core.timeline_model import (
     TimelineItem,
     parse_time_from_name,
-    LAST_BLOCK_DURATION,
     inferred_live_clip_end,
     local_day_start_utc,
     local_day_end_utc,
@@ -42,14 +40,12 @@ from logfather.data.elastic_schema import (
     identity_filter,
     is_automatic_state as _is_automatic_state,
     is_manual_state as _is_manual_state,
-    is_shutdown_message as _is_shutdown_message,
     is_stop_like_event as _is_stop_like_event,
     robot_id_from_folder,
 )
 
 # Defaults (can be overridden in settings dialog). Index must be provided by user if default is incorrect.
 KIBANA_BASE_DEFAULT = "https://leap-deployment.kb.europe-west2.gcp.elastic-cloud.com:9243"
-DISCOVER_INDEX_ID_DEFAULT = None
 ELASTIC_INDEX_PATTERN = "logstash-*,pikpak,pikpak-*"
 ELASTIC_TIMESTAMP_FIELDS = ["@timestamp_ros", "@timestamp"]
 SYSTEM_ID_OVERRIDE: str | None = None
@@ -130,13 +126,6 @@ def _events_cache_path_for_robot(
         return None
     filename = f"events_{robot_id}_{day_key}_{digest}.json"
     return cache_root / filename
-
-
-def _events_cache_path(settings: Settings, pikpak_root: Path, day) -> Path | None:
-    robot_id = _extract_robot_id(pikpak_root)
-    if not robot_id:
-        return None
-    return _events_cache_path_for_robot(settings, robot_id, day, pikpak_root=pikpak_root)
 
 
 def _extract_robot_id(pikpak_root: Path) -> str | None:

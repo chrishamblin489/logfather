@@ -29,10 +29,6 @@ def bucket_seconds(span_minutes: int) -> int:
     return 1800
 
 
-def bucket_minutes(span_minutes: int) -> float:
-    return bucket_seconds(span_minutes) / 60.0
-
-
 def parse_pick_buckets(buckets: list, seconds_per_bucket: int, smooth_seconds: int = SMOOTH_SECONDS) -> dict[str, Track]:
     """robot -> Track of picks per minute, one point per bucket: the picks
     in the trailing `smooth_seconds` divided by that window in minutes."""

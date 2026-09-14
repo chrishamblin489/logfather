@@ -10,7 +10,6 @@ from typing import Callable
 from PySide6.QtCore import QPoint, QSize, Qt
 from PySide6.QtGui import QAction, QColor, QFont
 from PySide6.QtWidgets import (
-    QScrollBar,
     QSizePolicy,
     QAbstractItemView,
     QDialog,
@@ -30,8 +29,6 @@ from PySide6.QtWidgets import (
 
 from logfather.data.elastic_schema import robot_id_from_folder
 from logfather.data.errors_stops import (
-    ERROR_CATEGORY_ORDER,
-    STOP_KIND_ORDER,
     COUNTING_NOTE,
     ErrorsStopsData,
     day_list,
@@ -39,7 +36,7 @@ from logfather.data.errors_stops import (
     fetch_errors_stops,
     stop_kind,
 )
-from logfather.data.settings_store import display_customer_name, system_group_sort_key
+from logfather.data.settings_store import display_customer_name
 from logfather.data.software_history import system_display_name
 from logfather.data.ui_state_store import load_ui_state, update_ui_state
 from logfather.ui import theme

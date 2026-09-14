@@ -10,10 +10,9 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable, Iterable, Optional, Dict, Tuple, List
 
-from PySide6.QtCore import Qt, Signal, QEvent, QThread, QRectF, QPointF, QTimer, QSize
+from PySide6.QtCore import Qt, Signal, QEvent, QRectF, QPointF, QTimer, QSize
 
 from logfather.ui.qt_worker import JobSlot
-from logfather.ui import theme
 from logfather.ui.icons import zoom_glyph_icon
 from logfather.ui.data_boxes import DataBoxes, COMPACT_BOX_STYLE, COMPACT_FONT_PX, add_label_backdrop, CollapsibleGroupBox
 from logfather.data import grafana_client
@@ -24,7 +23,7 @@ from PySide6.QtWidgets import QApplication, QProgressDialog, QMessageBox, QMenu,
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout,
     QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem,
-    QGraphicsPolygonItem, QGraphicsLineItem, QGroupBox, QGridLayout, QCheckBox, QGraphicsItemGroup,
+    QGraphicsPolygonItem, QGraphicsLineItem, QGridLayout, QCheckBox, QGraphicsItemGroup,
     QSizePolicy
 )
 
@@ -80,8 +79,6 @@ from logfather.core.timeline_model import (  # noqa: F401
 TIMELINE_TIMING_LOGS = True
 SHOW_TIMELINE_INFO_TEXT = False
 SHOW_TIMELINE_TOP_BUTTONS = False
-DAY_RATE_PROXY_BUCKET_SECONDS = 300
-DAY_RATE_PROXY_TERMS = ("eject", "crate")
 
 
 def _timeline_perf_log(message: str) -> None:
@@ -335,10 +332,6 @@ class ReplayTimeline(QWidget):
         self._cache_root = cache_root
         self._selected_video_item: Optional[TimelineItem] = None
         self._video_rects: dict[int, QGraphicsRectItem] = {}
-        self._target_rate_day_buckets: list[dict] = []
-        self._target_rate_clip_buckets: list[dict] = []
-        self._target_rate_clip_start: Optional[datetime] = None
-        self._target_rate_clip_end: Optional[datetime] = None
         self._suppress_selection_emit = False
         self._pending_time_selected = None
         self._time_selected_emit_scheduled = False
@@ -348,9 +341,6 @@ class ReplayTimeline(QWidget):
         self._resize_redraw_timer.setSingleShot(True)
         self._resize_redraw_timer.setInterval(120)
         self._resize_redraw_timer.timeout.connect(self._fit_to_items)
-
-    def set_loader(self, func: Callable[[Path, date], Iterable[Path]]):
-        self._load_func = func
 
     @property
     def current_root(self) -> Optional[Path]:
@@ -376,10 +366,6 @@ class ReplayTimeline(QWidget):
         # moved); the indicator hides itself if the day differs.
         self._track_positions = {}
         self._selected_video_item = None
-        self._target_rate_day_buckets = []
-        self._target_rate_clip_buckets = []
-        self._target_rate_clip_start = None
-        self._target_rate_clip_end = None
 
         if not day:
             self._set_info_text("Pick a date to list times.")
@@ -815,154 +801,6 @@ class ReplayTimeline(QWidget):
         tooltip = "\n".join(tooltip_lines)
         return fitted_sku, tooltip
 
-    @staticmethod
-    def _is_day_rate_proxy_item(item: TimelineItem) -> bool:
-        if item is None or not str(item.kind).startswith("cond_"):
-            return False
-        parts = [str(item.track_label or ""), str(item.label or "")]
-        payload = item.payload if isinstance(item.payload, dict) else {}
-        src = payload.get("_source") if isinstance(payload, dict) else None
-        if isinstance(src, dict):
-            parts.extend([
-                str(src.get("message") or ""),
-                str(src.get("state_name") or ""),
-                str(src.get("source") or ""),
-            ])
-        haystack = " ".join(parts).lower()
-        return all(term in haystack for term in DAY_RATE_PROXY_TERMS)
-
-    def _build_day_rate_proxy_buckets(self, items: list[TimelineItem]) -> list[dict]:
-        if not self._current_date:
-            return []
-        day_start = local_day_start_utc(self._current_date)
-        day_end = day_start + timedelta(days=1)
-        bucket_seconds = DAY_RATE_PROXY_BUCKET_SECONDS
-        bucket_count = max(1, int((day_end - day_start).total_seconds() // bucket_seconds))
-        counts = [0] * bucket_count
-        matched = False
-        for item in items:
-            if not self._is_day_rate_proxy_item(item):
-                continue
-            matched = True
-            offset_seconds = (ensure_utc(item.start) - day_start).total_seconds()
-            if offset_seconds < 0:
-                continue
-            idx = int(offset_seconds // bucket_seconds)
-            if 0 <= idx < bucket_count:
-                counts[idx] += 1
-        if not matched:
-            return []
-        buckets: list[dict] = []
-        for idx, count in enumerate(counts):
-            start = day_start + timedelta(seconds=idx * bucket_seconds)
-            buckets.append({
-                "start": start,
-                "end": start + timedelta(seconds=bucket_seconds),
-                "count": int(count),
-            })
-        return buckets
-
-    @staticmethod
-    def _heat_color(count: int, max_count: int, *, empty_alpha: int = 24, full_alpha: int = 220) -> QColor:
-        if max_count <= 0 or count <= 0:
-            return QColor(28, 44, 54, empty_alpha)
-        ratio = min(1.0, max(0.0, float(count) / float(max_count)))
-        ratio = math.sqrt(ratio)
-        cold = QColor("#123047")
-        warm = QColor("#f59e0b")
-        hot = QColor("#ef4444")
-        if ratio < 0.6:
-            local = ratio / 0.6
-            r = int(cold.red() + (warm.red() - cold.red()) * local)
-            g = int(cold.green() + (warm.green() - cold.green()) * local)
-            b = int(cold.blue() + (warm.blue() - cold.blue()) * local)
-        else:
-            local = (ratio - 0.6) / 0.4
-            r = int(warm.red() + (hot.red() - warm.red()) * local)
-            g = int(warm.green() + (hot.green() - warm.green()) * local)
-            b = int(warm.blue() + (hot.blue() - warm.blue()) * local)
-        alpha = int(empty_alpha + (full_alpha - empty_alpha) * ratio)
-        return QColor(r, g, b, alpha)
-
-    def _draw_day_rate_heat_strip(self, scene_width: float) -> None:
-        if not self._target_rate_day_buckets or not self._day_start or self._ppm <= 0:
-            return
-        strip_y = self._scale_y + 10
-        strip_h = 8
-        max_count = max((int(bucket.get("count", 0)) for bucket in self._target_rate_day_buckets), default=0)
-        for bucket in self._target_rate_day_buckets:
-            start = ensure_utc(bucket["start"])
-            end = ensure_utc(bucket["end"])
-            count = int(bucket.get("count", 0) or 0)
-            start_min = max(0.0, (start - self._day_start).total_seconds() / 60.0)
-            end_min = max(start_min, (end - self._day_start).total_seconds() / 60.0)
-            x = max(0.0, min(scene_width, start_min * self._ppm))
-            width = max(1.0, min(scene_width - x, (end_min - start_min) * self._ppm))
-            color = self._heat_color(count, max_count)
-            rect = self.scene.addRect(QRectF(x, strip_y, width, strip_h), QPen(Qt.NoPen), QBrush(color))
-            rect.setZValue(1.5)
-            rect.setAcceptedMouseButtons(Qt.NoButton)
-            rect.setToolTip(f"Day proxy {format_local_time(start)}  count={count}")
-        # The strip carries no "Rate" label (Chris, 2026-09-11): it sat over
-        # the CCTV row label and read as part of it.
-
-    def _draw_selected_clip_rate_heat(self) -> None:
-        item = self._selected_video_item
-        if item is None or not self._target_rate_clip_buckets:
-            return
-        rect = self._video_rects.get(id(item))
-        if rect is None:
-            return
-        clip_start = self._target_rate_clip_start or item.start
-        clip_end = self._target_rate_clip_end or item.end
-        if clip_start is None or clip_end is None or clip_end <= clip_start:
-            return
-        clip_start_utc = ensure_utc(clip_start)
-        clip_end_utc = ensure_utc(clip_end)
-        clip_seconds = max(1.0, (clip_end_utc - clip_start_utc).total_seconds())
-        rect_geom = rect.rect()
-        bar_y = rect_geom.bottom() - 6
-        bar_h = 5
-        max_count = max((int(bucket.get("count", 0)) for bucket in self._target_rate_clip_buckets), default=0)
-        for bucket in self._target_rate_clip_buckets:
-            start = max(clip_start_utc, ensure_utc(bucket["start"]))
-            end = min(clip_end_utc, ensure_utc(bucket["end"]))
-            if end <= start:
-                continue
-            start_ratio = (start - clip_start_utc).total_seconds() / clip_seconds
-            end_ratio = (end - clip_start_utc).total_seconds() / clip_seconds
-            x = rect_geom.x() + rect_geom.width() * start_ratio
-            width = max(1.0, rect_geom.width() * (end_ratio - start_ratio))
-            count = int(bucket.get("count", 0) or 0)
-            color = self._heat_color(count, max_count, empty_alpha=30, full_alpha=235)
-            child = QGraphicsRectItem(QRectF(x, bar_y, width, bar_h), rect)
-            child.setPen(QPen(Qt.NoPen))
-            child.setBrush(QBrush(color))
-            child.setZValue(4)
-            child.setAcceptedMouseButtons(Qt.NoButton)
-            child.setToolTip(f"Clip detail {format_local_time(start)}  count={count}")
-
-    def set_clip_target_rate_heat(
-        self,
-        clip_start: Optional[datetime],
-        clip_end: Optional[datetime],
-        buckets: list[dict] | None,
-    ) -> None:
-        self._target_rate_clip_start = clip_start
-        self._target_rate_clip_end = clip_end
-        self._target_rate_clip_buckets = list(buckets or [])
-        if self._items and self._current_date:
-            h_value = self.view.horizontalScrollBar().value()
-            self._suppress_selection_emit = True
-            try:
-                self._redraw_timeline()
-                self.view.horizontalScrollBar().setValue(h_value)
-            finally:
-                self._suppress_selection_emit = False
-
-    def clear_clip_target_rate_heat(self) -> None:
-        self.set_clip_target_rate_heat(None, None, [])
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if self._items and self._current_date:
@@ -1002,7 +840,6 @@ class ReplayTimeline(QWidget):
             self._set_busy(False)
             return
         self._items = items
-        self._target_rate_day_buckets = self._build_day_rate_proxy_buckets(self._items)
         self._fit_to_items()
         if items:
             self._set_info_text(f"{len(items)} items on {format_uk_date(day_loaded)}. Click timeline to select.")
@@ -1020,7 +857,6 @@ class ReplayTimeline(QWidget):
             self._items.extend(items)
         else:
             self._items = list(items)
-        self._target_rate_day_buckets = self._build_day_rate_proxy_buckets(self._items)
         self._fit_to_items()
         if self._items:
             self._set_info_text(
@@ -1056,9 +892,6 @@ class ReplayTimeline(QWidget):
 
     def _stop_loader_thread(self):
         self._loader_slot.retire()
-
-    def is_loading(self) -> bool:
-        return self._loader_slot.is_running()
 
     def _on_load_result(self, payload):
         if payload is None:
@@ -1143,7 +976,7 @@ class ReplayTimeline(QWidget):
                     self._apply_video_highlights()
                 # selectionChanged is emitted from inside the scene's mouse
                 # dispatch; time_selected handlers may clear/rebuild this very
-                # scene (heat-strip redraws, modal dialogs, video loads), which
+                # scene (redraws, modal dialogs, video loads), which
                 # deletes the item Qt is still dispatching on — a native
                 # use-after-free crash. Deliver the signal on the next event
                 # loop turn instead, coalescing rapid selections.

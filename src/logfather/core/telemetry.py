@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from dataclasses import dataclass, field
-from typing import Callable, Iterable, Optional
+from typing import Iterable, Optional
 
 from logfather.core.grafana import Series
 
