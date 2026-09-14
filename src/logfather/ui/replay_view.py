@@ -724,7 +724,7 @@ class ReplayView(QWidget):
 
     def _current_clip_time(self):
         """Wall-clock time of the frame on screen, or None without a clip."""
-        start = self.video_start_dt or getattr(self, "current_video_filename_dt", None)
+        start = self.video_start_dt or self.current_video_filename_dt
         if start is None or self.cap is None:
             return None
         try:
@@ -735,7 +735,7 @@ class ReplayView(QWidget):
     def _additional_cctv_available(self) -> Path | None:
         """The additional clip covering the current time, if the main
         window can find one."""
-        resolver = getattr(self, "additional_cctv_resolver", None)
+        resolver = self.additional_cctv_resolver
         moment = self._current_clip_time()
         if resolver is None or moment is None:
             return None
@@ -781,18 +781,18 @@ class ReplayView(QWidget):
     def _place_view_menu(self) -> None:
         if self.video_label is None:
             return
-        btn = getattr(self, "view_menu_btn", None)
+        btn = self.view_menu_btn
         if btn is not None:
             btn.adjustSize()
             btn.move(max(0, self.video_label.width() - btn.width() - 8), 8)
             btn.raise_()
-        play = getattr(self, "play_pause_btn", None)
-        clock = getattr(self, "calc_label", None)
+        play = self.play_pause_btn
+        clock = self.calc_label
         if play is not None and clock is not None and play.parent() is self:
             # Centred on the scroll bar, which spans the whole picture area,
             # so the button never shifts when a second camera appears
             # (Chris, 2026-09-11).
-            slider = getattr(self, "seek_slider", None)
+            slider = self.seek_slider
             anchor = slider if slider is not None and slider.width() > 0 else self.video_label
             centre_x = anchor.geometry().center().x()
             centre_y = clock.geometry().center().y()
@@ -1319,8 +1319,7 @@ class ReplayView(QWidget):
         QTimer.singleShot(0, self.prune_cache_if_needed)
 
     def _schedule_settings_autosave(self):
-        if hasattr(self, "_settings_autosave_timer"):
-            self._settings_autosave_timer.start()
+        self._settings_autosave_timer.start()
 
     # ---- Sync button label ----
 
@@ -1334,8 +1333,7 @@ class ReplayView(QWidget):
             self._handle_additional_scroll_wheel(event.angleDelta().y())
             return True
         if (
-            hasattr(self, "video_label")
-            and self.video_label is not None
+            self.video_label is not None
             and obj is getattr(self.video_label, "_birds_eye_window", None)
             and event.type() == QEvent.Resize
         ):
@@ -1667,14 +1665,11 @@ class ReplayView(QWidget):
             self.sync_start_btn.setText("Sync logs to current video (first log)")
 
     def _save_settings_from_tab(self):
-        if not hasattr(self, "settings_panel"):
-            return
-        if hasattr(self, "_settings_autosave_timer") and self._settings_autosave_timer.isActive():
+        if self._settings_autosave_timer.isActive():
             self._settings_autosave_timer.stop()
         t0 = time.perf_counter()
         self.settings_panel.apply_to(self.settings)
-        if hasattr(self, "system_layout_panel"):
-            self.system_layout_panel.apply_to(self.settings)
+        self.system_layout_panel.apply_to(self.settings)
         t_apply = time.perf_counter()
         self.settings.save()
         t_save = time.perf_counter()
@@ -1689,7 +1684,7 @@ class ReplayView(QWidget):
             )
 
     def _flush_settings_autosave(self):
-        if hasattr(self, "_settings_autosave_timer") and self._settings_autosave_timer.isActive():
+        if self._settings_autosave_timer.isActive():
             self._settings_autosave_timer.stop()
         self._save_settings_from_tab()
 
@@ -1740,13 +1735,11 @@ class ReplayView(QWidget):
         # Persist immediately and refresh the UI panels so the user sees the
         # imported values without needing to restart.
         self.settings.save()
-        if hasattr(self, "settings_panel"):
-            self.settings_panel.reload_from_settings()
-        if hasattr(self, "system_layout_panel"):
-            try:
-                self.system_layout_panel.reload_from_settings()
-            except AttributeError:
-                pass
+        self.settings_panel.reload_from_settings()
+        try:
+            self.system_layout_panel.reload_from_settings()
+        except AttributeError:
+            pass
         self._load_custom_filter_settings()
         self._load_filter_preset_settings()
         QMessageBox.information(
@@ -1764,30 +1757,26 @@ class ReplayView(QWidget):
                 return f"Sync: {float(offset):+.1f}s"
             return "Sync: ?" if clip_open else "Sync"
 
-        pulser = getattr(self, "_sync_pulser", None)
-        if hasattr(self, "video_sync_btn"):
-            clip_open = self.cap is not None
-            self.video_sync_btn.setText(label(self._main_sync_done, self.ocr_offset_seconds, clip_open))
-            if self._main_sync_done:
-                if pulser is not None:
-                    pulser.set_target(None)
-                self.video_sync_btn.setStyleSheet(theme.SYNC_DONE_BUTTON)
-            elif clip_open and pulser is not None:
-                if pulser.target() is not self.video_sync_btn:
-                    self.video_sync_btn.setStyleSheet("")
-                    pulser.set_target(self.video_sync_btn)
-            else:
-                if pulser is not None:
-                    pulser.set_target(None)
+        pulser = self._sync_pulser
+        clip_open = self.cap is not None
+        self.video_sync_btn.setText(label(self._main_sync_done, self.ocr_offset_seconds, clip_open))
+        if self._main_sync_done:
+            if pulser is not None:
+                pulser.set_target(None)
+            self.video_sync_btn.setStyleSheet(theme.SYNC_DONE_BUTTON)
+        elif clip_open and pulser is not None:
+            if pulser.target() is not self.video_sync_btn:
                 self.video_sync_btn.setStyleSheet("")
-        if hasattr(self, "additional_sync_btn"):
-            second_open = self.additional_cap is not None
-            self.additional_sync_btn.setText(label(self._additional_sync_done, self.additional_ocr_offset_seconds, second_open))
-            self.additional_sync_btn.setStyleSheet(theme.SYNC_DONE_BUTTON if self._additional_sync_done else "")
+                pulser.set_target(self.video_sync_btn)
+        else:
+            if pulser is not None:
+                pulser.set_target(None)
+            self.video_sync_btn.setStyleSheet("")
+        second_open = self.additional_cap is not None
+        self.additional_sync_btn.setText(label(self._additional_sync_done, self.additional_ocr_offset_seconds, second_open))
+        self.additional_sync_btn.setStyleSheet(theme.SYNC_DONE_BUTTON if self._additional_sync_done else "")
 
     def _set_filter_tabs_enabled(self, enabled: bool):
-        if not hasattr(self, "right_tabs"):
-            return
         tab_bar = self.right_tabs.tabBar()
         default_color = self.palette().color(QPalette.WindowText)
         disabled_color = QColor("#888888")
@@ -2137,7 +2126,7 @@ class ReplayView(QWidget):
                 0, lambda: self.seek_to_seconds(seek_seconds, pause=seek_pause)
             )
         print(f"[viewer] load_video_from_path total {time.perf_counter() - t0:.2f}s", flush=True)
-        if getattr(self, "_play_after_open", False):
+        if self._play_after_open:
             self._play_after_open = False
             QTimer.singleShot(0, self.play)
         self.clip_opened.emit(path_obj)
@@ -2190,10 +2179,9 @@ class ReplayView(QWidget):
         self._prev_frame_rgb = None
         self._last_frame_index = None
         self.analysis_prev_frame_index = None
-        if hasattr(self, "analysis_label"):
-            self.analysis_label.setText("Analysis view")
-            self.analysis_label.setToolTip("")
-            self.analysis_label.set_frame(None)
+        self.analysis_label.setText("Analysis view")
+        self.analysis_label.setToolTip("")
+        self.analysis_label.set_frame(None)
         placeholder = "Loading video..." if show_loading else "No video loaded"
         self.video_label.set_frame(None)
         self.video_label.set_placeholder_text(placeholder)
@@ -2206,17 +2194,14 @@ class ReplayView(QWidget):
         self.current_frame = 0
         self.frame_count = 0
         self.info_label.display("00:00:00.000")
-        if hasattr(self, "calc_label"):
-            self.calc_label.display("00:00:00.000")
-        if hasattr(self, "frame_label"):
-            self.frame_label.display("0")
+        self.calc_label.display("00:00:00.000")
+        self.frame_label.display("0")
         self.log_markers_enabled = False
         self.log_markers = []
         self.external_markers = []
         self.external_marker_source = None
         self.event_marker_bar.clear()
-        if hasattr(self, "timeline_marker_bar"):
-            self.timeline_marker_bar.clear()
+        self.timeline_marker_bar.clear()
         self._clip_annotations = []
         self._annotation_history = []
         self._refresh_annotation_view()
@@ -2230,8 +2215,7 @@ class ReplayView(QWidget):
         self.all_message_keys = []
         self._sku_timeline_items = []
         self._rebuild_ppm_model()
-        if hasattr(self, "video_label"):
-            self.video_label.set_status_lines([])
+        self.video_label.set_status_lines([])
         if self._popout_label is not None:
             self._popout_label.set_status_lines([])
         self.video_start_dt = None
@@ -2251,8 +2235,7 @@ class ReplayView(QWidget):
         self.populate_log_list()
         self._reset_filter_state(show_busy=False)
         self._set_log_busy(False)
-        if hasattr(self, "filter_panel"):
-            self.filter_panel.setVisible(False)
+        self.filter_panel.setVisible(False)
         self._set_filter_tabs_enabled(False)
 
     def _apply_loaded_events(self, events, display_rows, source_keys, state_keys, message_keys, first_dt):
@@ -2344,8 +2327,7 @@ class ReplayView(QWidget):
         if self.fps and self.fps > 0:
             duration = (self.frame_count or 0) / self.fps
         if duration <= 0.0 or not self.external_markers:
-            if hasattr(self, "timeline_marker_bar"):
-                self.timeline_marker_bar.set_markers([])
+            self.timeline_marker_bar.set_markers([])
             return
         ratios: list[tuple[float, str]] = []
         offset_adjust = 0.0
@@ -2360,8 +2342,7 @@ class ReplayView(QWidget):
                 continue
             ratio = offset_val / duration
             ratios.append((ratio, color))
-        if hasattr(self, "timeline_marker_bar"):
-            self.timeline_marker_bar.set_markers(ratios)
+        self.timeline_marker_bar.set_markers(ratios)
 
     def _rebuild_event_start_times(self) -> None:
         self._event_start_times = [ev.start.total_seconds() for ev in self.events]
@@ -2435,8 +2416,7 @@ class ReplayView(QWidget):
             self._filters_wanted = True
         self.filters_loaded = False
         self.clear_filter_checkboxes(show_busy=show_busy)
-        if hasattr(self, "filter_panel"):
-            self.filter_panel.setVisible(False)
+        self.filter_panel.setVisible(False)
 
     def _reset_source_panel(self):
         print("[viewer] resetting source panel", flush=True)
@@ -2541,8 +2521,7 @@ class ReplayView(QWidget):
         self._set_log_busy(True, "Applying filters and refreshing log list...")
         self.apply_filters(status_message="Applying filters...", manage_busy=False)
         self._set_log_busy(False)
-        if hasattr(self, "filter_panel"):
-            self.filter_panel.setVisible(True)
+        self.filter_panel.setVisible(True)
         print(
             f"[viewer] filter checkboxes built (sources={len(self.source_checkboxes)}, "
             f"states={len(self.state_checkboxes)}, messages={len(self.message_checkboxes)})",
@@ -2802,7 +2781,7 @@ class ReplayView(QWidget):
 
     def _get_active_custom_filters(self) -> list[tuple[list[str], list[str]]]:
         filters: list[tuple[list[str], list[str]]] = []
-        for btn, in_edit, out_edit, _count_label in getattr(self, "custom_filter_blocks", []):
+        for btn, in_edit, out_edit, _count_label in self.custom_filter_blocks:
             if not btn.isChecked():
                 continue
             in_terms = self._parse_custom_terms(in_edit.text())
@@ -2859,7 +2838,7 @@ class ReplayView(QWidget):
         self.active_filter_presets.clear()
 
     def _validate_custom_filter_inputs(self):
-        for _btn, in_edit, out_edit, _count_label in getattr(self, "custom_filter_blocks", []):
+        for _btn, in_edit, out_edit, _count_label in self.custom_filter_blocks:
             for edit in (in_edit, out_edit):
                 text = edit.text()
                 has_empty = text.strip().startswith(",") or text.strip().endswith(",") or ",," in text
@@ -2888,7 +2867,7 @@ class ReplayView(QWidget):
 
     def _update_custom_filter_counts(self):
         if not self.all_events:
-            for _btn, _in_edit, _out_edit, count_label in getattr(self, "custom_filter_blocks", []):
+            for _btn, _in_edit, _out_edit, count_label in self.custom_filter_blocks:
                 count_label.setText("Matches: -")
             return
         base_rows = self._collect_base_filtered_rows()
@@ -3006,8 +2985,6 @@ class ReplayView(QWidget):
         self.settings.save()
 
     def _update_tab_highlights(self):
-        if not hasattr(self, "right_tabs"):
-            return
         highlight = QColor("#ff4d4f")
         default_color = QApplication.palette().windowText().color()
         disabled_color = QColor("#888888")
@@ -3079,7 +3056,7 @@ class ReplayView(QWidget):
     def add_playback_right_widget(self, widget: QWidget):
         if widget is None:
             return
-        if not hasattr(self, "playback_layout") or self.playback_layout is None:
+        if self.playback_layout is None:
             return
         self.playback_layout.addWidget(widget)
 
@@ -3097,7 +3074,7 @@ class ReplayView(QWidget):
         if self.cap is None:
             return
         if not self.playing and self.frame_count > 0 and self.current_frame >= self.frame_count - 1:
-            requester = getattr(self, "next_clip_requester", None)
+            requester = self.next_clip_requester
             if requester is not None:
                 self._play_after_open = True
                 try:
@@ -3501,7 +3478,7 @@ class ReplayView(QWidget):
             # silently drifts current_frame beyond the last shown frame
             # (readout frozen, later back-steps skipping frames). Stay on
             # the last frame that displayed, and stop playback there.
-            last_shown = getattr(self, "_last_frame_index", None)
+            last_shown = self._last_frame_index
             self.pause()
             if last_shown is not None:
                 self.current_frame = int(last_shown)
@@ -3602,8 +3579,7 @@ class ReplayView(QWidget):
                 and self.additional_video_label.height() > 1
             ):
                 self.additional_video_label.set_frame(self.additional_last_qimage)
-            if hasattr(self, "analysis_label"):
-                self._update_analysis_view()
+            self._update_analysis_view()
         finally:
             self._updating_video_label = False
             dt = time.perf_counter() - t0
@@ -3664,7 +3640,7 @@ class ReplayView(QWidget):
             label = AnnotatedVideoWidget("No video loaded")
             label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             label.set_editable(True)
-            if getattr(self, "_placeholder_image", None) is not None:
+            if self._placeholder_image is not None:
                 label.set_placeholder_image(self._placeholder_image)
             label.annotation_created.connect(self._add_annotation)
             label.annotation_context_requested.connect(self._show_annotation_context_menu)
@@ -3678,10 +3654,9 @@ class ReplayView(QWidget):
             label.setFocusPolicy(Qt.StrongFocus)
             content_row.addWidget(label, 1)
 
-            if hasattr(self, "analysis_controls_panel"):
-                self.analysis_controls_panel.setParent(win)
-                self.analysis_controls_panel.setVisible(True)
-                content_row.addWidget(self.analysis_controls_panel)
+            self.analysis_controls_panel.setParent(win)
+            self.analysis_controls_panel.setVisible(True)
+            content_row.addWidget(self.analysis_controls_panel)
             layout.addLayout(content_row, 1)
             win.setLayout(layout)
             win.destroyed.connect(lambda _=None: self._clear_video_popout())
@@ -3991,8 +3966,8 @@ class ReplayView(QWidget):
         Play button (Chris, 2026-09-11; the CCTV image before that): the
         column spans the whole row, so its layout gets a bottom margin
         equal to whatever sits below the play row."""
-        column = getattr(self, "right_column", None)
-        anchor = getattr(self, "calc_label", None)  # the bottom row: the play button is on the picture now
+        column = self.right_column
+        anchor = self.calc_label  # the bottom row: the play button is on the picture now
         if column is None or anchor is None or not anchor.isVisible():
             return
         try:
@@ -4006,8 +3981,6 @@ class ReplayView(QWidget):
             lay.setContentsMargins(0, 0, 0, margin)
 
     def _update_marker_bar_padding(self):
-        if not hasattr(self, "seek_slider") or not hasattr(self, "event_marker_bar"):
-            return
         slider = self.seek_slider
         if slider.width() <= 0:
             return
@@ -4024,7 +3997,7 @@ class ReplayView(QWidget):
         right_pad = max(0, slider.width() - 1 - (groove.right() - half))
         # The slider shares its row with the clip time labels, so the
         # full-width marker bars pad out by the slider's offset in the row.
-        for bar in (self.event_marker_bar, getattr(self, "timeline_marker_bar", None)):
+        for bar in (self.event_marker_bar, self.timeline_marker_bar):
             if bar is None:
                 continue
             dx_left = max(0, slider.geometry().left() - bar.geometry().left())
@@ -4189,11 +4162,11 @@ class ReplayView(QWidget):
     def _refresh_clip_span_labels(self) -> None:
         """Clip start and end to the minute above the seek slider; the
         filename time until an OCR offset refines the start."""
-        start_lbl = getattr(self, "clip_start_label", None)
-        end_lbl = getattr(self, "clip_end_label", None)
+        start_lbl = self.clip_start_label
+        end_lbl = self.clip_end_label
         if start_lbl is None or end_lbl is None:
             return
-        start = self.video_start_dt or getattr(self, "current_video_filename_dt", None)
+        start = self.video_start_dt or self.current_video_filename_dt
         if start is None or self.cap is None:
             texts = ("", "")
         else:
@@ -4213,18 +4186,15 @@ class ReplayView(QWidget):
         self._refresh_clip_span_labels()
         td = timedelta(seconds=t_seconds)
         time_str = format_timecode(td).replace(",", ".")
-        if hasattr(self, "info_label"):
-            self.info_label.display(time_str)
+        self.info_label.display(time_str)
         playback_dt = None
         if self.video_start_dt is not None and self.fps > 0:
             calc_dt = self.alignment.clock_datetime(self.video_start_dt, t_seconds)
             calc_str = calc_dt.strftime("%H:%M:%S.%f")[:-3]
-            if hasattr(self, "calc_label"):
-                self.calc_label.display(calc_str)
+            self.calc_label.display(calc_str)
             playback_dt = self.alignment.playback_datetime(self.video_start_dt, t_seconds)
         else:
-            if hasattr(self, "calc_label"):
-                self.calc_label.display("00:00:00.000")
+            self.calc_label.display("00:00:00.000")
             if self.current_video_filename_dt is not None:
                 playback_dt = self.alignment.playback_datetime_from_filename(
                     self.current_video_filename_dt, t_seconds
@@ -4234,14 +4204,12 @@ class ReplayView(QWidget):
             playback_dt = playback_dt_from_helper
         self._last_status_lines = list(ppm_lines)
         self._apply_status_lines()
-        if hasattr(self, "frame_label"):
-            self.frame_label.display(str(frame_index))
+        self.frame_label.display(str(frame_index))
         self.current_time_changed.emit(playback_dt)
 
     def _apply_status_lines(self) -> None:
         lines = self._last_status_lines if self.info_text_btn.isChecked() else []
-        if hasattr(self, "video_label"):
-            self.video_label.set_status_lines(lines)
+        self.video_label.set_status_lines(lines)
         if self._popout_label is not None:
             self._popout_label.set_status_lines(lines)
 
@@ -4293,13 +4261,11 @@ class ReplayView(QWidget):
         self._apply_offset()
 
     def _update_offset_display(self):
-        if hasattr(self, "drift_display"):
-            self.drift_display.setText(f"{self.time_offset:+.2f}s")
-        if hasattr(self, "drift_slider"):
-            slider_value = int(round(self.time_offset * self._drift_slider_scale))
-            self.drift_slider.blockSignals(True)
-            self.drift_slider.setValue(slider_value)
-            self.drift_slider.blockSignals(False)
+        self.drift_display.setText(f"{self.time_offset:+.2f}s")
+        slider_value = int(round(self.time_offset * self._drift_slider_scale))
+        self.drift_slider.blockSignals(True)
+        self.drift_slider.setValue(slider_value)
+        self.drift_slider.blockSignals(False)
 
     def _on_drift_slider_changed(self, value: int):
         self.set_offset_value(float(value) / float(self._drift_slider_scale))
@@ -4313,13 +4279,11 @@ class ReplayView(QWidget):
         self.close_gap_threshold_changed.emit(self.gap_threshold)
 
     def _update_close_gap_threshold_display(self):
-        if hasattr(self, "gap_display"):
-            self.gap_display.setText(f"{self.gap_threshold:.2f}x")
-        if hasattr(self, "gap_slider"):
-            slider_value = int(round(self.gap_threshold * 100.0))
-            self.gap_slider.blockSignals(True)
-            self.gap_slider.setValue(slider_value)
-            self.gap_slider.blockSignals(False)
+        self.gap_display.setText(f"{self.gap_threshold:.2f}x")
+        slider_value = int(round(self.gap_threshold * 100.0))
+        self.gap_slider.blockSignals(True)
+        self.gap_slider.setValue(slider_value)
+        self.gap_slider.blockSignals(False)
 
     def _on_close_gap_slider_changed(self, value: int):
         self.set_close_gap_threshold_value(float(value) / 100.0)
