@@ -4,7 +4,6 @@ import subprocess
 import shutil
 import argparse
 import time
-import json
 import re
 from bisect import bisect_left, bisect_right
 from concurrent.futures import Future
@@ -18,6 +17,7 @@ except Exception:
 from logfather.data.settings_store import Settings, DEFAULT_SETTINGS_PATH
 from logfather.ui.app_assets import load_placeholder_image as _load_placeholder_image
 from logfather.ui.analysis_panel import AnalysisPanel
+from logfather.ui.clip_annotations import AnnotationStore, ClipAnnotations
 from logfather.ui.clip_export import export_clip_with_overlays, find_ffmpeg
 from logfather.ui.elastic_log_session import ElasticLogSession
 from logfather.ui.annotated_video_widget import AnnotatedVideoWidget
@@ -58,10 +58,9 @@ import numpy as np
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QFileDialog, QMessageBox,
-    QSlider, QSizePolicy, QListView, QAbstractItemView,
-    QCheckBox, QTabWidget, QDialog,
-    QComboBox, QInputDialog, QMenu, QColorDialog,
-    QToolButton, QButtonGroup, QStyleOptionSlider, QStyle, QLCDNumber
+    QSizePolicy, QListView, QAbstractItemView,
+    QCheckBox, QTabWidget, QDialog, QMenu,
+    QToolButton, QStyleOptionSlider, QStyle, QLCDNumber
 )
 
 from logfather.ui.time_ocr import additional_camera_roi_key, analyze_video_offset, SyncCctvTimeWindow, parse_filename_datetime
@@ -240,13 +239,6 @@ class ReplayView(QWidget):
         self._draw_additional_video = False
         self._popout_window: QWidget | None = None
         self._popout_label: AnnotatedVideoWidget | None = None
-        self._popout_color_btn: QToolButton | None = None
-        self._popout_tool_group: QButtonGroup | None = None
-        self._clip_annotations: list[dict] = []
-        self._pinned_annotations: list[dict] = []
-        self._annotation_history: list[dict] = []
-        self._annotation_tool = "line"
-        self._annotation_color = QColor("#ffcc00")
 
         # All events/logs from CSV (before filtering)
         self.all_events: list[LogEvent] = []
@@ -453,7 +445,20 @@ class ReplayView(QWidget):
         self.ocr_settings_path = settings_root / "ocr_settings.json"
         self.ocr_main.store = OcrOffsetStore(self.cache_root / "ocr_offsets.json")
         self.ocr_additional.store = OcrOffsetStore(self.cache_root / "ocr_offsets_additional.json")
-        self._load_pinned_annotations()
+        # The annotations (clip_annotations.py): their files live under the
+        # clip cache; the canvases are pushed the set on ``changed``.
+        self.annotations = ClipAnnotations(
+            AnnotationStore(self.clip_cache.annotations_dir),
+            dialog_parent=self,
+            current_frame=lambda: self.current_frame,
+            popout_label=lambda: self._popout_label,
+            parent=self,
+        )
+        self.annotations.changed.connect(self._refresh_annotation_view)
+        self.annotations.tool_changed.connect(self._on_annotation_tool_changed)
+        self.annotations.color_changed.connect(self._on_annotation_color_changed)
+        self.annotations.clip_status_changed.connect(self.annotation_status_changed)
+        self.annotations.load_pinned()
         self.cache_status_label = QLabel("")
         self.cache_status_label.setStyleSheet(theme.DIM_LABEL)
         self.cache_status_label.setWordWrap(True)
@@ -1400,11 +1405,11 @@ class ReplayView(QWidget):
         self.current_video_filename_dt = parse_filename_datetime(path_obj)
         self.video_sync_btn.setEnabled(True)
         self._update_sync_button_style()
-        # Must be set before _load_clip_annotations(): the annotations key is
+        # Must be set before the annotations load: the annotations key is
         # derived from the original share path, and the fallback (the cache
         # copy path, or a stale previous clip) hashes to a different key.
         self.current_video_original_path = path_obj
-        self._load_clip_annotations()
+        self.annotations.load_clip(*self._annotation_clip_paths())
         self._load_cached_offset(self.ocr_main)
         if self.ocr_offset_seconds is None:
             settings = Settings.load()
@@ -1491,9 +1496,7 @@ class ReplayView(QWidget):
         self.external_markers = []
         self.external_marker_source = None
         self.timeline_marker_bar.clear()
-        self._clip_annotations = []
-        self._annotation_history = []
-        self._refresh_annotation_view()
+        self.annotations.clear_for_new_clip()
         self.events = []
         self._event_start_times: list[float] = []
         self.log_display_rows = []
@@ -1882,7 +1885,7 @@ class ReplayView(QWidget):
             end_seconds,
             target_path,
             fallback_fps=self.fps,
-            annotations=self._current_annotations(),
+            annotations=self.annotations.annotations(),
             status_lines_for=lambda t: self._overlay_context_for_time(t)[0],
             target_overlays_for=self._export_target_overlay_provider,
             progress=StageProgress(self, "Export Clip"),
@@ -2046,39 +2049,7 @@ class ReplayView(QWidget):
             win.resize(900, 600)
             layout = QVBoxLayout(win)
             layout.setContentsMargins(6, 6, 6, 6)
-            toolbar = QHBoxLayout()
-            tool_group = QButtonGroup(win)
-            tool_group.setExclusive(True)
-            for tool_key, label_text in (
-                ("line", "Line"),
-                ("arrow", "Arrow"),
-                ("text", "Text"),
-                ("measure", "Measure"),
-                ("timed_line", "Timed Line"),
-                ("tray", "Bird's Eye"),
-            ):
-                btn = QToolButton()
-                btn.setText(label_text)
-                btn.setCheckable(True)
-                btn.setChecked(self._annotation_tool == tool_key)
-                btn.clicked.connect(lambda _checked, t=tool_key: self._set_annotation_tool(t))
-                tool_group.addButton(btn)
-                toolbar.addWidget(btn)
-            color_btn = QToolButton()
-            color_btn.setText("Color")
-            color_btn.clicked.connect(self._pick_annotation_color)
-            self._set_color_button_style(color_btn, self._annotation_color)
-            toolbar.addWidget(color_btn)
-            undo_btn = QToolButton()
-            undo_btn.setText("Undo")
-            undo_btn.clicked.connect(self._undo_annotation)
-            toolbar.addWidget(undo_btn)
-            clear_btn = QToolButton()
-            clear_btn.setText("Clear Clip")
-            clear_btn.clicked.connect(self._clear_clip_annotations)
-            toolbar.addWidget(clear_btn)
-            toolbar.addStretch(1)
-            layout.addLayout(toolbar)
+            layout.addLayout(self.annotations.build_toolbar(win).layout)
 
             content_row = QHBoxLayout()
             label = AnnotatedVideoWidget("No video loaded")
@@ -2086,15 +2057,15 @@ class ReplayView(QWidget):
             label.set_editable(True)
             if self._placeholder_image is not None:
                 label.set_placeholder_image(self._placeholder_image)
-            label.annotation_created.connect(self._add_annotation)
-            label.annotation_context_requested.connect(self._show_annotation_context_menu)
-            label.annotation_updated.connect(self._on_annotation_updated)
+            label.annotation_created.connect(self.annotations.add)
+            label.annotation_context_requested.connect(self.annotations.show_context_menu)
+            label.annotation_updated.connect(self.annotations.on_updated)
             label.set_scrub_callback(self._handle_scroll_wheel)
             label.set_key_handler(self._handle_popout_key_event)
             label.set_tray_update_callback(self._refresh_birds_eye_if_open)
-            label.set_tool(self._annotation_tool)
-            label.set_color(self._annotation_color)
-            label.set_annotations(self._current_annotations())
+            label.set_tool(self.annotations.tool)
+            label.set_color(self.annotations.color)
+            label.set_annotations(self.annotations.annotations())
             label.setFocusPolicy(Qt.StrongFocus)
             content_row.addWidget(label, 1)
 
@@ -2106,8 +2077,6 @@ class ReplayView(QWidget):
             win.destroyed.connect(lambda _=None: self._clear_video_popout())
             self._popout_window = win
             self._popout_label = label
-            self._popout_color_btn = color_btn
-            self._popout_tool_group = tool_group
         if self.last_qimage is not None and self._popout_label is not None:
             self._popout_label.set_frame(self.last_qimage)
         self._refresh_annotation_view()
@@ -2125,7 +2094,7 @@ class ReplayView(QWidget):
     def _open_birds_eye_window(self):
         # Find latest tray annotation
         tray_ann = None
-        for ann in reversed(self._current_annotations()):
+        for ann in reversed(self.annotations.annotations()):
             if ann.get("type") == "tray" and len(ann.get("points") or []) == 4:
                 tray_ann = ann
                 break
@@ -2145,7 +2114,7 @@ class ReplayView(QWidget):
         if self.video_label._birds_eye_window is None or not self.video_label._birds_eye_window.isVisible():
             return
         tray_ann = None
-        for ann in reversed(self._current_annotations()):
+        for ann in reversed(self.annotations.annotations()):
             if ann.get("type") == "tray" and len(ann.get("points") or []) == 4:
                 tray_ann = ann
                 break
@@ -2159,98 +2128,26 @@ class ReplayView(QWidget):
     def _clear_video_popout(self):
         self._popout_window = None
         self._popout_label = None
-        self._popout_color_btn = None
-        self._popout_tool_group = None
+        self.annotations.drop_toolbar()
         self._clear_birds_eye_popout()
 
-    def _current_annotations(self) -> list[dict]:
-        return list(self._pinned_annotations) + list(self._clip_annotations)
-
-    def _annotations_dir(self) -> Path:
-        return self.clip_cache.annotations_dir()
-
-    def _clip_annotations_path(self) -> Path | None:
-        base_path = None
-        if self.current_video_original_path is not None:
-            base_path = self.current_video_original_path
-        elif self.current_video_path:
-            base_path = Path(self.current_video_path)
+    def _annotation_clip_paths(self) -> tuple[Path | None, Path | None]:
+        """(share path, cache copy path) naming the open clip's annotation
+        file; (None, None) with no clip."""
+        base_path = self.current_video_original_path or (
+            Path(self.current_video_path) if self.current_video_path else None
+        )
         if base_path is None:
-            return None
+            return None, None
         try:
             cache_path = self._cache_path_for(Path(base_path))
         except Exception:
             cache_path = Path(base_path)
-        filename = f"{cache_path.stem}.json"
-        return self._annotations_dir() / filename
-
-    def _pinned_annotations_path(self) -> Path:
-        return self._annotations_dir() / "pinned.json"
-
-    def _load_pinned_annotations(self):
-        self._pinned_annotations = []
-        path = self._pinned_annotations_path()
-        if not path.exists():
-            return
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            items = data.get("annotations", [])
-            if isinstance(items, list):
-                self._pinned_annotations = [i for i in items if isinstance(i, dict)]
-        except Exception:
-            self._pinned_annotations = []
-
-    def _save_pinned_annotations(self):
-        path = self._pinned_annotations_path()
-        payload = {"annotations": self._pinned_annotations}
-        try:
-            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        except Exception:
-            pass
-
-    def _load_clip_annotations(self):
-        self._clip_annotations = []
-        path = self._clip_annotations_path()
-        if path is None or not path.exists():
-            self._annotation_history = []
-            self._refresh_annotation_view()
-            self._emit_clip_annotation_status()
-            return
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            items = data.get("annotations", [])
-            if isinstance(items, list):
-                self._clip_annotations = [i for i in items if isinstance(i, dict)]
-        except Exception:
-            self._clip_annotations = []
-        self._annotation_history = list(self._current_annotations())
-        self._refresh_annotation_view()
-        self._emit_clip_annotation_status()
-
-    def _save_clip_annotations(self):
-        path = self._clip_annotations_path()
-        if path is None:
-            return
-        payload = {"annotations": self._clip_annotations}
-        try:
-            path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        except Exception:
-            pass
-        self._emit_clip_annotation_status()
-
-    def _emit_clip_annotation_status(self):
-        base_path = self.current_video_original_path or (Path(self.current_video_path) if self.current_video_path else None)
-        if base_path is None:
-            return
-        has_annotations = bool(self._clip_annotations)
-        self.annotation_status_changed.emit(base_path, has_annotations)
-
-    def _save_annotations(self):
-        self._save_clip_annotations()
-        self._save_pinned_annotations()
+        return base_path, cache_path
 
     def _refresh_annotation_view(self):
-        annotations = self._current_annotations()
+        """Push the annotation set into the main canvas and the popout's."""
+        annotations = self.annotations.annotations()
         if self.video_label is not None:
             self.video_label.set_annotations(annotations)
             self.video_label.set_current_frame_index(self.current_frame)
@@ -2258,141 +2155,23 @@ class ReplayView(QWidget):
         if self._popout_label is None:
             return
         self._popout_label.set_annotations(annotations)
-        self._popout_label.set_tool(self._annotation_tool)
-        self._popout_label.set_color(self._annotation_color)
+        self._popout_label.set_tool(self.annotations.tool)
+        self._popout_label.set_color(self.annotations.color)
         self._popout_label.set_current_frame_index(self.current_frame)
         self._popout_label.set_fps(self.fps)
 
-    def _add_annotation(self, ann: dict):
-        if ann.get("pinned"):
-            self._pinned_annotations.append(ann)
-        else:
-            self._clip_annotations.append(ann)
-        self._annotation_history.append(ann)
-        self._save_annotations()
-        self._refresh_annotation_view()
-
-    def _set_annotation_tool(self, tool: str):
-        self._annotation_tool = tool
+    def _on_annotation_tool_changed(self, tool: str):
         if self._popout_label is not None:
             self._popout_label.set_tool(tool)
         if self.video_label is not None:
             self.video_label.set_tool(tool)
 
-    def _set_annotation_color(self, color: QColor):
-        self._annotation_color = QColor(color)
+    def _on_annotation_color_changed(self, color: QColor):
         if self._popout_label is not None:
-            self._popout_label.set_color(self._annotation_color)
-        if self._popout_color_btn is not None:
-            self._set_color_button_style(self._popout_color_btn, self._annotation_color)
-
-    def _set_color_button_style(self, button: QToolButton, color: QColor):
-        button.setStyleSheet(theme.solid_button(color.name()))
-
-    def _pick_annotation_color(self):
-        color = QColorDialog.getColor(self._annotation_color, self, "Select annotation color")
-        if color.isValid():
-            self._set_annotation_color(color)
-
-    def _show_annotation_context_menu(self, idx: int, global_pos):
-        annotations = self._current_annotations()
-        if idx < 0 or idx >= len(annotations):
-            return
-        ann = annotations[idx]
-        menu = QMenu(self)
-        edit_action = menu.addAction("Edit annotation")
-        pin_action = menu.addAction("Toggle pin across clips")
-        frame_action = menu.addAction("Toggle pin to current frame")
-        distance_action = None
-        if ann.get("type") == "timed_line":
-            distance_action = menu.addAction("Set distance (m)")
-        delete_action = menu.addAction("Delete annotation")
-        chosen = menu.exec(global_pos.toPoint())
-        if chosen == edit_action:
-            if ann.get("type") in ("line", "arrow", "measure", "tray"):
-                if self._popout_label is not None:
-                    current = self._popout_label.get_edit_index()
-                    self._popout_label.set_edit_index(None if current == idx else idx)
-        elif chosen == pin_action:
-            if ann.get("pinned"):
-                ann["pinned"] = False
-                if ann in self._pinned_annotations:
-                    self._pinned_annotations.remove(ann)
-                if ann not in self._clip_annotations:
-                    self._clip_annotations.append(ann)
-            else:
-                ann["pinned"] = True
-                if ann in self._clip_annotations:
-                    self._clip_annotations.remove(ann)
-                if ann not in self._pinned_annotations:
-                    self._pinned_annotations.append(ann)
-            self._save_annotations()
-            self._refresh_annotation_view()
-        elif chosen == frame_action:
-            frame_idx = self.current_frame
-            if ann.get("frame_index") == frame_idx:
-                ann.pop("frame_index", None)
-            else:
-                ann["frame_index"] = frame_idx
-            self._save_annotations()
-            self._refresh_annotation_view()
-        elif distance_action is not None and chosen == distance_action:
-            current = ann.get("distance_m")
-            text, ok = QInputDialog.getText(
-                self,
-                "Set distance (m)",
-                "Distance in meters:",
-                text="" if current is None else str(current),
-            )
-            if ok and text.strip():
-                cleaned = re.sub(r"[^0-9.+-eE]", "", text)
-                try:
-                    ann["distance_m"] = float(cleaned)
-                except ValueError:
-                    ann["distance_m"] = None
-            elif ok and not text.strip():
-                ann.pop("distance_m", None)
-            self._save_annotations()
-            self._refresh_annotation_view()
-        elif chosen == delete_action:
-            if ann in self._pinned_annotations:
-                self._pinned_annotations.remove(ann)
-            if ann in self._clip_annotations:
-                self._clip_annotations.remove(ann)
-            while ann in self._annotation_history:
-                self._annotation_history.remove(ann)
-            if self._popout_label is not None:
-                self._popout_label.set_edit_index(None)
-            self._save_annotations()
-            self._refresh_annotation_view()
-
-    def _on_annotation_updated(self, _idx: int, _ann: dict):
-        self._save_annotations()
-        self._refresh_annotation_view()
+            self._popout_label.set_color(color)
 
     def _handle_popout_key_event(self, event):
         self.keyPressEvent(event)
-
-    def _undo_annotation(self):
-        if not self._annotation_history:
-            return
-        ann = self._annotation_history.pop()
-        if ann.get("pinned"):
-            if ann in self._pinned_annotations:
-                self._pinned_annotations.remove(ann)
-        else:
-            if ann in self._clip_annotations:
-                self._clip_annotations.remove(ann)
-        self._save_annotations()
-        self._refresh_annotation_view()
-
-    def _clear_clip_annotations(self):
-        if not self._clip_annotations:
-            return
-        self._clip_annotations = []
-        self._annotation_history = [a for a in self._annotation_history if a.get("pinned")]
-        self._save_clip_annotations()
-        self._refresh_annotation_view()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

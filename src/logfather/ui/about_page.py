@@ -226,6 +226,10 @@ FILE_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
          "The clip's Elastic log fetch: submit on a worker, poll from the event loop, deliver the rows "
          "(or a partial result and its message) through signals; repeats of a satisfied request are "
          "skipped and a new one cancels the old."),
+        ("ui/clip_annotations.py", "src/logfather/ui/clip_annotations.py",
+         "The replay's annotations: the per-clip and pinned sets with their JSON files under the clip "
+         "cache, the drawing tool and colour, undo, the Video Popout's toolbar and the right-click menu "
+         "(edit, pin across clips, pin to a frame, distance, delete)."),
         ("ui/replay_timeline.py", "src/logfather/ui/replay_timeline.py",
          "The timeline chart under the replay: the day's clips, event ticks, SKU bands, the Errors box rows, "
          "the label gutter, the playhead, the View menu, zoom and the Data strips."),
