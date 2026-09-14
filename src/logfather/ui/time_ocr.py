@@ -740,7 +740,7 @@ def _is_valid_time_text(text: str) -> bool:
     return 0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59
 
 
-class OcrVideoPlayer(QWidget):
+class SyncCctvTimeWindow(QWidget):
     def __init__(
         self,
         *,
@@ -806,13 +806,13 @@ class OcrVideoPlayer(QWidget):
         self.ocr_label.setAlignment(Qt.AlignCenter)
         self.ocr_enabled_checkbox = QCheckBox("Enable OCR")
         self.ocr_enabled_checkbox.setChecked(True)
-        self.ocr_history = QListWidget()
-        self.ocr_history.setMinimumWidth(260)
-        self.ocr_history.setUniformItemSizes(True)
+        self.readings_list = QListWidget()
+        self.readings_list.setMinimumWidth(260)
+        self.readings_list.setUniformItemSizes(True)
         self.last_ocr_text: str | None = None
-        self.roi_preview = QLabel("Time preview")
-        self.roi_preview.setAlignment(Qt.AlignCenter)
-        self.roi_preview.setMinimumSize(260, 80)
+        self.time_preview = QLabel("Time preview")
+        self.time_preview.setAlignment(Qt.AlignCenter)
+        self.time_preview.setMinimumSize(260, 80)
         # A large view of the purple date box above the time box (Chris,
         # 2026-09-12), each labelled.
         self.date_preview = QLabel("Date preview")
@@ -834,8 +834,8 @@ class OcrVideoPlayer(QWidget):
 
         self.time_label = QLabel("Time: 00:00:00.000")
         self.time_label.setAlignment(Qt.AlignCenter)
-        self.status_label = QLabel("Frame: 0")
-        self.status_label.setAlignment(Qt.AlignCenter)
+        self.frame_status_label = QLabel("Frame: 0")
+        self.frame_status_label.setAlignment(Qt.AlignCenter)
         self.tesseract_label = QLabel("Tesseract: (checking)")
         self.tesseract_label.setAlignment(Qt.AlignCenter)
         self.offset_label = QLabel("Offset: (not analyzed)")
@@ -953,7 +953,7 @@ class OcrVideoPlayer(QWidget):
         # Tesseract path, Offset, Time and Frame lines removed from the
         # window (Chris, 2026-09-12); the labels keep their text for the
         # code that reads it and stay hidden.
-        for hidden in (self.tesseract_label, self.offset_label, self.time_label, self.status_label):
+        for hidden in (self.tesseract_label, self.offset_label, self.time_label, self.frame_status_label):
             hidden.hide()
         hint = QLabel(
             "1. Ensure the Date and Time boxes are in the correct place on the CCTV image "
@@ -978,10 +978,10 @@ class OcrVideoPlayer(QWidget):
         right_layout.addWidget(self.synced_date_caption)
         right_layout.addWidget(self.synced_date_preview)
         right_layout.addWidget(self.time_preview_caption)
-        right_layout.addWidget(self.roi_preview)
+        right_layout.addWidget(self.time_preview)
         mono = QFont("Consolas")
         mono.setStyleHint(QFont.Monospace)
-        self.ocr_history.setFont(mono)
+        self.readings_list.setFont(mono)
         history_header = QLabel(f"{'Frame':>7}  {'Exact time':<10}  FPS")
         # The readings table (Chris, 2026-09-12): every second change in
         # the first OCR_TABLE_SECONDS after the sync frame then a drift
@@ -997,10 +997,10 @@ class OcrVideoPlayer(QWidget):
         # (Chris, 2026-09-12). The left inset matches the list frame and
         # item padding so the columns line up.
         history_header.setStyleSheet("color: #ecf0f4;")
-        history_header.setContentsMargins(self.ocr_history.frameWidth() + 3, 0, 0, 0)
+        history_header.setContentsMargins(self.readings_list.frameWidth() + 3, 0, 0, 0)
         history_header.setToolTip(f"Every second change in the {OCR_TABLE_SECONDS} s after the sync frame, then a drift check every {OCR_TABLE_INTERVAL_SECONDS} s: the frame the second began on and how many frames it lasted; green = the last row at or before the current frame")
         right_layout.addWidget(history_header)
-        right_layout.addWidget(self.ocr_history, 1)
+        right_layout.addWidget(self.readings_list, 1)
         root_layout.addLayout(right_layout)
         self.setLayout(root_layout)
 
@@ -1193,7 +1193,7 @@ class OcrVideoPlayer(QWidget):
         self._update_filename_time_label()
         self.offset_label.setText("Offset: (not analyzed)")
         self.time_label.setText("Time: 00:00:00.000")
-        self.ocr_history.clear()
+        self.readings_list.clear()
         self.last_ocr_text = None
         self.ocr_enabled_checkbox.setChecked(True)
         self.seek_slider.setRange(0, max(0, self.frame_count - 1))
@@ -1205,7 +1205,7 @@ class OcrVideoPlayer(QWidget):
         self.timer.stop()
         self._read_and_show(self.current_frame)
         if self._auto_analyze:
-            self._analyze_first_10s()
+            self._run_clock_checks()
 
     def _toggle_play_pause(self):
         if self.cap is None:
@@ -1336,8 +1336,8 @@ class OcrVideoPlayer(QWidget):
         rh, rw, rch = roi_rgb.shape
         roi_qimg = QImage(roi_rgb.data, rw, rh, rch * rw, QImage.Format_RGB888).copy()
         roi_pixmap = QPixmap.fromImage(roi_qimg)
-        self.roi_preview.setPixmap(
-            roi_pixmap.scaled(self.roi_preview.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.time_preview.setPixmap(
+            roi_pixmap.scaled(self.time_preview.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         )
         # The date preview is the first frame's, read once; the time preview
         # follows the frame on screen (Chris, 2026-09-12).
@@ -1370,7 +1370,7 @@ class OcrVideoPlayer(QWidget):
         self.last_ocr_text = text
 
     def _update_status(self):
-        self.status_label.setText(f"Frame: {self.current_frame + 1}/{self.frame_count}")
+        self.frame_status_label.setText(f"Frame: {self.current_frame + 1}/{self.frame_count}")
         total_ms, hours, minutes, seconds, ms, actual_dt = self._display_time_parts()
         if actual_dt:
             self.time_label.setText(actual_dt.strftime("Time: %d/%m/%Y %H:%M:%S.") + f"{ms:03}")
@@ -1414,7 +1414,7 @@ class OcrVideoPlayer(QWidget):
         """Fill the Frame / Exact time / FPS table: every second change in
         the first OCR_TABLE_SECONDS after the sync frame, then one drift
         check every OCR_TABLE_INTERVAL_SECONDS; read once."""
-        self.ocr_history.clear()
+        self.readings_list.clear()
         self._readings = []
         self._highlighted_row = -1
         if self.cap is None or self.fps <= 0 or self.frame_count <= 0 or not self.ocr_available:
@@ -1434,7 +1434,7 @@ class OcrVideoPlayer(QWidget):
             spans.append((start, initial_end, True))
         spans.extend((f, f + window, False) for f in range(start + interval, last, interval) if f + window <= last)
         if not spans:
-            self.ocr_history.addItem(QListWidgetItem("(clip too short for a check)"))
+            self.readings_list.addItem(QListWidgetItem("(clip too short for a check)"))
             return
         step = max(1, int(round(self.fps * OCR_SYNC_COARSE_STEP_SECONDS)))
         progress = QProgressDialog(f"Reading the first {OCR_TABLE_SECONDS} s, then a drift check every {OCR_TABLE_INTERVAL_SECONDS} s...", "Cancel", 0, len(spans), self)
@@ -1483,16 +1483,16 @@ class OcrVideoPlayer(QWidget):
                         break  # a drift check shows one row; its FPS comes from the second change
                     fps = boundaries[j + 1][0] - frame_idx if j + 1 < len(boundaries) else None
                     self._readings.append((frame_idx, text, fps))
-                    self.ocr_history.addItem(QListWidgetItem(f"{frame_idx + 1:>7}  {text:<10}  {fps if fps is not None else '':>3}"))
+                    self.readings_list.addItem(QListWidgetItem(f"{frame_idx + 1:>7}  {text:<10}  {fps if fps is not None else '':>3}"))
         except _Aborted:
             cancelled = True
         finally:
             progress.close()
         if cancelled:
             self._run_cancelled = True
-            self.ocr_history.addItem(QListWidgetItem("(cancelled - press Sync Time to read the rest)"))
+            self.readings_list.addItem(QListWidgetItem("(cancelled - press Sync Time to read the rest)"))
         if misses:
-            self.ocr_history.addItem(QListWidgetItem(f"({misses} of {len(spans)} checks could not read a second change)"))
+            self.readings_list.addItem(QListWidgetItem(f"({misses} of {len(spans)} checks could not read a second change)"))
         self._highlight_reading(self.current_frame)
 
     def _highlight_reading(self, frame_index: int) -> None:
@@ -1508,15 +1508,15 @@ class OcrVideoPlayer(QWidget):
                 break
         if row == self._highlighted_row:
             return
-        if 0 <= self._highlighted_row < self.ocr_history.count():
-            old = self.ocr_history.item(self._highlighted_row)
+        if 0 <= self._highlighted_row < self.readings_list.count():
+            old = self.readings_list.item(self._highlighted_row)
             old.setBackground(QBrush())
             old.setForeground(QBrush())
-        if 0 <= row < self.ocr_history.count():
-            item = self.ocr_history.item(row)
+        if 0 <= row < self.readings_list.count():
+            item = self.readings_list.item(row)
             item.setBackground(QColor("#2d6a2d"))
             item.setForeground(QColor("#ffffff"))
-            self.ocr_history.scrollToItem(item)
+            self.readings_list.scrollToItem(item)
         self._highlighted_row = row
 
     def _current_roi(self, frame_w: int, frame_h: int) -> Roi:
@@ -1568,7 +1568,7 @@ class OcrVideoPlayer(QWidget):
             return
         self._check_cctv_date(self._frame_or_first(self._last_frame))
         self._rerender()
-        self._analyze_first_10s()  # skipped after a Cancel in the date step
+        self._run_clock_checks()  # skipped after a Cancel in the date step
         self._store_box_locations()
 
     def _store_box_locations(self) -> None:
@@ -1850,9 +1850,9 @@ class OcrVideoPlayer(QWidget):
     def _on_sync_clicked(self) -> None:
         """The Sync Time button: a fresh run of the clock checks."""
         self._run_cancelled = False
-        self._analyze_first_10s()
+        self._run_clock_checks()
 
-    def _analyze_first_10s(self):
+    def _run_clock_checks(self):
         """Step F: the clock checks, then the readings table, then back to
         the frame that was on screen. Skipped after a Cancel earlier in
         the run; a Cancel inside it skips what follows."""
@@ -2932,7 +2932,7 @@ if __name__ == "__main__":
 
     if args.gui or not args.video:
         app = QApplication([])
-        win = OcrVideoPlayer()
+        win = SyncCctvTimeWindow()
         win.resize(900, 600)
         win.show()
         if args.video:

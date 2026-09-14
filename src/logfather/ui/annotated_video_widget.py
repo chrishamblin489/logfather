@@ -1,7 +1,7 @@
 """AnnotatedVideoWidget: the video canvas with drawing/measuring annotations,
 status overlay lines, target overlays, and the Bird's-Eye tray view.
 
-Extracted verbatim from Log_vid_gui; talks to the viewer only via signals.
+Extracted verbatim from replay_view; talks to the viewer only via signals.
 """
 from __future__ import annotations
 
@@ -63,10 +63,10 @@ class AnnotatedVideoWidget(QWidget):
         self._drag_handle: str | None = None
         self._timed_start: dict | None = None
         self._tray_points: list[QPointF] = []
-        self._tray_view_max = 220
-        self._tray_view_window: QWidget | None = None
-        self._tray_view_label: QLabel | None = None
-        self._last_tray_view: QImage | None = None
+        self._birds_eye_max = 220
+        self._birds_eye_window: QWidget | None = None
+        self._birds_eye_label: QLabel | None = None
+        self._last_birds_eye: QImage | None = None
         self._tray_update_cb = None
         self._fps = 0.0
         self._status_lines: list[str] = []
@@ -140,7 +140,7 @@ class AnnotatedVideoWidget(QWidget):
             self._tray_points = []
             self.update()
             if tool != "tray":
-                self._clear_tray_view_popout()
+                self._clear_birds_eye_popout()
 
     def set_color(self, color: QColor):
         self._color = QColor(color)
@@ -182,9 +182,9 @@ class AnnotatedVideoWidget(QWidget):
         self.update()
 
     def eventFilter(self, obj, event):
-        if obj is self._tray_view_window and event.type() == QEvent.Resize:
-            if self._last_tray_view is not None:
-                self._update_tray_view_popout(self._last_tray_view)
+        if obj is self._birds_eye_window and event.type() == QEvent.Resize:
+            if self._last_birds_eye is not None:
+                self._update_birds_eye_popout(self._last_birds_eye)
         return super().eventFilter(obj, event)
 
     def set_edit_index(self, idx: int | None):
@@ -263,9 +263,9 @@ class AnnotatedVideoWidget(QWidget):
                     "color": self._color.name(),
                     "pinned": False,
                 }
-                tray_view = self._build_tray_view(self._tray_points[:4])
-                if tray_view is not None:
-                    self._last_tray_view = tray_view
+                birds_eye = self._build_birds_eye(self._tray_points[:4])
+                if birds_eye is not None:
+                    self._last_birds_eye = birds_eye
                 self._tray_points = []
                 self.annotation_created.emit(ann)
             self.update()
@@ -298,11 +298,11 @@ class AnnotatedVideoWidget(QWidget):
                     if len(pts) == 4 and 0 <= idx < 4:
                         pts[idx] = [img_pt.x(), img_pt.y()]
                         ann["points"] = pts
-                        tray_view = self._build_tray_view([QPointF(p[0], p[1]) for p in pts])
-                        if tray_view is not None:
-                            self._last_tray_view = tray_view
-                        if self._tray_view_window is not None and self._tray_view_window.isVisible():
-                            self._update_tray_view_popout(tray_view or self._last_tray_view)
+                        birds_eye = self._build_birds_eye([QPointF(p[0], p[1]) for p in pts])
+                        if birds_eye is not None:
+                            self._last_birds_eye = birds_eye
+                        if self._birds_eye_window is not None and self._birds_eye_window.isVisible():
+                            self._update_birds_eye_popout(birds_eye or self._last_birds_eye)
                         if self._tray_update_cb is not None:
                             self._tray_update_cb()
                 elif self._drag_handle == "start":
@@ -474,7 +474,7 @@ class AnnotatedVideoWidget(QWidget):
             ordered = [ordered[0], ordered[3], ordered[2], ordered[1]]
         return ordered
 
-    def _build_tray_view(self, pts: list[QPointF]) -> QImage | None:
+    def _build_birds_eye(self, pts: list[QPointF]) -> QImage | None:
         if self._frame is None or len(pts) != 4:
             return None
         ordered = self._order_tray_points(pts)
@@ -517,8 +517,8 @@ class AnnotatedVideoWidget(QWidget):
             print(f"[tray] warp failed: {exc}", flush=True)
             return None
 
-    def _update_tray_view_popout(self, tray_view: QImage | None):
-        if self._tray_view_window is None:
+    def _update_birds_eye_popout(self, birds_eye: QImage | None):
+        if self._birds_eye_window is None:
             win = QWidget(self, Qt.Window)
             win.setWindowTitle("Bird's Eye")
             win.resize(320, 320)
@@ -530,31 +530,31 @@ class AnnotatedVideoWidget(QWidget):
             label.setAlignment(Qt.AlignCenter)
             layout.addWidget(label, 1)
             win.setLayout(layout)
-            self._tray_view_window = win
-            self._tray_view_label = label
-            win.destroyed.connect(lambda _=None: self._clear_tray_view_popout())
+            self._birds_eye_window = win
+            self._birds_eye_label = label
+            win.destroyed.connect(lambda _=None: self._clear_birds_eye_popout())
             win.show()
         else:
-            self._tray_view_window.show()
-        if self._tray_view_label is None:
+            self._birds_eye_window.show()
+        if self._birds_eye_label is None:
             return
-        if tray_view is None or tray_view.isNull():
-            self._tray_view_label.setText("Bird's Eye unavailable")
+        if birds_eye is None or birds_eye.isNull():
+            self._birds_eye_label.setText("Bird's Eye unavailable")
             return
-        self._last_tray_view = tray_view
-        max_w = max(1, self._tray_view_label.width() - 4)
-        max_h = max(1, self._tray_view_label.height() - 4)
-        scaled = tray_view.scaled(max_w, max_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self._tray_view_label.setPixmap(QPixmap.fromImage(scaled))
+        self._last_birds_eye = birds_eye
+        max_w = max(1, self._birds_eye_label.width() - 4)
+        max_h = max(1, self._birds_eye_label.height() - 4)
+        scaled = birds_eye.scaled(max_w, max_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self._birds_eye_label.setPixmap(QPixmap.fromImage(scaled))
 
-    def _clear_tray_view_popout(self):
-        if self._tray_view_window is not None:
+    def _clear_birds_eye_popout(self):
+        if self._birds_eye_window is not None:
             try:
-                self._tray_view_window.close()
+                self._birds_eye_window.close()
             except Exception:
                 pass
-        self._tray_view_window = None
-        self._tray_view_label = None
+        self._birds_eye_window = None
+        self._birds_eye_label = None
 
 
     def paintEvent(self, event):
@@ -839,9 +839,9 @@ class AnnotatedVideoWidget(QWidget):
                 break
         if tray_ann is not None:
             pts = [QPointF(p[0], p[1]) for p in tray_ann.get("points", [])]
-            tray_view = self._build_tray_view(pts)
-            if tray_view is not None:
-                self._last_tray_view = tray_view
+            birds_eye = self._build_birds_eye(pts)
+            if birds_eye is not None:
+                self._last_birds_eye = birds_eye
 
         # Conveyor target overlays
         if self._target_overlays and self._frame is not None:

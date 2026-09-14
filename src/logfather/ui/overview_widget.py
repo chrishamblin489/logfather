@@ -35,7 +35,7 @@ from PySide6.QtWidgets import (
     QToolButton,
 )
 
-from logfather.ui.Time_Picker import (
+from logfather.ui.replay_timeline import (
     TimelineItem,
     parse_time_from_name,
     ensure_utc,
@@ -61,7 +61,7 @@ from logfather.data.ui_state_store import (
 from logfather.ui.day_range_dialog import DayRangeDialog, live_button_text
 from logfather.ui.icons import calendar_icon
 from logfather.data import grafana_client
-from logfather.ui.overview_signals import SignalBoxes, SignalChannel
+from logfather.ui.data_boxes import DataBoxes, SignalChannel
 from logfather.ui.system_filter import SystemFilterPopup, funnel_icon
 
 _OVERVIEW_HIDDEN_KEY = "overview_hidden_systems"
@@ -719,8 +719,8 @@ class OverviewWidget(QWidget):
         self.filter_btn.clicked.connect(self._open_filter_popup)
         self._refresh_filter_label()
         # The Data and Additional data boxes and their strips (Chris,
-        # 2026-09-07/08); shared with System Replay via SignalBoxes.
-        self._signals = SignalBoxes(self, "overview")
+        # 2026-09-07/08); shared with System Replay via DataBoxes.
+        self._signals = DataBoxes(self, "overview")
         self._picks, self._temps, self._currents, self._pressure = self._signals.data_channels
         self._additional = self._signals.additional
         self._channels = self._signals.channels

@@ -1,6 +1,6 @@
 """Small reusable viewer widgets and their geometry helpers.
 
-Extracted from Log_vid_gui: scrub/frame labels, LCD segment display, the
+Extracted from replay_view: scrub/frame labels, LCD segment display, the
 event marker bars, drift and clip-range sliders, and the log list model.
 """
 from __future__ import annotations

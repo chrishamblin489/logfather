@@ -1,6 +1,6 @@
 """Frame-analysis maths: pixel differencing and optical-flow views.
 
-Pure numpy/OpenCV functions extracted from Log_vid_gui (they were also
+Pure numpy/OpenCV functions extracted from replay_view (they were also
 byte-identical copies of tools/Vid_Frame_Differencing.py's helpers).
 No Qt, no state.
 """

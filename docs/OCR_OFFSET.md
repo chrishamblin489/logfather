@@ -24,7 +24,7 @@ fact that a new second appears mid-frame.
 ## 2. The time maths (`src/logfather/core/time_alignment.py`)
 
 `TimeAlignment` is a frozen dataclass rebuilt on every use from the
-viewer's current state (`Log_vid_gui.alignment`). Three timelines are
+viewer's current state (`replay_view.alignment`). Three timelines are
 involved: video seconds (position in the clip), event seconds (a log line
 relative to the first line loaded) and the wall clock.
 
@@ -40,7 +40,7 @@ relative to the first line loaded) and the wall clock.
     video_to_event(t) = t + ocr_correction - effective_offset
 
 `sync_offset` is set once an offset is known, by
-`_apply_auto_sync_if_possible` (`Log_vid_gui.py`): the first loaded log
+`_apply_auto_sync_if_possible` (`replay_view.py`): the first loaded log
 line's time minus `video_start_dt`. `time_offset` is the Drift slider in
 the sync strip. Sign conventions are pinned by `tests/test_time_alignment.py`.
 
@@ -135,7 +135,7 @@ clip then runs on the filename time.
 
 ### The Sync Time button (manual ROI tool)
 
-`open_ocr_roi_tool` opens `OcrVideoPlayer`: a scrubbable frame zoomed to
+`open_ocr_roi_tool` opens `SyncCctvTimeWindow`: a scrubbable frame zoomed to
 the band around the clock (a tick shows the whole frame), the green OCR
 box dragged on the picture by its corners, edges or middle
 (`RoiEditorLabel`; `roi_to_ratios` turns the box back into the saved
@@ -174,21 +174,21 @@ shown: offsets are applied unattended.
 
 ### The additional camera
 
-The second picture keeps its own `secondary_video_start_dt`,
-`secondary_ocr_offset_seconds` and `secondary_ocr_frame_offset`, a
+The second picture keeps its own `additional_video_start_dt`,
+`additional_ocr_offset_seconds` and `additional_ocr_frame_offset`, a
 separate store file, and its own Sync Time button
-(`open_secondary_ocr_tool`). Once both cameras have a start, the second
+(`open_additional_sync_cctv_time`). Once both cameras have a start, the second
 camera is slaved to the first:
 
     clock = clock_datetime(video_start_dt, t)
-    t2    = video_seconds_for_clock(secondary_video_start_dt, clock)
-    frame = round(t2 * secondary_fps) + secondary_manual_offset_frames
+    t2    = video_seconds_for_clock(additional_video_start_dt, clock)
+    frame = round(t2 * additional_fps) + additional_manual_offset_frames
 
 With either start unknown it falls back to the same clip position.
 
 ## 5. Where offsets are kept (`src/logfather/data/ocr_offset_store.py`)
 
-Two JSON files under `%LOCALAPPDATA%\VideoLogViewer\cache`, exempt from the
+Two JSON files under `%LOCALAPPDATA%\ReplayView\cache`, exempt from the
 clip cache's pruning: `ocr_offsets.json` (main camera) and
 `ocr_offsets_additional.json` (second camera).
 
@@ -289,6 +289,6 @@ tools.
 | Formulas | `src/logfather/core/time_alignment.py` |
 | OCR engine, ROI tool, filename parser | `src/logfather/ui/time_ocr.py` |
 | Offset store | `src/logfather/data/ocr_offset_store.py` |
-| Clip open, automatic sync, Sync Time buttons, second camera | `src/logfather/ui/Log_vid_gui.py` |
+| Clip open, automatic sync, Sync Time buttons, second camera | `src/logfather/ui/replay_view.py` |
 | Settings flags `auto_ocr_sync`, `auto_ocr_open_on_missing` | `src/logfather/data/settings_store.py`, `src/logfather/ui/settings_dialog.py` |
 | Tests | `tests/test_time_alignment.py`, `tests/test_ocr_offset_plausibility.py`, `tests/test_parsing.py` (store) |

@@ -1,6 +1,6 @@
 """Log-event structures and parsing/formatting shared by the viewer.
 
-Extracted from Log_vid_gui: the LogEvent model, timestamp formatting, and
+Extracted from replay_view: the LogEvent model, timestamp formatting, and
 the row->event builder that turns fetched Elastic rows into relative-time
 events for playback alignment.
 """

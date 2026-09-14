@@ -254,7 +254,7 @@ def test_locate_date_change_skips_unreadable_frames():
 
 def test_frame_or_first_never_uses_numpy_truthiness():
     """`first or fallback` on arrays raises ValueError; the helper must not."""
-    from logfather.ui.time_ocr import OcrVideoPlayer
+    from logfather.ui.time_ocr import SyncCctvTimeWindow
 
     class Stub:
         def __init__(self, first):
@@ -265,8 +265,8 @@ def test_frame_or_first_never_uses_numpy_truthiness():
 
     fallback = np.zeros((4, 4, 3), dtype=np.uint8)
     first = np.ones((4, 4, 3), dtype=np.uint8)
-    assert OcrVideoPlayer._frame_or_first(Stub(first), fallback) is first
-    assert OcrVideoPlayer._frame_or_first(Stub(None), fallback) is fallback
+    assert SyncCctvTimeWindow._frame_or_first(Stub(first), fallback) is first
+    assert SyncCctvTimeWindow._frame_or_first(Stub(None), fallback) is fallback
 
 
 def test_additional_camera_has_its_own_roi_entry(tmp_path):

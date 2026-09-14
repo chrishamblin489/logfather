@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt, Signal, QEvent, QThread, QRectF, QPointF, QTimer,
 from logfather.ui.qt_worker import JobSlot
 from logfather.ui import theme
 from logfather.ui.icons import zoom_glyph_icon
-from logfather.ui.overview_signals import SignalBoxes, COMPACT_BOX_STYLE, COMPACT_FONT_PX, add_label_backdrop, CollapsibleGroupBox
+from logfather.ui.data_boxes import DataBoxes, COMPACT_BOX_STYLE, COMPACT_FONT_PX, add_label_backdrop, CollapsibleGroupBox
 from logfather.data import grafana_client
 from logfather.data.elastic_schema import robot_id_from_folder
 from types import SimpleNamespace
@@ -50,7 +50,7 @@ class _PinnedHeightPanel(QWidget):
 from logfather.data.ui_state_store import load_ui_state, update_ui_state
 
 from logfather.data.elastic_errors import ElasticFetchError
-# Re-exported for the many UI modules that import these from Time_Picker.
+# Re-exported for the many UI modules that import these from replay_timeline (was Time_Picker).
 from logfather.core.timeline_model import (  # noqa: F401
     LAST_BLOCK_DURATION,
     LOCAL_TIMEZONE,
@@ -109,7 +109,7 @@ class _EventTickItem(QGraphicsRectItem):
     clicked; the tooltip carries the exact time and the full message, a
     click asks the picker to open the footage and logs at that moment."""
 
-    def __init__(self, x: float, y_center: float, item: TimelineItem, picker: "TimePicker"):
+    def __init__(self, x: float, y_center: float, item: TimelineItem, picker: "ReplayTimeline"):
         # 14 px tall, the same as the clip bars (Chris, 2026-09-11).
         super().__init__(QRectF(x - 5, y_center - 8, 10, 16))
         self._item = item
@@ -133,7 +133,7 @@ class _EventTickItem(QGraphicsRectItem):
 
 
 class VideoRectItem(QGraphicsRectItem):
-    def __init__(self, rect, timeline_item: TimelineItem, picker: "TimePicker"):
+    def __init__(self, rect, timeline_item: TimelineItem, picker: "ReplayTimeline"):
         super().__init__(rect)
         self._timeline_item = timeline_item
         self._picker = picker
@@ -164,7 +164,7 @@ class VideoRectItem(QGraphicsRectItem):
         painter.restore()
 
 
-class TimePicker(QWidget):
+class ReplayTimeline(QWidget):
     time_selected = Signal(object)  # TimelineItem
     items_changed = Signal()
     event_clicked = Signal(object)  # a condition-track event: open the footage at its time
@@ -175,7 +175,7 @@ class TimePicker(QWidget):
                  static_tracks: Optional[List[Tuple[str, str, str]]] = None,
                  cache_root: Optional[Path] = None):
         super().__init__()
-        self.setWindowTitle("Time Picker")
+        self.setWindowTitle("PikPak Replay timeline")
         self._load_func = load_func
         self._extra_loaders = extra_loaders or []
         self._items: list[TimelineItem] = []
@@ -220,20 +220,20 @@ class TimePicker(QWidget):
         # ui_state under replay_bars_hidden.
         stored_bars = load_ui_state().get("replay_bars_hidden")
         self._hidden_bars: set = {str(k) for k in stored_bars} if isinstance(stored_bars, list) else set()
-        self._bars_menu_btn = QToolButton(self.view)
-        self._bars_menu_btn.setText("View \u25be")
-        self._bars_menu_btn.setPopupMode(QToolButton.InstantPopup)
-        self._bars_menu_btn.setCursor(Qt.PointingHandCursor)
-        self._bars_menu_btn.setToolTip("Show or hide the bars on the timeline")
-        self._bars_menu_btn.setStyleSheet(
+        self._view_menu_btn = QToolButton(self.view)
+        self._view_menu_btn.setText("View \u25be")
+        self._view_menu_btn.setPopupMode(QToolButton.InstantPopup)
+        self._view_menu_btn.setCursor(Qt.PointingHandCursor)
+        self._view_menu_btn.setToolTip("Show or hide the bars on the timeline")
+        self._view_menu_btn.setStyleSheet(
             "QToolButton { background: rgba(0, 0, 0, 150); color: #ecf0f4; border: 1px solid rgba(255, 255, 255, 70);"
             " border-radius: 4px; padding: 2px 8px; font-size: 12px; }"
             "QToolButton:hover { background: rgba(0, 0, 0, 210); }"
             "QToolButton::menu-indicator { image: none; width: 0px; }"
         )
-        self._bars_menu = QMenu(self._bars_menu_btn)
-        self._bars_menu.aboutToShow.connect(self._rebuild_bars_menu)
-        self._bars_menu_btn.setMenu(self._bars_menu)
+        self._view_menu = QMenu(self._view_menu_btn)
+        self._view_menu.aboutToShow.connect(self._rebuild_view_menu)
+        self._view_menu_btn.setMenu(self._view_menu)
         # + and - to the left of View (Chris, 2026-09-13): stretch or
         # contract the timeline about the middle of the view. Only the
         # pixels-per-minute scale changes; text and bar heights stay.
@@ -258,7 +258,7 @@ class TimePicker(QWidget):
             zb.clicked.connect(lambda _checked=False, f=factor: self._zoom_about(f, None))
             self._zoom_btns.append(zb)
         self.view.installEventFilter(self)
-        self._place_bars_menu_btn()
+        self._place_view_menu_btn()
 
         # The Data and Additional data boxes, as on the Overview (Chris,
         # 2026-09-08): the ticked readings are drawn as strips under the
@@ -289,7 +289,7 @@ class TimePicker(QWidget):
         # The moment under the pointer at the last press on the timeline, so
         # a click on a clip opens it at that moment (Chris, 2026-09-10).
         self.last_click_time: Optional[datetime] = None
-        self._signals = SignalBoxes(self, "replay", picks_default=True)
+        self._signals = DataBoxes(self, "replay", picks_default=True)
         self._strips_bottom: Optional[float] = None
         layout = QVBoxLayout()
         layout.setContentsMargins(6, 4, 6, 6)
@@ -752,7 +752,7 @@ class TimePicker(QWidget):
             bits.append(f"severity {severity}")
         if bits:
             lines.append(" | ".join(bits))
-        lines.extend(TimePicker._tooltip_extra_lines(item))
+        lines.extend(ReplayTimeline._tooltip_extra_lines(item))
         lines.append("Click to open the footage and logs here")
         return "\n".join(lines)
 
@@ -1160,8 +1160,8 @@ class TimePicker(QWidget):
         if data is not None:
             self.time_selected.emit(data)
 
-    def _place_bars_menu_btn(self) -> None:
-        btn = getattr(self, "_bars_menu_btn", None)
+    def _place_view_menu_btn(self) -> None:
+        btn = getattr(self, "_view_menu_btn", None)
         if btn is None:
             return
         btn.adjustSize()
@@ -1174,10 +1174,10 @@ class TimePicker(QWidget):
             zb.raise_()
             x -= 4
 
-    def _rebuild_bars_menu(self) -> None:
+    def _rebuild_view_menu(self) -> None:
         """One tick per bar: the static rows, Telemetry, then the condition
         rows (the same ticks as the Errors box)."""
-        menu = self._bars_menu
+        menu = self._view_menu
         menu.clear()
         counts: Dict[str, int] = {}
         for item in self._items:
@@ -1219,7 +1219,7 @@ class TimePicker(QWidget):
 
     def eventFilter(self, obj, event):
         if obj is self.view and event.type() == QEvent.Resize:
-            self._place_bars_menu_btn()
+            self._place_view_menu_btn()
             return False
         if obj is self.view.viewport():
             if event.type() == QEvent.Wheel and self._handle_wheel(event):

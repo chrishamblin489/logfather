@@ -1,8 +1,8 @@
 """Timeline data model and day/clip helpers — no Qt.
 
-Extracted from Time_Picker so the data layer (elastic_loader, sku_timeline,
+Extracted from replay_timeline so the data layer (elastic_loader, sku_timeline,
 stop_report, ...) no longer imports a widget module for TimelineItem and the
-timezone/day helpers. Time_Picker re-exports everything here, so UI-side
+timezone/day helpers. replay_timeline re-exports everything here, so UI-side
 imports are unchanged.
 """
 from __future__ import annotations

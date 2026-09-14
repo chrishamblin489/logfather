@@ -1,6 +1,6 @@
 """Local clip cache: copies CCTV clips from the share, prefetches, prunes.
 
-Extracted from Log_vid_gui.VideoLogViewer. One instance lives on the viewer;
+Extracted from replay_view.ReplayView. One instance lives on the viewer;
 Main_Window reaches it through thin forwarders the viewer keeps.
 
 Threading model:

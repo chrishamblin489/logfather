@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import logfather.data.elastic_loader as elastic_loader
-from logfather.ui.Time_Picker import parse_time_from_name
+from logfather.ui.replay_timeline import parse_time_from_name
 
 
 class TestExtractRobotId:
@@ -112,7 +112,7 @@ class _FakeCap:
 
 class TestPositionCaptureSequential:
     def _fn(self):
-        from logfather.ui.Log_vid_gui import _position_capture_sequential
+        from logfather.ui.replay_view import _position_capture_sequential
         return _position_capture_sequential
 
     def test_next_frame_needs_no_work(self):
@@ -136,13 +136,13 @@ class TestPositionCaptureSequential:
         assert cap.grab_calls == 3
 
     def test_large_forward_jump_requires_seek(self):
-        from logfather.ui.Log_vid_gui import MAX_GRAB_SKIP_FRAMES
+        from logfather.ui.replay_view import MAX_GRAB_SKIP_FRAMES
         cap = _FakeCap()
         assert self._fn()(cap, True, 100, 100 + MAX_GRAB_SKIP_FRAMES + 1) is False
         assert cap.grab_calls == 0
 
     def test_boundary_forward_jump_grabs(self):
-        from logfather.ui.Log_vid_gui import MAX_GRAB_SKIP_FRAMES
+        from logfather.ui.replay_view import MAX_GRAB_SKIP_FRAMES
         cap = _FakeCap()
         assert self._fn()(cap, True, 0, MAX_GRAB_SKIP_FRAMES) is True
         assert cap.grab_calls == MAX_GRAB_SKIP_FRAMES
@@ -788,7 +788,7 @@ class TestTimelineLoaderConcurrency:
 
     def test_resolver_delivers_last_video_end(self):
         from datetime import date
-        from logfather.ui.Time_Picker import _load_timeline_items
+        from logfather.ui.replay_timeline import _load_timeline_items
 
         clips = [
             Path("Z:/nowhere/PikPak012 -Line 1-_00_20260901080000.mp4"),
@@ -816,7 +816,7 @@ class TestTimelineLoaderConcurrency:
 
     def test_no_videos_resolves_none(self):
         from datetime import date
-        from logfather.ui.Time_Picker import _load_timeline_items
+        from logfather.ui.replay_timeline import _load_timeline_items
 
         seen = {}
 

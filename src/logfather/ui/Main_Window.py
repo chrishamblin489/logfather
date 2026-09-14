@@ -46,8 +46,8 @@ from logfather.data.elastic_schema import robot_id_from_folder
 from logfather.data.telemetry_loader import fetch_telemetry_day
 from logfather.core.telemetry import summary_track
 from logfather.ui.pulse import Pulser
-from logfather.ui.Time_Picker import (
-    TimePicker,
+from logfather.ui.replay_timeline import (
+    ReplayTimeline,
     TimelineItem,
     parse_time_from_name,
     ensure_utc,
@@ -72,7 +72,7 @@ from logfather.ui.stop_report import (
 )
 from logfather.ui.target_overlay_controller import TargetOverlayController
 from logfather.data.settings_store import Settings, display_customer_name, display_line_name, system_group_sort_key
-from logfather.ui.Log_vid_gui import VideoLogViewer
+from logfather.ui.replay_view import ReplayView
 from logfather.ui.data_inventory_dialog import DataInventoryDialog
 from logfather.ui.software_window import SoftwareWindow
 from logfather.ui.errors_stops_window import ErrorsStopsWindow
@@ -127,7 +127,7 @@ class MainWindow(QWidget):
         """The five content panels, their workers, and the overlay
         controller: viewer, overview, date/time pickers, fleetwide,
         target-buffer."""
-        self.viewer = VideoLogViewer()
+        self.viewer = ReplayView()
         cache_root = self.viewer.cache_root
         self.overview_widget = OverviewWidget(
             self.settings,
@@ -172,7 +172,7 @@ class MainWindow(QWidget):
             lambda root, day, last_video_end: self._load_additional_cctv_items(root, day, cache_root),
         ]
 
-        self.time_picker = TimePicker(
+        self.replay_timeline = ReplayTimeline(
             load_day_files_cached,
             extra_loaders=extra_loaders,
             static_tracks=static_tracks,
@@ -180,8 +180,8 @@ class MainWindow(QWidget):
         )
         # The timeline's reading strips need the settings for Grafana / Elastic;
         # their boxes sit under the log tabs (Chris, 2026-09-08).
-        self.time_picker.settings = self.settings
-        self.viewer.add_right_panel_widget(self.time_picker.signal_boxes_widget())
+        self.replay_timeline.settings = self.settings
+        self.viewer.add_right_panel_widget(self.replay_timeline.signal_boxes_widget())
         self.viewer.additional_cctv_resolver = self._additional_clip_covering
         self.viewer.next_clip_requester = self._open_next_clip
         self.content_stack = QStackedWidget()
@@ -197,7 +197,7 @@ class MainWindow(QWidget):
         self.stop_report_action = QAction("Stop report\u2026", self)
         self.stop_report_action.triggered.connect(self.open_stop_report)
         self.fit_timeline_action = QAction("Fit timeline to the day", self)
-        self.fit_timeline_action.triggered.connect(self.time_picker._fit_to_items)
+        self.fit_timeline_action.triggered.connect(self.replay_timeline._fit_to_items)
         self._stop_report_slot = JobSlot(self)
         self._stop_report_progress = None
         # One exclusive Overview/Viewer/Fleetwide mode switcher (Chris,
@@ -208,25 +208,25 @@ class MainWindow(QWidget):
         self.overview_btn.setCheckable(True)
         self.overview_btn.setChecked(True)
         self.overview_btn.setStyleSheet(theme.SEGMENT_LEFT)
-        self.viewer_btn = QToolButton()
-        self.viewer_btn.setText("PikPak Replay")
-        self.viewer_btn.setCheckable(True)
-        self.viewer_btn.setStyleSheet(theme.SEGMENT_MID)
-        self.fleetwide_search_btn = QToolButton()
-        self.fleetwide_search_btn.setText("Search")
-        self.fleetwide_search_btn.setCheckable(True)
+        self.replay_btn = QToolButton()
+        self.replay_btn.setText("PikPak Replay")
+        self.replay_btn.setCheckable(True)
+        self.replay_btn.setStyleSheet(theme.SEGMENT_MID)
+        self.search_btn = QToolButton()
+        self.search_btn.setText("Search")
+        self.search_btn.setCheckable(True)
         # Icons on the mode buttons (Chris, 2026-09-11): rows for the
         # Overview, a play triangle for PikPak Replay, a magnifier for Search.
         from logfather.ui.icons import overview_icon, play_icon, search_icon
 
-        for btn, icon in ((self.overview_btn, overview_icon()), (self.viewer_btn, play_icon()), (self.fleetwide_search_btn, search_icon())):
+        for btn, icon in ((self.overview_btn, overview_icon()), (self.replay_btn, play_icon()), (self.search_btn, search_icon())):
             btn.setIcon(icon)
             btn.setIconSize(QSize(18, 18))
             btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.fleetwide_search_btn.setStyleSheet(theme.SEGMENT_RIGHT)
+        self.search_btn.setStyleSheet(theme.SEGMENT_RIGHT)
         self._mode_group = QButtonGroup(self)
         self._mode_group.setExclusive(True)
-        for btn in (self.overview_btn, self.viewer_btn, self.fleetwide_search_btn):
+        for btn in (self.overview_btn, self.replay_btn, self.search_btn):
             self._mode_group.addButton(btn)
         self._mode_group.buttonToggled.connect(self._on_mode_button_toggled)
         self.current_system_label = QLabel("")
@@ -264,18 +264,18 @@ class MainWindow(QWidget):
         self._chosen_root: Path | None = None
         self._chosen_day: date | None = None
         self.stop_report_btn.hide()
-        self.time_picker.fit_btn.hide()
-        self.time_picker.setMinimumHeight(TIMELINE_MIN_HEIGHT)
+        self.replay_timeline.fit_btn.hide()
+        self.replay_timeline.setMinimumHeight(TIMELINE_MIN_HEIGHT)
         self._timeline_min_height = TIMELINE_MIN_HEIGHT
         self._timeline_max_height = TIMELINE_MAX_HEIGHT
         self._timeline_expanded = False
         self.date_picker.setMaximumWidth(380)
 
         # Pick-target buffer panel
-        self.buffer_widget = TargetBufferWidget()
-        self.buffer_widget.setMinimumWidth(220)
-        self.buffer_widget.setMaximumWidth(400)
-        self._buffer_panel_visible = False
+        self.targets_panel = TargetBufferWidget()
+        self.targets_panel.setMinimumWidth(220)
+        self.targets_panel.setMaximumWidth(400)
+        self._targets_panel_visible = False
         self._buffer_panel_target_width = 280
         self._day_prefetch_timer: QTimer | None = None
         self._session_save_timer = QTimer(self)
@@ -286,8 +286,8 @@ class MainWindow(QWidget):
         # overlays live in the controller.
         self._overlay_controller = TargetOverlayController(
             viewer=self.viewer,
-            buffer_widget=self.buffer_widget,
-            time_picker=self.time_picker,
+            buffer_widget=self.targets_panel,
+            replay_timeline=self.replay_timeline,
             settings_provider=lambda: self.settings,
             calibration_system_id_provider=self._current_calibration_system_id,
             parent_widget=self,
@@ -296,32 +296,32 @@ class MainWindow(QWidget):
     def _build_splitters(self):
         """Panel toggles, the horizontal/vertical splitters, and their
         show/hide animations."""
-        self.left_toggle = QToolButton()
-        self.left_toggle.setText("Hide Date Picker")
-        self.left_toggle.setCheckable(True)
+        self.date_picker_toggle = QToolButton()
+        self.date_picker_toggle.setText("Hide Date Picker")
+        self.date_picker_toggle.setCheckable(True)
         # The left-hand calendar / system panel is retired (Chris,
         # 2026-09-07): Choose system and Choose date in the top bar do its
         # job. The DatePicker object stays as the logic behind those
         # buttons but is never shown, never revealed by hovering the edge.
-        self.left_toggle.setChecked(False)
-        self.left_toggle.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.left_toggle.setVisible(False)
+        self.date_picker_toggle.setChecked(False)
+        self.date_picker_toggle.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.date_picker_toggle.setVisible(False)
         self._hover_reveal_enabled = False
         self._left_panel_retired = True
         self._left_reveal_px = 12
 
-        self.buffer_toggle = QToolButton()
-        self.buffer_toggle.setText("Targets")
-        self.buffer_toggle.setCheckable(True)
-        self.buffer_toggle.setChecked(False)
-        self.buffer_toggle.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.buffer_toggle.toggled.connect(self._set_buffer_panel_visible)
+        self.targets_toggle = QToolButton()
+        self.targets_toggle.setText("Targets")
+        self.targets_toggle.setCheckable(True)
+        self.targets_toggle.setChecked(False)
+        self.targets_toggle.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.targets_toggle.toggled.connect(self._set_targets_panel_visible)
 
         horizontal_splitter = QSplitter(Qt.Horizontal)
         horizontal_splitter.addWidget(self.date_picker)
         self.date_picker.setVisible(False)
         horizontal_splitter.addWidget(self.content_stack)
-        horizontal_splitter.addWidget(self.buffer_widget)
+        horizontal_splitter.addWidget(self.targets_panel)
         horizontal_splitter.setStretchFactor(0, 2)
         horizontal_splitter.setStretchFactor(1, 8)
         horizontal_splitter.setStretchFactor(2, 0)
@@ -333,17 +333,17 @@ class MainWindow(QWidget):
         self._left_panel_anim.setEasingCurve(QEasingCurve.OutCubic)
         self._left_panel_anim.valueChanged.connect(self._on_left_panel_anim_step)
         self._left_panel_anim.finished.connect(self._on_left_panel_anim_finished)
-        self._buffer_panel_anim = QVariantAnimation(self)
-        self._buffer_panel_anim.setDuration(170)
-        self._buffer_panel_anim.setEasingCurve(QEasingCurve.OutCubic)
-        self._buffer_panel_anim.valueChanged.connect(self._on_buffer_panel_anim_step)
-        self._buffer_panel_anim.finished.connect(self._on_buffer_panel_anim_finished)
+        self._targets_panel_anim = QVariantAnimation(self)
+        self._targets_panel_anim.setDuration(170)
+        self._targets_panel_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._targets_panel_anim.valueChanged.connect(self._on_targets_panel_anim_step)
+        self._targets_panel_anim.finished.connect(self._on_targets_panel_anim_finished)
         # Start with buffer panel hidden
-        self.buffer_widget.setVisible(False)
+        self.targets_panel.setVisible(False)
 
         main_splitter = QSplitter(Qt.Vertical)
         main_splitter.addWidget(horizontal_splitter)
-        main_splitter.addWidget(self.time_picker)
+        main_splitter.addWidget(self.replay_timeline)
         main_splitter.setStretchFactor(0, 3)
         main_splitter.setStretchFactor(1, 2)
         self._main_splitter = main_splitter
@@ -360,26 +360,26 @@ class MainWindow(QWidget):
         """Top control strip (view toggles left, tool buttons right) and the
         root layout; installs the hover-reveal event filters."""
         top_controls = QHBoxLayout()
-        top_controls.addWidget(self.left_toggle, 0, Qt.AlignLeft)
+        top_controls.addWidget(self.date_picker_toggle, 0, Qt.AlignLeft)
         mode_row = QHBoxLayout()
         mode_row.setSpacing(0)
         mode_row.addWidget(self.overview_btn)
-        mode_row.addWidget(self.viewer_btn)
-        mode_row.addWidget(self.fleetwide_search_btn)
+        mode_row.addWidget(self.replay_btn)
+        mode_row.addWidget(self.search_btn)
         top_controls.addLayout(mode_row)
         top_controls.addSpacing(12)
         top_controls.addWidget(self.choose_system_btn, 0, Qt.AlignLeft)
         top_controls.addWidget(self.choose_date_btn, 0, Qt.AlignLeft)
         top_controls.addWidget(self.current_system_label, 0, Qt.AlignLeft)
         self.current_system_label.setVisible(False)
-        self.calibrate_btn = QToolButton()
-        self.calibrate_btn.setText("Conveyor")  # was "Calibrate" (Chris, 2026-09-12)
-        self.calibrate_btn.setIcon(conveyor_icon())
-        self.calibrate_btn.setIconSize(QSize(18, 18))
-        self.calibrate_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self.calibrate_btn.setToolTip("Conveyor calibration: the tracking line the product overlays follow")
-        self.calibrate_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.calibrate_btn.clicked.connect(self._overlay_controller.open_calibration_dialog)
+        self.conveyor_btn = QToolButton()
+        self.conveyor_btn.setText("Conveyor")  # was "Calibrate" (Chris, 2026-09-12)
+        self.conveyor_btn.setIcon(conveyor_icon())
+        self.conveyor_btn.setIconSize(QSize(18, 18))
+        self.conveyor_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.conveyor_btn.setToolTip("Conveyor calibration: the tracking line the product overlays follow")
+        self.conveyor_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.conveyor_btn.clicked.connect(self._overlay_controller.open_calibration_dialog)
 
         self.track_toggle = QToolButton()
         self.track_toggle.setText("Track")
@@ -417,11 +417,11 @@ class MainWindow(QWidget):
         self._software_window: SoftwareWindow | None = None
         # Errors / Stops window (Chris, 2026-09-05): stoppages and errors
         # per day, same filter and day picker as the Overview.
-        self.errors_btn = QToolButton()
-        self.errors_btn.setText("Errors / Stops")
-        self.errors_btn.setToolTip("Line stoppages and errors per day, by system")
-        self.errors_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.errors_btn.clicked.connect(self._open_errors_window)
+        self.errors_stops_btn = QToolButton()
+        self.errors_stops_btn.setText("Errors / Stops")
+        self.errors_stops_btn.setToolTip("Line stoppages and errors per day, by system")
+        self.errors_stops_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.errors_stops_btn.clicked.connect(self._open_errors_window)
         self._errors_window: ErrorsStopsWindow | None = None
 
         # One gear top-right on every window (Chris, 2026-09-07): Data
@@ -431,7 +431,7 @@ class MainWindow(QWidget):
         self.gear_btn = build_gear_button(self, self, extra_actions=[self.stop_report_action, self.fit_timeline_action])
         # Refresh as an icon button at the top right, next to the gear
         # (Chris, 2026-09-11).
-        self.refresh_btn = self.time_picker.refresh_btn
+        self.refresh_btn = self.replay_timeline.refresh_btn
         self.refresh_btn.setText("")
         self.refresh_btn.setIcon(refresh_icon())
         self.refresh_btn.setIconSize(QSize(20, 20))
@@ -468,11 +468,11 @@ class MainWindow(QWidget):
         top_controls.addWidget(self.first_product_btn, 0, Qt.AlignRight)
         top_controls.addWidget(self.viewer.drift_tool, 0, Qt.AlignRight)
         top_controls.addWidget(self.viewer.video_sync_btn, 0, Qt.AlignRight)
-        top_controls.addWidget(self.calibrate_btn, 0, Qt.AlignRight)
+        top_controls.addWidget(self.conveyor_btn, 0, Qt.AlignRight)
         top_controls.addWidget(self.track_toggle, 0, Qt.AlignRight)
-        top_controls.addWidget(self.buffer_toggle, 0, Qt.AlignRight)
+        top_controls.addWidget(self.targets_toggle, 0, Qt.AlignRight)
         top_controls.addWidget(self.data_btn, 0, Qt.AlignRight)
-        top_controls.addWidget(self.errors_btn, 0, Qt.AlignRight)
+        top_controls.addWidget(self.errors_stops_btn, 0, Qt.AlignRight)
         top_controls.addWidget(self.software_btn, 0, Qt.AlignRight)
         # Newer-version pill (Chris, 2026-09-07): an instance left open
         # checks every ten minutes whether the checkout or origin/main has
@@ -531,8 +531,8 @@ class MainWindow(QWidget):
         self.setMouseTracking(True)
         self.installEventFilter(self)
         self.date_picker.installEventFilter(self)
-        self.time_picker.installEventFilter(self)
-        self.time_picker.view.viewport().installEventFilter(self)
+        self.replay_timeline.installEventFilter(self)
+        self.replay_timeline.view.viewport().installEventFilter(self)
 
     # ---- activity bar -----------------------------------------------------
 
@@ -642,28 +642,28 @@ class MainWindow(QWidget):
         self.date_picker.date_selected.connect(self.on_date_selected)
         self.date_picker.system_id_selected.connect(self._set_system_id_override)
         # Settings button removed from DatePicker UI
-        self.time_picker.time_selected.connect(self.on_time_chosen)
-        self.time_picker.event_clicked.connect(self._on_timeline_event_clicked)
-        self.time_picker.moment_clicked.connect(self._on_timeline_moment_clicked)
-        self.time_picker.items_changed.connect(self._sync_viewer_sku_overlay)
-        self.time_picker.items_changed.connect(self._on_items_changed_for_navigation)
+        self.replay_timeline.time_selected.connect(self.on_time_chosen)
+        self.replay_timeline.event_clicked.connect(self._on_timeline_event_clicked)
+        self.replay_timeline.moment_clicked.connect(self._on_timeline_moment_clicked)
+        self.replay_timeline.items_changed.connect(self._sync_viewer_sku_overlay)
+        self.replay_timeline.items_changed.connect(self._on_items_changed_for_navigation)
         self.viewer.clip_opened.connect(self._on_clip_opened_for_navigation)
         self._viewer_tools_available = False
         self.viewer.clip_opened.connect(self._on_first_clip_opened)
         if ENABLE_DAY_PREFETCH:
-            self.time_picker.items_changed.connect(self._prefetch_day_clips)
-        self.viewer.current_time_changed.connect(self.time_picker.set_playhead_datetime)
+            self.replay_timeline.items_changed.connect(self._prefetch_day_clips)
+        self.viewer.current_time_changed.connect(self.replay_timeline.set_playhead_datetime)
         self.viewer.clip_range_export_requested.connect(self._export_current_viewer_clip_range)
-        self.viewer.annotation_status_changed.connect(self.time_picker.mark_video_annotated)
-        self.viewer.cache_clip_ready.connect(self.time_picker.mark_video_cached)
+        self.viewer.annotation_status_changed.connect(self.replay_timeline.mark_video_annotated)
+        self.viewer.cache_clip_ready.connect(self.replay_timeline.mark_video_cached)
         self.viewer.current_time_changed.connect(self._overlay_controller.on_playhead)
         self.viewer.close_gap_threshold_changed.connect(
-            self._overlay_controller.on_close_gap_threshold_changed
+            self._overlay_controller.on_gap_threshold_changed
         )
         self.viewer.set_export_target_overlay_provider(
             self._overlay_controller.export_overlays_for
         )
-        self.left_toggle.toggled.connect(
+        self.date_picker_toggle.toggled.connect(
             lambda checked: self._set_date_picker_visible(checked, self._horizontal_splitter)
         )
 
@@ -853,8 +853,8 @@ class MainWindow(QWidget):
         # Past the share's retention there is nothing to play: say so
         # where the footage would be (Chris, 2026-09-07).
         self.viewer.set_footage_notice(FOOTAGE_DELETED_NOTICE if footage_expired(day) else None)
-        self.time_picker.show_times(pikpak_root, day)
-        self.time_picker.clear_clip_target_rate_heat()
+        self.replay_timeline.show_times(pikpak_root, day)
+        self.replay_timeline.clear_clip_target_rate_heat()
         self._update_current_system_label(pikpak_root, day)
         self._load_telemetry(pikpak_root, day)
         if self.date_picker.parent_dir:
@@ -865,7 +865,7 @@ class MainWindow(QWidget):
     def _load_telemetry(self, pikpak_root: Path | None, day: date | None) -> None:
         panel = self.telemetry_panel
         panel.set_playhead(None)
-        self.time_picker.set_telemetry_summary(None)
+        self.replay_timeline.set_telemetry_summary(None)
         if not isinstance(pikpak_root, Path) or day is None:
             panel.set_data(None, "Choose a system and a day.")
             return
@@ -886,7 +886,7 @@ class MainWindow(QWidget):
 
     def _on_telemetry_loaded(self, data) -> None:
         self.telemetry_panel.set_data(data)
-        self.time_picker.set_telemetry_summary(summary_track(data))
+        self.replay_timeline.set_telemetry_summary(summary_track(data))
 
     def _update_current_system_label(self, pikpak_root: Path | None, day: date | None = None):
         if not isinstance(pikpak_root, Path):
@@ -961,7 +961,7 @@ class MainWindow(QWidget):
         popup.show()
 
     def _choose_system(self, path: Path) -> None:
-        self.viewer_btn.setChecked(True)
+        self.replay_btn.setChecked(True)
         pending = self._pending_day
         if pending is not None:
             self._pending_day = None
@@ -1002,32 +1002,32 @@ class MainWindow(QWidget):
     # Pick-buffer panel
     # ------------------------------------------------------------------
 
-    def _set_buffer_panel_visible(self, visible: bool) -> None:
-        self._buffer_panel_visible = bool(visible)
-        self._overlay_controller.panel_visible = self._buffer_panel_visible
-        if self._buffer_panel_visible and self._overlay_controller._last_playhead_dt:
-            self.buffer_widget.update_for_time(self._overlay_controller._last_playhead_dt)
-        if self._buffer_panel_visible:
-            self.buffer_widget.setVisible(True)
-            self._animate_buffer_panel(self._buffer_panel_target_width)
+    def _set_targets_panel_visible(self, visible: bool) -> None:
+        self._targets_panel_visible = bool(visible)
+        self._overlay_controller.panel_visible = self._targets_panel_visible
+        if self._targets_panel_visible and self._overlay_controller._last_playhead_dt:
+            self.targets_panel.update_for_time(self._overlay_controller._last_playhead_dt)
+        if self._targets_panel_visible:
+            self.targets_panel.setVisible(True)
+            self._animate_targets_panel(self._buffer_panel_target_width)
         else:
-            self._animate_buffer_panel(0)
+            self._animate_targets_panel(0)
 
-    def _animate_buffer_panel(self, end_width: int) -> None:
+    def _animate_targets_panel(self, end_width: int) -> None:
         splitter = self._horizontal_splitter
         sizes = splitter.sizes()
         current = sizes[2] if len(sizes) > 2 else 0
         if int(current) == int(end_width):
             if end_width == 0:
-                self.buffer_widget.setVisible(False)
+                self.targets_panel.setVisible(False)
             return
-        if self._buffer_panel_anim.state() == QVariantAnimation.Running:
-            self._buffer_panel_anim.stop()
-        self._buffer_panel_anim.setStartValue(int(current))
-        self._buffer_panel_anim.setEndValue(int(end_width))
-        self._buffer_panel_anim.start()
+        if self._targets_panel_anim.state() == QVariantAnimation.Running:
+            self._targets_panel_anim.stop()
+        self._targets_panel_anim.setStartValue(int(current))
+        self._targets_panel_anim.setEndValue(int(end_width))
+        self._targets_panel_anim.start()
 
-    def _on_buffer_panel_anim_step(self, value: int) -> None:
+    def _on_targets_panel_anim_step(self, value: int) -> None:
         try:
             right = max(0, int(value))
             splitter = self._horizontal_splitter
@@ -1041,9 +1041,9 @@ class MainWindow(QWidget):
         except Exception:
             pass
 
-    def _on_buffer_panel_anim_finished(self) -> None:
-        if not self._buffer_panel_visible:
-            self.buffer_widget.setVisible(False)
+    def _on_targets_panel_anim_finished(self) -> None:
+        if not self._targets_panel_visible:
+            self.targets_panel.setVisible(False)
 
     def _set_system_id_override(self, system_id: str | None):
         self.system_id_override = system_id or None
@@ -1056,7 +1056,7 @@ class MainWindow(QWidget):
             return
         self._left_panel_visible = bool(visible)
         if self._left_panel_visible:
-            self.left_toggle.setText("Hide Date Picker")
+            self.date_picker_toggle.setText("Hide Date Picker")
             if not self.date_picker.isVisible():
                 # Ensure the panel starts collapsed, otherwise splitter may
                 # restore old width instantly and skip visible animation.
@@ -1067,7 +1067,7 @@ class MainWindow(QWidget):
                 self._horizontal_splitter.setSizes([0, max(1, total - buf), buf])
             self._animate_left_panel(self._left_panel_target_width)
         else:
-            self.left_toggle.setText("Show Date Picker")
+            self.date_picker_toggle.setText("Show Date Picker")
             self._animate_left_panel(0)
 
     def _animate_left_panel(self, end_width: int):
@@ -1121,9 +1121,9 @@ class MainWindow(QWidget):
         return super().eventFilter(obj, event)
 
     def _is_timeline_obj(self, obj) -> bool:
-        if obj is self.time_picker:
+        if obj is self.replay_timeline:
             return True
-        return obj is self.time_picker.view.viewport()
+        return obj is self.replay_timeline.view.viewport()
 
     def _set_timeline_expanded(self, expanded: bool):
         expanded = bool(expanded)
@@ -1172,8 +1172,8 @@ class MainWindow(QWidget):
             self._timeline_expand_timer.stop()
 
     def _auto_contract_timeline(self):
-        pos = self.time_picker.mapFromGlobal(self.cursor().pos())
-        if self.time_picker.rect().contains(pos):
+        pos = self.replay_timeline.mapFromGlobal(self.cursor().pos())
+        if self.replay_timeline.rect().contains(pos):
             return
         self._cancel_timeline_expand()
         self._set_timeline_expanded(False)
@@ -1213,8 +1213,8 @@ class MainWindow(QWidget):
         window geometry rides along, because a killed process never runs
         closeEvent (Chris, 2026-09-05: maximized state kept getting lost)."""
         self._capture_window_geometry()
-        root = self.time_picker.current_root
-        day = self.time_picker._current_date
+        root = self.replay_timeline.current_root
+        day = self.replay_timeline._current_date
         if root is None or day is None:
             # Nothing to resume (e.g. an overview-only session), but the
             # geometry must still persist.
@@ -1243,9 +1243,9 @@ class MainWindow(QWidget):
     def _current_mode_name(self) -> str:
         if self.overview_btn.isChecked():
             return "overview"
-        if self.fleetwide_search_btn.isChecked():
-            return "fleetwide"
-        return "viewer"
+        if self.search_btn.isChecked():
+            return "search"
+        return "replay"
 
     def _maybe_resume_last_session(self) -> None:
         # Always asks; there is deliberately no "remember my choice"
@@ -1290,11 +1290,13 @@ class MainWindow(QWidget):
         # session was elsewhere (Chris, 2026-09-04). Sessions saved
         # before the mode field default to viewer, matching old
         # behaviour; the clip still loads in the background either way.
-        saved_mode = str(session.get("mode") or "viewer")
+        saved_mode = str(session.get("mode") or "replay")
+        # Older sessions saved the pre-2026-09-14 names.
+        saved_mode = {"viewer": "replay", "fleetwide": "search"}.get(saved_mode, saved_mode)
         if saved_mode == "overview":
             self.overview_btn.setChecked(True)
-        elif saved_mode == "fleetwide":
-            self.fleetwide_search_btn.setChecked(True)
+        elif saved_mode == "search":
+            self.search_btn.setChecked(True)
 
     def closeEvent(self, event):
         # Qt delivers close events only to the top-level window: the panels'
@@ -1325,7 +1327,7 @@ class MainWindow(QWidget):
             ("Stopping stop-report worker", self._stop_report_slot.shutdown),
             ("Stopping update check", self._update_slot.shutdown),
             ("Stopping date scan", self.date_picker.stop_scan_thread),
-            ("Stopping timeline loader", self.time_picker.shutdown_workers),
+            ("Stopping timeline loader", self.replay_timeline.shutdown_workers),
             ("Stopping overview loader", self.overview_widget.shutdown_workers),
             ("Stopping fleetwide search", self.fleetwide_search_widget.shutdown_workers),
             ("Stopping data inventory", self._shutdown_data_dialog),
@@ -1382,15 +1384,15 @@ class MainWindow(QWidget):
         if item.kind == "video" and isinstance(item.payload, Path):
             # Open the clip at the moment that was clicked, not at its start
             # (Chris, 2026-09-10): same route as a click on an event tick.
-            clicked = getattr(self.time_picker, "last_click_time", None)
-            root = self.time_picker.current_root
-            day = self.time_picker._current_date
+            clicked = getattr(self.replay_timeline, "last_click_time", None)
+            root = self.replay_timeline.current_root
+            day = self.replay_timeline._current_date
             if (isinstance(clicked, datetime) and isinstance(item.start, datetime) and isinstance(item.end, datetime)
                     and ensure_utc(item.start) <= ensure_utc(clicked) < ensure_utc(item.end)
                     and isinstance(root, Path) and day is not None):
                 # The green line jumps to the click straight away, before
                 # the clip has loaded (Chris, 2026-09-11).
-                self.time_picker.set_playhead_datetime(ensure_utc(clicked))
+                self.replay_timeline.set_playhead_datetime(ensure_utc(clicked))
                 self._pending_overview_navigation = {
                     "root": root,
                     "day": day,
@@ -1401,13 +1403,13 @@ class MainWindow(QWidget):
                 self._on_items_changed_for_navigation()
                 return
             if isinstance(item.start, datetime):
-                self.time_picker.set_playhead_datetime(ensure_utc(item.start))
+                self.replay_timeline.set_playhead_datetime(ensure_utc(item.start))
             self.open_in_viewer(item)
         elif item.kind == "additional" and isinstance(item.payload, Path):
-            self.time_picker.clear_clip_target_rate_heat()
+            self.replay_timeline.clear_clip_target_rate_heat()
             self.load_additional_in_viewer(item.payload)
         else:
-            self.time_picker.clear_clip_target_rate_heat()
+            self.replay_timeline.clear_clip_target_rate_heat()
             QMessageBox.information(self, "Selected item", item.label)
 
     def open_in_viewer(self, item: TimelineItem):
@@ -1430,7 +1432,7 @@ class MainWindow(QWidget):
         # Keep cache colors in the timeline; do it off the critical path.
         if ENABLE_CACHE_COLOR_UPDATE:
             # Only update cached color in-place; avoid full timeline redraw.
-            QTimer.singleShot(0, lambda: self.time_picker.mark_video_cached(video_path))
+            QTimer.singleShot(0, lambda: self.replay_timeline.mark_video_cached(video_path))
             if DEBUG_CLIP_TIMING:
                 QTimer.singleShot(
                     0,
@@ -1446,7 +1448,7 @@ class MainWindow(QWidget):
             QTimer.singleShot(200, lambda: print(f"[main] UI tick +{time.perf_counter() - t0:.2f}s", flush=True))
         if ENABLE_EVENT_MARKERS:
             def _apply_markers():
-                markers = self.time_picker.collect_event_markers(item)
+                markers = self.replay_timeline.collect_event_markers(item)
                 self.viewer.set_timeline_markers(markers)
                 self.viewer.set_clip_marker_fallback(markers)
                 if DEBUG_CLIP_TIMING:
@@ -1456,14 +1458,14 @@ class MainWindow(QWidget):
             QTimer.singleShot(0, lambda: self._prefetch_adjacent_clips(item))
         if item.start is not None:
             self._save_last_session(playhead_override=item.start)
-        current_root = self.time_picker.current_root
+        current_root = self.replay_timeline.current_root
         if current_root and item.start and item.end:
             self._overlay_controller.load_buffer_events(current_root, item.start, item.end)
         else:
-            self.time_picker.clear_clip_target_rate_heat()
+            self.replay_timeline.clear_clip_target_rate_heat()
 
         if ENABLE_LOG_BUTTON:
-            current_root = self.time_picker.current_root
+            current_root = self.replay_timeline.current_root
             if current_root and item.start and item.end:
                 start_iso = item.start.isoformat()
                 end_iso = (item.end + timedelta(minutes=1)).isoformat()
@@ -1482,16 +1484,16 @@ class MainWindow(QWidget):
             key = _path_key(Path(current))
         except Exception:
             return False
-        items = [it for it in (getattr(self.time_picker, "_items", []) or []) if it.kind == "video" and isinstance(it.payload, Path)]
+        items = [it for it in (getattr(self.replay_timeline, "_items", []) or []) if it.kind == "video" and isinstance(it.payload, Path)]
         current_item = next((it for it in items if (it.path_key or _path_key(it.payload)) == key), None)
         if current_item is None:
             return False
-        _prev, nxt = self.time_picker.get_adjacent_video_items(current_item)
+        _prev, nxt = self.replay_timeline.get_adjacent_video_items(current_item)
         if nxt is None or not isinstance(nxt.payload, Path):
             return False
         self._cancel_overview_navigation()
         if isinstance(nxt.start, datetime):
-            self.time_picker.set_playhead_datetime(ensure_utc(nxt.start))
+            self.replay_timeline.set_playhead_datetime(ensure_utc(nxt.start))
         self.open_in_viewer(nxt)
         return True
 
@@ -1499,7 +1501,7 @@ class MainWindow(QWidget):
         """The day's Additional CCTV clip that covers `moment`, for the
         viewer's View menu (Chris, 2026-09-11)."""
         try:
-            items = list(getattr(self.time_picker, "_items", []) or [])
+            items = list(getattr(self.replay_timeline, "_items", []) or [])
         except Exception:
             return None
 
@@ -1544,7 +1546,7 @@ class MainWindow(QWidget):
         timer.start()
 
     def _run_day_prefetch(self):
-        paths = self.time_picker.video_paths()
+        paths = self.replay_timeline.video_paths()
         if paths:
             # Stop downloading a previously viewed day before queueing this one.
             self.viewer.cancel_queued_prefetches()
@@ -1552,7 +1554,7 @@ class MainWindow(QWidget):
             self.viewer.prefetch_clips_to_cache(paths)
 
     def _prefetch_adjacent_clips(self, item: TimelineItem):
-        prev_item, next_item = self.time_picker.get_adjacent_video_items(item)
+        prev_item, next_item = self.replay_timeline.get_adjacent_video_items(item)
         paths: list[Path] = []
         if prev_item and isinstance(prev_item.payload, Path):
             paths.append(prev_item.payload)
@@ -1569,7 +1571,7 @@ class MainWindow(QWidget):
     def _sync_viewer_sku_overlay(self):
         sku_items = [
             itm
-            for itm in self.time_picker._items
+            for itm in self.replay_timeline._items
             if itm.kind == "sku" and itm.start is not None and itm.end is not None
         ]
         sku_items.sort(key=lambda itm: itm.start)
@@ -1624,10 +1626,10 @@ class MainWindow(QWidget):
         # thumbnail decodes) runs on a worker; only the QPixmap conversion
         # and the dialog happen here. Starting a new build retires a
         # running one (JobSlot semantics).
-        items = list(self.time_picker._items or [])
+        items = list(self.replay_timeline._items or [])
         settings = self.settings
-        day = self.time_picker._current_date
-        root = self.time_picker.current_root
+        day = self.replay_timeline._current_date
+        root = self.replay_timeline.current_root
         clip_cache = self.viewer.clip_cache
 
         self.stop_report_btn.setEnabled(False)
@@ -1799,8 +1801,8 @@ class MainWindow(QWidget):
         mark("overview layout")
         self.fleetwide_search_widget.set_settings(self.settings)
         mark("fleetwide settings")
-        self.time_picker._static_tracks = self._build_static_tracks()
-        self.time_picker.settings = self.settings
+        self.replay_timeline._static_tracks = self._build_static_tracks()
+        self.replay_timeline.settings = self.settings
         mark("static tracks")
         current_parent = self.date_picker.parent_dir
         target_parent = Path(self.settings.last_parent) if self.settings.last_parent else None
@@ -1897,18 +1899,18 @@ class MainWindow(QWidget):
             QMessageBox.information(self, "First product", "The clip's start time is not known, so the moment cannot be found.")
 
     def _update_viewer_tool_visibility(self):
-        """Calibrate/Track/Targets belong to viewer mode WITH a clip
+        """Conveyor/Track/Targets belong to replay mode WITH a clip
         loaded (Chris: only the essential buttons at any point). There is
         no unload event, so once the first clip lands they stay available
         for the session, still following the mode."""
         in_viewer = self.content_stack.currentWidget() is self.viewer
         show = in_viewer and self._viewer_tools_available
-        self.calibrate_btn.setVisible(show)
+        self.conveyor_btn.setVisible(show)
         self.viewer.video_sync_btn.setVisible(show)
         self.first_product_btn.setVisible(show)
         self.viewer.drift_tool.setVisible(show)
         self.track_toggle.setVisible(show)
-        self.buffer_toggle.setVisible(show)
+        self.targets_toggle.setVisible(show)
         # The Customer/Line/System label describes the viewer's selection;
         # in the fleet-wide modes it is wrong, not just redundant (Chris,
         # 2026-09-05: overview showed one system's name).
@@ -1918,7 +1920,7 @@ class MainWindow(QWidget):
         # Data, Errors / Stops and Software are fleet views: only on the
         # Overview (Chris, 2026-09-11).
         on_overview = self._should_show_overview()
-        for btn in (self.data_btn, self.errors_btn, self.software_btn):
+        for btn in (self.data_btn, self.errors_stops_btn, self.software_btn):
             btn.setVisible(on_overview)
         self._update_chooser_pulse()
 
@@ -1935,7 +1937,7 @@ class MainWindow(QWidget):
 
     def _sync_overview_mode(self):
         show_overview = self._should_show_overview()
-        show_fleetwide_search = self.fleetwide_search_btn.isChecked()
+        show_fleetwide_search = self.search_btn.isChecked()
         if show_overview:
             current_page = self.overview_widget
         elif show_fleetwide_search:
@@ -1955,17 +1957,17 @@ class MainWindow(QWidget):
             self.viewer.setMinimumSize(320, 120)
             self.content_stack.setMinimumWidth(320)
             self.date_picker.setVisible(False)
-            self.time_picker.setVisible(False)
+            self.replay_timeline.setVisible(False)
             self._horizontal_splitter.setSizes([0, max(1, sum(self._horizontal_splitter.sizes()) or self.width())])
             self._main_splitter.setSizes([max(1, sum(self._main_splitter.sizes()) or self.height()), 0])
         else:
             self._hover_reveal_enabled = not getattr(self, "_left_panel_retired", False)
             self.viewer.setMinimumSize(980, 120)
             self.content_stack.setMinimumWidth(980)
-            if self.left_toggle.isChecked():
+            if self.date_picker_toggle.isChecked():
                 self.date_picker.setVisible(True)
                 self._animate_left_panel(self._left_panel_target_width)
-            self.time_picker.setVisible(True)
+            self.replay_timeline.setVisible(True)
             self._apply_initial_timeline_size()
 
     def _open_system_from_errors(self, folder_name: str, day: date) -> None:
@@ -1990,7 +1992,7 @@ class MainWindow(QWidget):
             selected_day = self.date_picker.active_day or date.today()
         if selected_day is None:
             return
-        self.viewer_btn.setChecked(True)
+        self.replay_btn.setChecked(True)
         if isinstance(target_dt, datetime):
             if target_dt.tzinfo is None:
                 target_dt = target_dt.replace(tzinfo=timezone.utc)
@@ -2010,11 +2012,11 @@ class MainWindow(QWidget):
     def _on_timeline_event_clicked(self, item: TimelineItem) -> None:
         """A click on an event tick opens the clip covering that moment and
         seeks to it; the logs follow the playhead (Chris, 2026-09-08)."""
-        root = self.time_picker.current_root
-        day = self.time_picker._current_date
+        root = self.replay_timeline.current_root
+        day = self.replay_timeline._current_date
         if not isinstance(root, Path) or day is None or not isinstance(item.start, datetime):
             return
-        self.time_picker.set_playhead_datetime(ensure_utc(item.start))
+        self.replay_timeline.set_playhead_datetime(ensure_utc(item.start))
         self._pending_overview_navigation = {
             "root": root,
             "day": day,
@@ -2031,13 +2033,13 @@ class MainWindow(QWidget):
         if not isinstance(moment, datetime):
             return
         moment = ensure_utc(moment)
-        self.time_picker.set_playhead_datetime(moment)
-        root = self.time_picker.current_root
-        day = self.time_picker._current_date
+        self.replay_timeline.set_playhead_datetime(moment)
+        root = self.replay_timeline.current_root
+        day = self.replay_timeline._current_date
         if not isinstance(root, Path) or day is None:
             return
         covering = next(
-            (it for it in (getattr(self.time_picker, "_items", []) or [])
+            (it for it in (getattr(self.replay_timeline, "_items", []) or [])
              if it.kind == "video" and isinstance(it.payload, Path) and isinstance(it.start, datetime) and isinstance(it.end, datetime)
              and ensure_utc(it.start) <= moment < ensure_utc(it.end)),
             None,
@@ -2064,12 +2066,12 @@ class MainWindow(QWidget):
         pending = self._pending_overview_navigation
         if not pending or pending.get("stage") != "load_timeline":
             return
-        if self.time_picker.current_root != pending["root"]:
+        if self.replay_timeline.current_root != pending["root"]:
             return
-        if self.time_picker._current_date != pending["day"]:
+        if self.replay_timeline._current_date != pending["day"]:
             return
         target_dt = pending["target_dt"]
-        items = list(self.time_picker._items or [])
+        items = list(self.replay_timeline._items or [])
         video_items = [itm for itm in items if itm.kind == "video" and isinstance(itm.payload, Path)]
         if not video_items:
             return  # video partial not in yet; a later items_changed will bring it

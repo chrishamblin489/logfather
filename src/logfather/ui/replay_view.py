@@ -74,7 +74,7 @@ from PySide6.QtWidgets import (
     QToolButton, QButtonGroup, QStyleOptionSlider, QStyle, QLCDNumber
 )
 
-from logfather.ui.time_ocr import additional_camera_roi_key, analyze_video_offset, OcrVideoPlayer, parse_filename_datetime
+from logfather.ui.time_ocr import additional_camera_roi_key, analyze_video_offset, SyncCctvTimeWindow, parse_filename_datetime
 from logfather.ui.qt_worker import JobSlot
 
 SKIP_INITIAL_FRAME_RENDER = False
@@ -121,7 +121,7 @@ def _position_capture_sequential(cap, in_sequence: bool, next_frame: int, target
 
 # -------- GUI APPLICATION --------
 
-class VideoLogViewer(QWidget):
+class ReplayView(QWidget):
     logs_ready = Signal(list)
     logs_failed = Signal(str)
     current_time_changed = Signal(object)
@@ -170,8 +170,8 @@ class VideoLogViewer(QWidget):
         # H.264, so it must only happen when playback actually jumps.
         self._seq_cap = None
         self._seq_next_frame = -1
-        self._seq_secondary_cap = None
-        self._seq_secondary_next_frame = -1
+        self._seq_additional_cap = None
+        self._seq_additional_next_frame = -1
 
         self.last_qimage: QImage | None = None
         # Decoded frames are kept as BGR references (cap.read allocates a
@@ -192,28 +192,28 @@ class VideoLogViewer(QWidget):
         self.analysis_prev_frame_index: int | None = None
 
         # Secondary video state (AdditionalCCTV)
-        self.secondary_cap = None
-        self.secondary_fps = 25.0
-        self.secondary_frame_count = 0
-        self.secondary_current_frame = 0
-        self.secondary_last_qimage: QImage | None = None
-        self.secondary_video_path: str | None = None
-        self.secondary_video_original_path: Path | None = None
-        self.secondary_video_filename_dt: datetime | None = None
-        self._pending_secondary_original_path: Path | None = None
-        self._pending_secondary_poll = False
-        self._pending_secondary_timer = QTimer(self)
-        self._pending_secondary_timer.setInterval(500)
-        self._pending_secondary_timer.timeout.connect(self._poll_pending_secondary_cache)
-        self._pending_secondary_last_size: int | None = None
-        self._pending_secondary_stable_count = 0
-        self.secondary_video_start_dt: datetime | None = None
-        self.secondary_ocr_offset_seconds: float | None = None
-        self.secondary_ocr_frame_offset = 0
-        self.secondary_manual_offset_frames = 0
+        self.additional_cap = None
+        self.additional_fps = 25.0
+        self.additional_frame_count = 0
+        self.additional_current_frame = 0
+        self.additional_last_qimage: QImage | None = None
+        self.additional_video_path: str | None = None
+        self.additional_video_original_path: Path | None = None
+        self.additional_video_filename_dt: datetime | None = None
+        self._pending_additional_original_path: Path | None = None
+        self._pending_additional_poll = False
+        self._pending_additional_timer = QTimer(self)
+        self._pending_additional_timer.setInterval(500)
+        self._pending_additional_timer.timeout.connect(self._poll_pending_additional_cache)
+        self._pending_additional_last_size: int | None = None
+        self._pending_additional_stable_count = 0
+        self.additional_video_start_dt: datetime | None = None
+        self.additional_ocr_offset_seconds: float | None = None
+        self.additional_ocr_frame_offset = 0
+        self.additional_manual_offset_frames = 0
         self._updating_video_label = False
         self._pending_video_label_update = False
-        self._draw_secondary_video = False
+        self._draw_additional_video = False
         self._popout_window: QWidget | None = None
         self._popout_label: AnnotatedVideoWidget | None = None
         self._popout_color_btn: QToolButton | None = None
@@ -243,7 +243,7 @@ class VideoLogViewer(QWidget):
         # Time offsets
         self.sync_offset = 0.0      # coarse sync (sync logs to video)
         self.time_offset = 0.0      # fine-tune offset from spinbox
-        self.close_gap_threshold = 0.50
+        self.gap_threshold = 0.50
         self.close_gap_threshold_min = 0.25
         self.close_gap_threshold_max = 1.00
         self.close_gap_threshold_step = 0.05
@@ -254,7 +254,7 @@ class VideoLogViewer(QWidget):
         self._ocr_sync_prompt_choice: bool | None = None
         self.ocr_settings_path: Path | None = None
         self.offset_store = OcrOffsetStore()
-        self.secondary_offset_store = OcrOffsetStore()
+        self.additional_offset_store = OcrOffsetStore()
         self.pending_pikpak_path: str | None = None
         self.pending_start_iso: str | None = None
         self.pending_end_iso: str | None = None
@@ -267,7 +267,7 @@ class VideoLogViewer(QWidget):
         self._pending_log_autoload_timer.setInterval(350)
         self._pending_log_autoload_timer.timeout.connect(self._auto_load_pending_logs)
         self._auto_ocr_attempted_key: str | None = None
-        self._auto_secondary_ocr_attempted_key: str | None = None
+        self._auto_additional_ocr_attempted_key: str | None = None
 
         # First log time (string like "HH:MM:SS.mmm")
         self.first_log_time_str: str | None = None
@@ -282,7 +282,7 @@ class VideoLogViewer(QWidget):
         self.clip_cache = ClipCache(
             protected_paths_provider=lambda: (
                 self.current_video_path,
-                self.secondary_video_path,
+                self.additional_video_path,
             )
         )
         self.clip_cache.clip_ready.connect(self.cache_clip_ready)
@@ -315,7 +315,7 @@ class VideoLogViewer(QWidget):
         # OCR auto-sync runs off the UI thread (SMB copy + Tesseract);
         # one slot per video so main/secondary syncs can overlap.
         self._ocr_sync_slot = JobSlot(self)
-        self._ocr_secondary_sync_slot = JobSlot(self)
+        self._ocr_additional_sync_slot = JobSlot(self)
 
     def _build_filter_panel(self):
         """The Filters tab: source / state / message checkbox columns."""
@@ -503,7 +503,7 @@ class VideoLogViewer(QWidget):
         self.video_label.setMinimumSize(300, 200)
         self.video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.video_label.set_scrub_callback(self._handle_scroll_wheel)
-        self.video_label.set_tray_update_callback(self._refresh_tray_view_if_open)
+        self.video_label.set_tray_update_callback(self._refresh_birds_eye_if_open)
         self.video_label.set_editable(False)
         if self._placeholder_image is not None:
             self.video_label.set_placeholder_image(self._placeholder_image)
@@ -519,33 +519,33 @@ class VideoLogViewer(QWidget):
         # "Sync: ?" breathes gently while a clip has no sync (Chris,
         # 2026-09-12); a press opens the OCR window.
         self._sync_pulser = Pulser(self)
-        self.video_sync_btn.clicked.connect(self.open_ocr_roi_tool)
+        self.video_sync_btn.clicked.connect(self.open_sync_cctv_time)
         self._main_sync_done = False
 
-        self.secondary_video_label = VideoFrameLabel("Additional CCTV not loaded")
-        self.secondary_video_label.setAlignment(Qt.AlignCenter)
-        self.secondary_video_label.setMinimumSize(300, 200)
-        self.secondary_video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.secondary_video_label.setVisible(False)
-        self.secondary_video_label.set_scrub_callback(self._handle_secondary_scroll_wheel)
-        self.secondary_video_label.setFocusPolicy(Qt.StrongFocus)
-        self.secondary_video_label.installEventFilter(self)
-        self.secondary_video_label.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.secondary_video_label.customContextMenuRequested.connect(self._copy_secondary_frame_to_clipboard)
-        self.secondary_sync_btn = QPushButton("Sync")
-        self.secondary_sync_btn.setIcon(sync_icon())
-        self.secondary_sync_btn.setIconSize(QSize(18, 18))
-        self.secondary_sync_btn.setFixedWidth(135)
-        self.secondary_sync_btn.setEnabled(False)
-        self.secondary_sync_btn.clicked.connect(self.open_secondary_ocr_tool)
-        self._secondary_sync_done = False
-        self.secondary_lock_toggle = QLabel("--Lock--")
-        self.secondary_lock_toggle.setAlignment(Qt.AlignCenter)
-        self.secondary_lock_toggle.setEnabled(False)
-        self.secondary_lock_toggle.setStyleSheet(theme.DIM_LABEL)
-        self.secondary_lock_toggle.setCursor(Qt.PointingHandCursor)
-        self.secondary_lock_toggle.mousePressEvent = self._toggle_secondary_lock
-        self.secondary_locked = True
+        self.additional_video_label = VideoFrameLabel("Additional CCTV not loaded")
+        self.additional_video_label.setAlignment(Qt.AlignCenter)
+        self.additional_video_label.setMinimumSize(300, 200)
+        self.additional_video_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.additional_video_label.setVisible(False)
+        self.additional_video_label.set_scrub_callback(self._handle_additional_scroll_wheel)
+        self.additional_video_label.setFocusPolicy(Qt.StrongFocus)
+        self.additional_video_label.installEventFilter(self)
+        self.additional_video_label.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.additional_video_label.customContextMenuRequested.connect(self._copy_additional_frame_to_clipboard)
+        self.additional_sync_btn = QPushButton("Sync")
+        self.additional_sync_btn.setIcon(sync_icon())
+        self.additional_sync_btn.setIconSize(QSize(18, 18))
+        self.additional_sync_btn.setFixedWidth(135)
+        self.additional_sync_btn.setEnabled(False)
+        self.additional_sync_btn.clicked.connect(self.open_additional_sync_cctv_time)
+        self._additional_sync_done = False
+        self.additional_lock_toggle = QLabel("--Lock--")
+        self.additional_lock_toggle.setAlignment(Qt.AlignCenter)
+        self.additional_lock_toggle.setEnabled(False)
+        self.additional_lock_toggle.setStyleSheet(theme.DIM_LABEL)
+        self.additional_lock_toggle.setCursor(Qt.PointingHandCursor)
+        self.additional_lock_toggle.mousePressEvent = self._toggle_additional_lock
+        self.additional_locked = True
 
         self.seek_slider = ClipRangeSlider(Qt.Orientation.Horizontal)
         self.seek_slider.setRange(0, 0)
@@ -574,10 +574,10 @@ class VideoLogViewer(QWidget):
         self.frame_label.setFixedWidth(120)
         self.frame_label.setStyleSheet(theme.LCD_DISPLAY)
 
-        self.offset_min = -2.0
-        self.offset_max = 2.0
-        self.offset_step = 0.05
-        self._offset_slider_scale = 1000
+        self.drift_min = -2.0
+        self.drift_max = 2.0
+        self.drift_step = 0.05
+        self._drift_slider_scale = 1000
 
         # The same play / pause glyph button as the conveyor calibration
         # window (Chris, 2026-09-11).
@@ -596,8 +596,8 @@ class VideoLogViewer(QWidget):
         self.play_pause_btn.clicked.connect(self.toggle_play_pause)
         self.annotate_btn = QPushButton("Annotate")
         self.annotate_btn.clicked.connect(self._open_annotation_popout)
-        self.tray_view_btn = QPushButton("Bird's Eye")
-        self.tray_view_btn.clicked.connect(self._open_tray_view_window)
+        self.birds_eye_btn = QPushButton("Bird's Eye")
+        self.birds_eye_btn.clicked.connect(self._open_birds_eye_window)
         self.analysis_main_alpha_label = QLabel("Overlay: 0.60")
         self.analysis_main_alpha_slider = QSlider(Qt.Horizontal)
         self.analysis_main_alpha_slider.setRange(0, 100)
@@ -609,7 +609,7 @@ class VideoLogViewer(QWidget):
         settings_root = DEFAULT_SETTINGS_PATH.parent
         self.ocr_settings_path = settings_root / "ocr_settings.json"
         self.offset_store = OcrOffsetStore(self.cache_root / "ocr_offsets.json")
-        self.secondary_offset_store = OcrOffsetStore(self.cache_root / "ocr_offsets_additional.json")
+        self.additional_offset_store = OcrOffsetStore(self.cache_root / "ocr_offsets_additional.json")
         self._load_pinned_annotations()
         self.cache_status_label = QLabel("")
         self.cache_status_label.setStyleSheet(theme.DIM_LABEL)
@@ -640,11 +640,11 @@ class VideoLogViewer(QWidget):
         self.overlay_tools_btn.setCheckable(True)
         # The green pick-rate / SKU text drawn over the footage can be
         # switched off (Chris, 2026-09-10); the choice is remembered.
-        self.status_text_btn = QPushButton("Info text")
-        self.status_text_btn.setCheckable(True)
-        self.status_text_btn.setChecked(bool(load_ui_state().get("viewer_status_text", True)))
-        self.status_text_btn.setToolTip("Show the pick rate, SKU, tray and tool text over the CCTV image")
-        self.status_text_btn.toggled.connect(self._on_status_text_toggled)
+        self.info_text_btn = QPushButton("Info text")
+        self.info_text_btn.setCheckable(True)
+        self.info_text_btn.setChecked(bool(load_ui_state().get("viewer_status_text", True)))
+        self.info_text_btn.setToolTip("Show the pick rate, SKU, tray and tool text over the CCTV image")
+        self.info_text_btn.toggled.connect(self._on_info_text_toggled)
         self._last_status_lines: list[str] = []
         # Less around the picture (Chris, 2026-09-11): the playback row is
         # Play and the log-time clock; Sync, Overlays and Info text live in
@@ -654,7 +654,7 @@ class VideoLogViewer(QWidget):
         self.playback_layout.addWidget(self.calc_label)
         # Additional CCTV loads via timeline selection.
         self.playback_layout.addStretch(1)
-        for btn in (self.sync_tools_btn, self.overlay_tools_btn, self.status_text_btn):
+        for btn in (self.sync_tools_btn, self.overlay_tools_btn, self.info_text_btn):
             btn.hide()
         self._build_view_menu()
 
@@ -686,7 +686,7 @@ class VideoLogViewer(QWidget):
 
         bind("Sync tools", self.sync_tools_btn, "Show the sync strip under the picture")
         bind("Overlay tools", self.overlay_tools_btn, "Show the overlay strip under the picture")
-        bind("Info text", self.status_text_btn, "Show the pick rate, SKU, tray and tool text over the CCTV image")
+        bind("Info text", self.info_text_btn, "Show the pick rate, SKU, tray and tool text over the CCTV image")
         menu.addSeparator()
         counters = QAction("Clip time and frame counter", self)
         counters.setCheckable(True)
@@ -759,19 +759,19 @@ class VideoLogViewer(QWidget):
         action = self._view_menu_actions.get("additional")
         if action is None:
             return
-        loaded = self.secondary_cap is not None or self._pending_secondary_original_path is not None
+        loaded = self.additional_cap is not None or self._pending_additional_original_path is not None
         available = loaded or self._additional_cctv_available() is not None
         action.blockSignals(True)
         action.setEnabled(available)
-        action.setChecked(bool(loaded and self._draw_secondary_video))
+        action.setChecked(bool(loaded and self._draw_additional_video))
         action.setText("Additional CCTV" if available else "Additional CCTV (none for this time)")
         action.blockSignals(False)
 
     def _on_additional_cctv_toggled(self, on: bool) -> None:
         if on:
-            if self.secondary_cap is not None:
-                self._draw_secondary_video = True
-                self._refresh_secondary_visibility()
+            if self.additional_cap is not None:
+                self._draw_additional_video = True
+                self._refresh_additional_visibility()
                 return
             path = self._additional_cctv_available()
             if path is not None:
@@ -779,8 +779,8 @@ class VideoLogViewer(QWidget):
             else:
                 self._refresh_additional_cctv_action()
         else:
-            self._draw_secondary_video = False
-            self._refresh_secondary_visibility()
+            self._draw_additional_video = False
+            self._refresh_additional_visibility()
 
     def _set_clip_counters_visible(self, on: bool, remember: bool = True) -> None:
         for widget in (self.info_label, self.frame_label):
@@ -997,7 +997,7 @@ class VideoLogViewer(QWidget):
         middle_layout.addLayout(lock_row)
         video_row = QHBoxLayout()
         video_row.addWidget(self.video_label, 1)
-        video_row.addWidget(self.secondary_video_label, 1)
+        video_row.addWidget(self.additional_video_label, 1)
         video_row.addWidget(self.analysis_label, 1)
         middle_layout.addLayout(video_row)
         # The yellow log-marker bar is no longer shown (Chris, 2026-09-11);
@@ -1024,34 +1024,34 @@ class VideoLogViewer(QWidget):
         middle_layout.addLayout(self.playback_layout)
         QTimer.singleShot(0, self._update_marker_bar_padding)
 
-        self.offset_caption = QLabel("Drift")
-        self.offset_caption.setStyleSheet(theme.SLIDER_CAPTION)
-        self.offset_slider = DriftSlider(Qt.Horizontal)
-        self.offset_slider.setRange(
-            int(self.offset_min * self._offset_slider_scale),
-            int(self.offset_max * self._offset_slider_scale),
+        self.drift_caption = QLabel("Drift")
+        self.drift_caption.setStyleSheet(theme.SLIDER_CAPTION)
+        self.drift_slider = DriftSlider(Qt.Horizontal)
+        self.drift_slider.setRange(
+            int(self.drift_min * self._drift_slider_scale),
+            int(self.drift_max * self._drift_slider_scale),
         )
-        self.offset_slider.setSingleStep(int(self.offset_step * self._offset_slider_scale))
-        self.offset_slider.setPageStep(int(0.25 * self._offset_slider_scale))
-        self.offset_slider.valueChanged.connect(self._on_offset_slider_changed)
-        self.offset_display = QLabel("+0.00s")
-        self.offset_display.setMinimumWidth(48)
-        self.offset_display.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.offset_display.setStyleSheet(theme.SLIDER_VALUE)
-        self.close_gap_caption = QLabel("Gap")
-        self.close_gap_caption.setStyleSheet(theme.SLIDER_CAPTION)
-        self.close_gap_slider = DriftSlider(Qt.Horizontal)
-        self.close_gap_slider.setRange(
+        self.drift_slider.setSingleStep(int(self.drift_step * self._drift_slider_scale))
+        self.drift_slider.setPageStep(int(0.25 * self._drift_slider_scale))
+        self.drift_slider.valueChanged.connect(self._on_drift_slider_changed)
+        self.drift_display = QLabel("+0.00s")
+        self.drift_display.setMinimumWidth(48)
+        self.drift_display.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.drift_display.setStyleSheet(theme.SLIDER_VALUE)
+        self.gap_caption = QLabel("Gap")
+        self.gap_caption.setStyleSheet(theme.SLIDER_CAPTION)
+        self.gap_slider = DriftSlider(Qt.Horizontal)
+        self.gap_slider.setRange(
             int(round(self.close_gap_threshold_min * 100.0)),
             int(round(self.close_gap_threshold_max * 100.0)),
         )
-        self.close_gap_slider.setSingleStep(int(round(self.close_gap_threshold_step * 100.0)))
-        self.close_gap_slider.setPageStep(10)
-        self.close_gap_slider.valueChanged.connect(self._on_close_gap_slider_changed)
-        self.close_gap_display = QLabel("0.50x")
-        self.close_gap_display.setMinimumWidth(40)
-        self.close_gap_display.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.close_gap_display.setStyleSheet(theme.SLIDER_VALUE)
+        self.gap_slider.setSingleStep(int(round(self.close_gap_threshold_step * 100.0)))
+        self.gap_slider.setPageStep(10)
+        self.gap_slider.valueChanged.connect(self._on_close_gap_slider_changed)
+        self.gap_display = QLabel("0.50x")
+        self.gap_display.setMinimumWidth(40)
+        self.gap_display.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.gap_display.setStyleSheet(theme.SLIDER_VALUE)
         self._update_close_gap_threshold_display()
 
         # Sync strip: everything for aligning video and log time, revealed
@@ -1068,18 +1068,18 @@ class VideoLogViewer(QWidget):
         drift_layout = QHBoxLayout(self.drift_tool)
         drift_layout.setContentsMargins(0, 0, 0, 0)
         drift_layout.setSpacing(4)
-        self.offset_slider.setFixedWidth(150)
-        drift_layout.addWidget(self.offset_caption)
-        drift_layout.addWidget(self.offset_slider)
-        drift_layout.addWidget(self.offset_display)
+        self.drift_slider.setFixedWidth(150)
+        drift_layout.addWidget(self.drift_caption)
+        drift_layout.addWidget(self.drift_slider)
+        drift_layout.addWidget(self.drift_display)
         sync_strip_layout.addSpacing(6)
-        sync_strip_layout.addWidget(self.close_gap_caption)
-        sync_strip_layout.addWidget(self.close_gap_slider)
-        sync_strip_layout.addWidget(self.close_gap_display)
+        sync_strip_layout.addWidget(self.gap_caption)
+        sync_strip_layout.addWidget(self.gap_slider)
+        sync_strip_layout.addWidget(self.gap_display)
         sync_strip_layout.addStretch(1)
-        sync_strip_layout.addWidget(self.secondary_lock_toggle)
+        sync_strip_layout.addWidget(self.additional_lock_toggle)
         sync_strip_layout.addSpacing(8)
-        sync_strip_layout.addWidget(self.secondary_sync_btn)
+        sync_strip_layout.addWidget(self.additional_sync_btn)
         self._sync_strip.setVisible(False)
         middle_layout.addWidget(self._sync_strip)
 
@@ -1089,7 +1089,7 @@ class VideoLogViewer(QWidget):
         overlay_strip_layout = QHBoxLayout(self._overlay_strip)
         overlay_strip_layout.setContentsMargins(0, 0, 0, 0)
         overlay_strip_layout.addWidget(self.annotate_btn)
-        overlay_strip_layout.addWidget(self.tray_view_btn)
+        overlay_strip_layout.addWidget(self.birds_eye_btn)
         overlay_strip_layout.addSpacing(8)
         overlay_strip_layout.addWidget(self.analysis_main_alpha_label)
         overlay_strip_layout.addWidget(self.analysis_main_alpha_slider)
@@ -1340,16 +1340,16 @@ class VideoLogViewer(QWidget):
             return True
         if obj is self.video_label and event.type() == QEvent.Resize:
             self._place_view_menu()
-        if obj is self.secondary_video_label and event.type() == QEvent.Wheel:
-            self._handle_secondary_scroll_wheel(event.angleDelta().y())
+        if obj is self.additional_video_label and event.type() == QEvent.Wheel:
+            self._handle_additional_scroll_wheel(event.angleDelta().y())
             return True
         if (
             hasattr(self, "video_label")
             and self.video_label is not None
-            and obj is getattr(self.video_label, "_tray_view_window", None)
+            and obj is getattr(self.video_label, "_birds_eye_window", None)
             and event.type() == QEvent.Resize
         ):
-            self._refresh_tray_view_if_open()
+            self._refresh_birds_eye_if_open()
         if getattr(self, "_hover_reveal_enabled", False):  # the filter can fire during __init__ (2026-09-11)
             if event.type() == QEvent.MouseMove and obj is self:
                 if not self._right_tabs_expanded:
@@ -1413,7 +1413,7 @@ class VideoLogViewer(QWidget):
             self.analysis_container.setVisible(False)
             self._hide_analysis_popout()
             self.analysis_label.setVisible(False)
-            self._refresh_secondary_visibility()
+            self._refresh_additional_visibility()
             self.analysis_main_alpha_label.setVisible(False)
             self.analysis_main_alpha_slider.setVisible(False)
             return
@@ -1425,19 +1425,19 @@ class VideoLogViewer(QWidget):
             self.analysis_container.setVisible(False)
             self._show_analysis_popout()
             self.analysis_label.setVisible(False)
-            self._refresh_secondary_visibility()
+            self._refresh_additional_visibility()
             return
         if display == "Main Side-by-side":
             self._hide_analysis_popout()
             self.analysis_container.setVisible(False)
             self.analysis_label.setVisible(True)
-            self._refresh_secondary_visibility()
+            self._refresh_additional_visibility()
             return
         # Main Overlay
         self._hide_analysis_popout()
         self.analysis_container.setVisible(False)
         self.analysis_label.setVisible(False)
-        self._refresh_secondary_visibility()
+        self._refresh_additional_visibility()
 
     def _update_analysis_controls_state(self, _state: int | None = None):
         mode = self.analysis_mode_combo.currentText()
@@ -1487,16 +1487,16 @@ class VideoLogViewer(QWidget):
         self._analysis_window = None
         self._analysis_window_label = None
 
-    def _refresh_secondary_visibility(self):
+    def _refresh_additional_visibility(self):
         display = self.analysis_display_combo.currentText()
         show_side_by_side = display == "Main Side-by-side" and self.analysis_mode_combo.currentText() != "Off"
         if show_side_by_side:
-            self.secondary_video_label.setVisible(False)
+            self.additional_video_label.setVisible(False)
             return
-        if self._draw_secondary_video and self.secondary_video_label is not None:
-            self.secondary_video_label.setVisible(True)
+        if self._draw_additional_video and self.additional_video_label is not None:
+            self.additional_video_label.setVisible(True)
         else:
-            self.secondary_video_label.setVisible(False)
+            self.additional_video_label.setVisible(False)
         QTimer.singleShot(0, self._place_view_menu)
 
     def _on_analysis_main_alpha_changed(self, v: int):
@@ -1790,10 +1790,10 @@ class VideoLogViewer(QWidget):
                 if pulser is not None:
                     pulser.set_target(None)
                 self.video_sync_btn.setStyleSheet("")
-        if hasattr(self, "secondary_sync_btn"):
-            second_open = self.secondary_cap is not None
-            self.secondary_sync_btn.setText(label(self._secondary_sync_done, self.secondary_ocr_offset_seconds, second_open))
-            self.secondary_sync_btn.setStyleSheet(theme.SYNC_DONE_BUTTON if self._secondary_sync_done else "")
+        if hasattr(self, "additional_sync_btn"):
+            second_open = self.additional_cap is not None
+            self.additional_sync_btn.setText(label(self._additional_sync_done, self.additional_ocr_offset_seconds, second_open))
+            self.additional_sync_btn.setStyleSheet(theme.SYNC_DONE_BUTTON if self._additional_sync_done else "")
 
     def _set_filter_tabs_enabled(self, enabled: bool):
         if not hasattr(self, "right_tabs"):
@@ -2250,7 +2250,7 @@ class VideoLogViewer(QWidget):
         self._auto_ocr_attempted_key = None
         self.current_video_original_path = None
         self.current_video_filename_dt = None
-        self._reset_secondary_video()
+        self._reset_additional_video()
         self.pending_pikpak_path = None
         self.pending_start_iso = None
         self.pending_end_iso = None
@@ -3157,10 +3157,10 @@ class VideoLogViewer(QWidget):
         self.current_frame = new_frame
         self.show_frame(self.current_frame)
 
-    def _handle_secondary_scroll_wheel(self, delta_steps: int):
-        if self.secondary_cap is None or self.secondary_fps <= 0:
+    def _handle_additional_scroll_wheel(self, delta_steps: int):
+        if self.additional_cap is None or self.additional_fps <= 0:
             return
-        if self.secondary_locked:
+        if self.additional_locked:
             modifiers = QApplication.keyboardModifiers()
             if abs(delta_steps) > 1:
                 steps = max(1, int(round(abs(delta_steps) / 120)))
@@ -3184,33 +3184,33 @@ class VideoLogViewer(QWidget):
         step = -1 if delta_steps > 0 else 1
         modifiers = QApplication.keyboardModifiers()
         if modifiers & Qt.ShiftModifier:
-            frames_per_step = int(round(self.secondary_fps))
+            frames_per_step = int(round(self.additional_fps))
             if frames_per_step <= 0:
                 frames_per_step = 1
-            self.secondary_manual_offset_frames += step * frames_per_step * steps
+            self.additional_manual_offset_frames += step * frames_per_step * steps
         else:
             for _ in range(steps):
-                self.secondary_manual_offset_frames += step
+                self.additional_manual_offset_frames += step
         t = self.current_frame / self.fps if self.fps > 0 else 0.0
-        self._update_secondary_frame_for_time(t)
+        self._update_additional_frame_for_time(t)
         self._request_video_label_update()
 
-    def _update_secondary_lock_style(self):
-        if self.secondary_cap is None:
-            self.secondary_lock_toggle.setStyleSheet(theme.DIM_LABEL)
+    def _update_additional_lock_style(self):
+        if self.additional_cap is None:
+            self.additional_lock_toggle.setStyleSheet(theme.DIM_LABEL)
             return
-        if self.secondary_locked:
-            self.secondary_lock_toggle.setStyleSheet(theme.LOCK_ON_LABEL)
+        if self.additional_locked:
+            self.additional_lock_toggle.setStyleSheet(theme.LOCK_ON_LABEL)
         else:
-            self.secondary_lock_toggle.setStyleSheet(theme.LOCK_OFF_LABEL)
+            self.additional_lock_toggle.setStyleSheet(theme.LOCK_OFF_LABEL)
 
-    def _toggle_secondary_lock(self, _event):
-        if self.secondary_cap is None:
+    def _toggle_additional_lock(self, _event):
+        if self.additional_cap is None:
             return
-        if not self.secondary_lock_toggle.isEnabled():
+        if not self.additional_lock_toggle.isEnabled():
             return
-        self.secondary_locked = not self.secondary_locked
-        self._update_secondary_lock_style()
+        self.additional_locked = not self.additional_locked
+        self._update_additional_lock_style()
 
     def _grab_annotated_frame_pixmap(self) -> QPixmap | None:
         if self.video_label is None or not self.video_label.isVisible():
@@ -3240,10 +3240,10 @@ class VideoLogViewer(QWidget):
         QApplication.clipboard().setImage(self.last_qimage)
         QMessageBox.information(self, "Copied", "Main frame copied to clipboard.")
 
-    def _copy_secondary_frame_to_clipboard(self, _pos):
-        if self.secondary_last_qimage is None:
+    def _copy_additional_frame_to_clipboard(self, _pos):
+        if self.additional_last_qimage is None:
             return
-        QApplication.clipboard().setImage(self.secondary_last_qimage)
+        QApplication.clipboard().setImage(self.additional_last_qimage)
         QMessageBox.information(self, "Copied", "Additional CCTV frame copied to clipboard.")
 
     def next_frame(self):
@@ -3550,7 +3550,7 @@ class VideoLogViewer(QWidget):
         self._cur_frame_rgb = None
         self._last_frame_index = int(frame_index)
         t = frame_index / self.fps if self.fps > 0 else 0.0
-        self._update_secondary_frame_for_time(t)
+        self._update_additional_frame_for_time(t)
         self._request_video_label_update()
 
         if self.frame_count > 0:
@@ -3597,21 +3597,21 @@ class VideoLogViewer(QWidget):
                         except Exception:
                             frame_to_show = self.last_qimage
                 self.video_label.set_frame(frame_to_show)
-                self._refresh_tray_view_if_open()
+                self._refresh_birds_eye_if_open()
                 if self._popout_label is not None:
                     self._popout_label.set_fps(self.fps)
                     self._popout_label.set_current_frame_index(self.current_frame)
                     self._popout_label.set_frame(self.last_qimage)
-                    self._refresh_tray_view_if_open()
+                    self._refresh_birds_eye_if_open()
             if (
-                self._draw_secondary_video
-                and self.secondary_last_qimage is not None
-                and self.secondary_video_label is not None
-                and self.secondary_video_label.isVisible()
-                and self.secondary_video_label.width() > 1
-                and self.secondary_video_label.height() > 1
+                self._draw_additional_video
+                and self.additional_last_qimage is not None
+                and self.additional_video_label is not None
+                and self.additional_video_label.isVisible()
+                and self.additional_video_label.width() > 1
+                and self.additional_video_label.height() > 1
             ):
-                self.secondary_video_label.set_frame(self.secondary_last_qimage)
+                self.additional_video_label.set_frame(self.additional_last_qimage)
             if hasattr(self, "analysis_label"):
                 self._update_analysis_view()
         finally:
@@ -3681,7 +3681,7 @@ class VideoLogViewer(QWidget):
             label.annotation_updated.connect(self._on_annotation_updated)
             label.set_scrub_callback(self._handle_scroll_wheel)
             label.set_key_handler(self._handle_popout_key_event)
-            label.set_tray_update_callback(self._refresh_tray_view_if_open)
+            label.set_tray_update_callback(self._refresh_birds_eye_if_open)
             label.set_tool(self._annotation_tool)
             label.set_color(self._annotation_color)
             label.set_annotations(self._current_annotations())
@@ -3713,7 +3713,7 @@ class VideoLogViewer(QWidget):
             self._popout_window.raise_()
             self._popout_window.activateWindow()
 
-    def _open_tray_view_window(self):
+    def _open_birds_eye_window(self):
         # Find latest tray annotation
         tray_ann = None
         for ann in reversed(self._current_annotations()):
@@ -3724,16 +3724,16 @@ class VideoLogViewer(QWidget):
             QMessageBox.information(self, "Bird's Eye", "No bird's eye region defined.")
             return
         pts = [QPointF(p[0], p[1]) for p in tray_ann.get("points", [])]
-        tray_view = self.video_label._build_tray_view(pts)
-        if tray_view is None or tray_view.isNull():
+        birds_eye = self.video_label._build_birds_eye(pts)
+        if birds_eye is None or birds_eye.isNull():
             QMessageBox.warning(self, "Bird's Eye", "Bird's Eye unavailable for current frame.")
             return
-        self.video_label._update_tray_view_popout(tray_view)
+        self.video_label._update_birds_eye_popout(birds_eye)
 
-    def _refresh_tray_view_if_open(self):
+    def _refresh_birds_eye_if_open(self):
         if self.video_label is None:
             return
-        if self.video_label._tray_view_window is None or not self.video_label._tray_view_window.isVisible():
+        if self.video_label._birds_eye_window is None or not self.video_label._birds_eye_window.isVisible():
             return
         tray_ann = None
         for ann in reversed(self._current_annotations()):
@@ -3743,16 +3743,16 @@ class VideoLogViewer(QWidget):
         if tray_ann is None:
             return
         pts = [QPointF(p[0], p[1]) for p in tray_ann.get("points", [])]
-        tray_view = self.video_label._build_tray_view(pts)
-        if tray_view is not None and not tray_view.isNull():
-            self.video_label._update_tray_view_popout(tray_view)
+        birds_eye = self.video_label._build_birds_eye(pts)
+        if birds_eye is not None and not birds_eye.isNull():
+            self.video_label._update_birds_eye_popout(birds_eye)
 
     def _clear_video_popout(self):
         self._popout_window = None
         self._popout_label = None
         self._popout_color_btn = None
         self._popout_tool_group = None
-        self._clear_tray_view_popout()
+        self._clear_birds_eye_popout()
 
     def _current_annotations(self) -> list[dict]:
         return list(self._pinned_annotations) + list(self._clip_annotations)
@@ -4171,12 +4171,12 @@ class VideoLogViewer(QWidget):
         )
 
     @property
-    def secondary_alignment(self) -> TimeAlignment:
+    def additional_alignment(self) -> TimeAlignment:
         """Alignment for the secondary camera (wall-clock slaved to the
         primary; sync/drift offsets do not apply to it)."""
         return TimeAlignment(
-            fps=self.secondary_fps,
-            ocr_frame_offset=self.secondary_ocr_frame_offset,
+            fps=self.additional_fps,
+            ocr_frame_offset=self.additional_ocr_frame_offset,
         )
 
     def effective_offset(self) -> float:
@@ -4249,13 +4249,13 @@ class VideoLogViewer(QWidget):
         self.current_time_changed.emit(playback_dt)
 
     def _apply_status_lines(self) -> None:
-        lines = self._last_status_lines if self.status_text_btn.isChecked() else []
+        lines = self._last_status_lines if self.info_text_btn.isChecked() else []
         if hasattr(self, "video_label"):
             self.video_label.set_status_lines(lines)
         if self._popout_label is not None:
             self._popout_label.set_status_lines(lines)
 
-    def _on_status_text_toggled(self, on: bool) -> None:
+    def _on_info_text_toggled(self, on: bool) -> None:
         update_ui_state({"viewer_status_text": bool(on)})
         self._apply_status_lines()
 
@@ -4295,7 +4295,7 @@ class VideoLogViewer(QWidget):
             )
 
     def set_offset_value(self, value: float):
-        clamped = max(self.offset_min, min(self.offset_max, float(value)))
+        clamped = max(self.drift_min, min(self.drift_max, float(value)))
         if abs(clamped - self.time_offset) < 1e-6:
             return
         self.time_offset = clamped
@@ -4303,33 +4303,33 @@ class VideoLogViewer(QWidget):
         self._apply_offset()
 
     def _update_offset_display(self):
-        if hasattr(self, "offset_display"):
-            self.offset_display.setText(f"{self.time_offset:+.2f}s")
-        if hasattr(self, "offset_slider"):
-            slider_value = int(round(self.time_offset * self._offset_slider_scale))
-            self.offset_slider.blockSignals(True)
-            self.offset_slider.setValue(slider_value)
-            self.offset_slider.blockSignals(False)
+        if hasattr(self, "drift_display"):
+            self.drift_display.setText(f"{self.time_offset:+.2f}s")
+        if hasattr(self, "drift_slider"):
+            slider_value = int(round(self.time_offset * self._drift_slider_scale))
+            self.drift_slider.blockSignals(True)
+            self.drift_slider.setValue(slider_value)
+            self.drift_slider.blockSignals(False)
 
-    def _on_offset_slider_changed(self, value: int):
-        self.set_offset_value(float(value) / float(self._offset_slider_scale))
+    def _on_drift_slider_changed(self, value: int):
+        self.set_offset_value(float(value) / float(self._drift_slider_scale))
 
     def set_close_gap_threshold_value(self, value: float):
         clamped = max(self.close_gap_threshold_min, min(self.close_gap_threshold_max, float(value)))
-        if abs(clamped - self.close_gap_threshold) < 1e-6:
+        if abs(clamped - self.gap_threshold) < 1e-6:
             return
-        self.close_gap_threshold = clamped
+        self.gap_threshold = clamped
         self._update_close_gap_threshold_display()
-        self.close_gap_threshold_changed.emit(self.close_gap_threshold)
+        self.close_gap_threshold_changed.emit(self.gap_threshold)
 
     def _update_close_gap_threshold_display(self):
-        if hasattr(self, "close_gap_display"):
-            self.close_gap_display.setText(f"{self.close_gap_threshold:.2f}x")
-        if hasattr(self, "close_gap_slider"):
-            slider_value = int(round(self.close_gap_threshold * 100.0))
-            self.close_gap_slider.blockSignals(True)
-            self.close_gap_slider.setValue(slider_value)
-            self.close_gap_slider.blockSignals(False)
+        if hasattr(self, "gap_display"):
+            self.gap_display.setText(f"{self.gap_threshold:.2f}x")
+        if hasattr(self, "gap_slider"):
+            slider_value = int(round(self.gap_threshold * 100.0))
+            self.gap_slider.blockSignals(True)
+            self.gap_slider.setValue(slider_value)
+            self.gap_slider.blockSignals(False)
 
     def _on_close_gap_slider_changed(self, value: int):
         self.set_close_gap_threshold_value(float(value) / 100.0)
@@ -4628,61 +4628,61 @@ class VideoLogViewer(QWidget):
         if not path.exists():
             QMessageBox.warning(self, "File not found", str(path))
             return
-        self._reset_secondary_video()
-        self.secondary_video_original_path = path
-        self.secondary_video_filename_dt = parse_filename_datetime(path)
-        if self.secondary_video_filename_dt is None:
+        self._reset_additional_video()
+        self.additional_video_original_path = path
+        self.additional_video_filename_dt = parse_filename_datetime(path)
+        if self.additional_video_filename_dt is None:
             try:
-                self.secondary_video_filename_dt = datetime.fromtimestamp(path.stat().st_mtime)
+                self.additional_video_filename_dt = datetime.fromtimestamp(path.stat().st_mtime)
             except Exception:
-                self.secondary_video_filename_dt = None
+                self.additional_video_filename_dt = None
         cached_path = None
         try:
             cached_path = self.get_valid_cached_path(path)
         except Exception:
             cached_path = None
         if cached_path is None:
-            self._pending_secondary_original_path = path
-            self._pending_secondary_last_size = None
-            self._pending_secondary_stable_count = 0
-            self.secondary_video_label.setText("Caching Additional CCTV...")
-            self.secondary_video_label.setVisible(True)
+            self._pending_additional_original_path = path
+            self._pending_additional_last_size = None
+            self._pending_additional_stable_count = 0
+            self.additional_video_label.setText("Caching Additional CCTV...")
+            self.additional_video_label.setVisible(True)
             self._ensure_cached_copy_async(path)
-            self._start_pending_secondary_timer()
+            self._start_pending_additional_timer()
             return
-        self._open_secondary_from_path(cached_path, allow_rewrap=True)
+        self._open_additional_from_path(cached_path, allow_rewrap=True)
 
-    def _reset_secondary_video(self):
-        if self.secondary_cap is not None:
-            self.secondary_cap.release()
-            self.secondary_cap = None
-        self.secondary_fps = 25.0
-        self.secondary_frame_count = 0
-        self.secondary_current_frame = 0
-        self.secondary_last_qimage = None
-        self.secondary_video_path = None
-        self.secondary_video_original_path = None
-        self._pending_secondary_original_path = None
-        self._pending_secondary_poll = False
-        if self._pending_secondary_timer.isActive():
-            self._pending_secondary_timer.stop()
-        self._pending_secondary_last_size = None
-        self._pending_secondary_stable_count = 0
-        self.secondary_video_filename_dt = None
-        self.secondary_video_start_dt = None
-        self.secondary_ocr_offset_seconds = None
-        self.secondary_ocr_frame_offset = 0
-        self.secondary_manual_offset_frames = 0
-        self._auto_secondary_ocr_attempted_key = None
-        self._secondary_sync_done = False
+    def _reset_additional_video(self):
+        if self.additional_cap is not None:
+            self.additional_cap.release()
+            self.additional_cap = None
+        self.additional_fps = 25.0
+        self.additional_frame_count = 0
+        self.additional_current_frame = 0
+        self.additional_last_qimage = None
+        self.additional_video_path = None
+        self.additional_video_original_path = None
+        self._pending_additional_original_path = None
+        self._pending_additional_poll = False
+        if self._pending_additional_timer.isActive():
+            self._pending_additional_timer.stop()
+        self._pending_additional_last_size = None
+        self._pending_additional_stable_count = 0
+        self.additional_video_filename_dt = None
+        self.additional_video_start_dt = None
+        self.additional_ocr_offset_seconds = None
+        self.additional_ocr_frame_offset = 0
+        self.additional_manual_offset_frames = 0
+        self._auto_additional_ocr_attempted_key = None
+        self._additional_sync_done = False
         self._update_sync_button_style()
-        self.secondary_video_label.setText("Additional CCTV not loaded")
-        self.secondary_video_label.setVisible(False)
-        self._draw_secondary_video = False
-        self.secondary_locked = True
-        self.secondary_lock_toggle.setEnabled(False)
-        self._update_secondary_lock_style()
-        self.secondary_sync_btn.setEnabled(False)
+        self.additional_video_label.setText("Additional CCTV not loaded")
+        self.additional_video_label.setVisible(False)
+        self._draw_additional_video = False
+        self.additional_locked = True
+        self.additional_lock_toggle.setEnabled(False)
+        self._update_additional_lock_style()
+        self.additional_sync_btn.setEnabled(False)
 
     def _ensure_cached_copy_async(self, path: Path):
         try:
@@ -4694,18 +4694,18 @@ class VideoLogViewer(QWidget):
         def _copy():
             if not self._ensure_cached_copy(path, cache_path):
                 return
-            QMetaObject.invokeMethod(self, "_on_secondary_cache_copy_complete", Qt.QueuedConnection)
+            QMetaObject.invokeMethod(self, "_on_additional_cache_copy_complete", Qt.QueuedConnection)
             QMetaObject.invokeMethod(self, "update_cache_status", Qt.QueuedConnection)
         self._cache_executor.submit(_copy)
 
     @Slot()
-    def _on_secondary_cache_copy_complete(self):
-        if self._pending_secondary_original_path is None:
+    def _on_additional_cache_copy_complete(self):
+        if self._pending_additional_original_path is None:
             return
-        self._open_secondary_cached(self._pending_secondary_original_path)
+        self._open_additional_cached(self._pending_additional_original_path)
 
-    def _open_secondary_cached(self, original_path: Path):
-        if self._pending_secondary_original_path != original_path:
+    def _open_additional_cached(self, original_path: Path):
+        if self._pending_additional_original_path != original_path:
             return
         try:
             cache_path = self._cache_path_for(original_path)
@@ -4713,104 +4713,104 @@ class VideoLogViewer(QWidget):
             return
         if not self._is_cached_copy_current(original_path, cache_path):
             return
-        if not self._open_secondary_from_path(cache_path, allow_rewrap=False):
-            self._start_pending_secondary_timer()
+        if not self._open_additional_from_path(cache_path, allow_rewrap=False):
+            self._start_pending_additional_timer()
 
-    def _open_secondary_from_path(self, path: Path, allow_rewrap: bool) -> bool:
-        self.secondary_video_path = str(path)
-        self.secondary_cap = cv2.VideoCapture(str(path))
-        if not self.secondary_cap.isOpened():
+    def _open_additional_from_path(self, path: Path, allow_rewrap: bool) -> bool:
+        self.additional_video_path = str(path)
+        self.additional_cap = cv2.VideoCapture(str(path))
+        if not self.additional_cap.isOpened():
             if allow_rewrap:
                 fixed_path = self.try_rewrap_video_with_ffmpeg(str(path))
                 if fixed_path:
-                    self.secondary_cap.release()
-                    self.secondary_cap = cv2.VideoCapture(fixed_path)
-                    self.secondary_video_path = fixed_path
-            if not self.secondary_cap.isOpened():
-                self.secondary_cap = None
+                    self.additional_cap.release()
+                    self.additional_cap = cv2.VideoCapture(fixed_path)
+                    self.additional_video_path = fixed_path
+            if not self.additional_cap.isOpened():
+                self.additional_cap = None
                 return False
-        self.secondary_fps = self.secondary_cap.get(cv2.CAP_PROP_FPS) or 25.0
-        self.secondary_frame_count = int(self.secondary_cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
-        self.secondary_current_frame = 0
-        self.secondary_video_label.setVisible(True)
-        self._draw_secondary_video = True
-        self._update_secondary_frame_for_time(0.0)
-        self._pending_secondary_original_path = None
-        self._pending_secondary_poll = False
-        if self._pending_secondary_timer.isActive():
-            self._pending_secondary_timer.stop()
-        self.secondary_locked = True
-        key_path = self.secondary_video_original_path or Path(self.secondary_video_path)
+        self.additional_fps = self.additional_cap.get(cv2.CAP_PROP_FPS) or 25.0
+        self.additional_frame_count = int(self.additional_cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+        self.additional_current_frame = 0
+        self.additional_video_label.setVisible(True)
+        self._draw_additional_video = True
+        self._update_additional_frame_for_time(0.0)
+        self._pending_additional_original_path = None
+        self._pending_additional_poll = False
+        if self._pending_additional_timer.isActive():
+            self._pending_additional_timer.stop()
+        self.additional_locked = True
+        key_path = self.additional_video_original_path or Path(self.additional_video_path)
         key = self._offset_cache_key(key_path, tag="additional")
-        cached = self.secondary_offset_store.get(key)
+        cached = self.additional_offset_store.get(key)
         if isinstance(cached, dict) and cached.get("source") == "additional":
             try:
-                self.secondary_ocr_offset_seconds = float(cached.get("offset_seconds"))
-                self.secondary_ocr_frame_offset = int(cached.get("frame_offset", 0))
+                self.additional_ocr_offset_seconds = float(cached.get("offset_seconds"))
+                self.additional_ocr_frame_offset = int(cached.get("frame_offset", 0))
             except Exception:
-                self.secondary_ocr_offset_seconds = None
-                self.secondary_ocr_frame_offset = 0
-            if self.secondary_ocr_offset_seconds is not None and not plausible_ocr_offset(self.secondary_ocr_offset_seconds):
-                print(f"[ocr] cached additional-camera offset {self.secondary_ocr_offset_seconds:.0f}s for {key} is not plausible; dropped", flush=True)
-                self.secondary_offset_store.remove(key)
-                self.secondary_ocr_offset_seconds = None
-                self.secondary_ocr_frame_offset = 0
-            if self.secondary_ocr_offset_seconds is not None:
-                filename_dt = self.secondary_video_filename_dt
+                self.additional_ocr_offset_seconds = None
+                self.additional_ocr_frame_offset = 0
+            if self.additional_ocr_offset_seconds is not None and not plausible_ocr_offset(self.additional_ocr_offset_seconds):
+                print(f"[ocr] cached additional-camera offset {self.additional_ocr_offset_seconds:.0f}s for {key} is not plausible; dropped", flush=True)
+                self.additional_offset_store.remove(key)
+                self.additional_ocr_offset_seconds = None
+                self.additional_ocr_frame_offset = 0
+            if self.additional_ocr_offset_seconds is not None:
+                filename_dt = self.additional_video_filename_dt
                 if filename_dt is None:
                     filename_dt = parse_filename_datetime(key_path)
-                if filename_dt is None and self.secondary_video_original_path is not None:
+                if filename_dt is None and self.additional_video_original_path is not None:
                     try:
-                        filename_dt = datetime.fromtimestamp(self.secondary_video_original_path.stat().st_mtime)
+                        filename_dt = datetime.fromtimestamp(self.additional_video_original_path.stat().st_mtime)
                     except Exception:
                         filename_dt = None
                 if filename_dt:
-                    self.secondary_video_start_dt = filename_dt + timedelta(seconds=self.secondary_ocr_offset_seconds)
-                    self._secondary_sync_done = True
+                    self.additional_video_start_dt = filename_dt + timedelta(seconds=self.additional_ocr_offset_seconds)
+                    self._additional_sync_done = True
                     self._update_sync_button_style()
-                    self._refresh_secondary_after_sync()
-        if self.secondary_ocr_offset_seconds is None:
+                    self._refresh_additional_after_sync()
+        if self.additional_ocr_offset_seconds is None:
             settings = Settings.load()
             if settings.auto_ocr_open_on_missing or settings.auto_ocr_sync:
-                self._auto_sync_secondary_with_ocr()
-        self.secondary_lock_toggle.setEnabled(True)
-        self._update_secondary_lock_style()
-        self.secondary_sync_btn.setEnabled(True)
+                self._auto_sync_additional_with_ocr()
+        self.additional_lock_toggle.setEnabled(True)
+        self._update_additional_lock_style()
+        self.additional_sync_btn.setEnabled(True)
         self._update_sync_button_style()
         self.update_video_label()
         return True
 
-    def _start_pending_secondary_timer(self):
-        if self._pending_secondary_timer.isActive():
+    def _start_pending_additional_timer(self):
+        if self._pending_additional_timer.isActive():
             return
-        self._pending_secondary_poll = True
-        self._pending_secondary_timer.start()
+        self._pending_additional_poll = True
+        self._pending_additional_timer.start()
 
-    def _poll_pending_secondary_cache(self):
-        if self._pending_secondary_original_path is None:
-            self._pending_secondary_poll = False
-            if self._pending_secondary_timer.isActive():
-                self._pending_secondary_timer.stop()
+    def _poll_pending_additional_cache(self):
+        if self._pending_additional_original_path is None:
+            self._pending_additional_poll = False
+            if self._pending_additional_timer.isActive():
+                self._pending_additional_timer.stop()
             return
         try:
-            cache_path = self._cache_path_for(self._pending_secondary_original_path)
+            cache_path = self._cache_path_for(self._pending_additional_original_path)
         except Exception:
-            self._pending_secondary_poll = False
-            if self._pending_secondary_timer.isActive():
-                self._pending_secondary_timer.stop()
+            self._pending_additional_poll = False
+            if self._pending_additional_timer.isActive():
+                self._pending_additional_timer.stop()
             return
         if cache_path.exists():
             try:
                 size = cache_path.stat().st_size
             except Exception:
                 size = None
-            if size is not None and size == self._pending_secondary_last_size:
-                self._pending_secondary_stable_count += 1
+            if size is not None and size == self._pending_additional_last_size:
+                self._pending_additional_stable_count += 1
             else:
-                self._pending_secondary_stable_count = 0
-                self._pending_secondary_last_size = size
-            if self._pending_secondary_stable_count >= 1:
-                if self._open_secondary_from_path(cache_path, allow_rewrap=False):
+                self._pending_additional_stable_count = 0
+                self._pending_additional_last_size = size
+            if self._pending_additional_stable_count >= 1:
+                if self._open_additional_from_path(cache_path, allow_rewrap=False):
                     return
 
     def _get_video_duration_seconds(self, path: Path) -> float | None:
@@ -4833,12 +4833,12 @@ class VideoLogViewer(QWidget):
             return None
         return float(frame_count) / float(fps)
 
-    def _update_secondary_frame_for_time(self, t_seconds: float):
+    def _update_additional_frame_for_time(self, t_seconds: float):
         t0 = time.perf_counter()
-        if self.secondary_cap is None:
-            if self._pending_secondary_original_path is not None:
+        if self.additional_cap is None:
+            if self._pending_additional_original_path is not None:
                 try:
-                    cache_path = self._cache_path_for(self._pending_secondary_original_path)
+                    cache_path = self._cache_path_for(self._pending_additional_original_path)
                 except Exception:
                     return
                 if cache_path.exists():
@@ -4846,55 +4846,55 @@ class VideoLogViewer(QWidget):
                         size = cache_path.stat().st_size
                     except Exception:
                         size = None
-                    if size is not None and size == self._pending_secondary_last_size:
-                        self._pending_secondary_stable_count += 1
+                    if size is not None and size == self._pending_additional_last_size:
+                        self._pending_additional_stable_count += 1
                     else:
-                        self._pending_secondary_stable_count = 0
-                        self._pending_secondary_last_size = size
-                    if self._pending_secondary_stable_count >= 1:
-                        self._open_secondary_from_path(cache_path, allow_rewrap=False)
-            if self.secondary_cap is None:
+                        self._pending_additional_stable_count = 0
+                        self._pending_additional_last_size = size
+                    if self._pending_additional_stable_count >= 1:
+                        self._open_additional_from_path(cache_path, allow_rewrap=False)
+            if self.additional_cap is None:
                 dt = time.perf_counter() - t0
                 if dt > 0.5:
                     print(f"[viewer] secondary update took {dt:.2f}s (no secondary)", flush=True)
                 return
-        if self.secondary_fps <= 0:
+        if self.additional_fps <= 0:
             dt = time.perf_counter() - t0
             if dt > 0.5:
                 print(f"[viewer] secondary update took {dt:.2f}s (no fps)", flush=True)
             return
-        if self.video_start_dt is not None and self.secondary_video_start_dt is not None:
+        if self.video_start_dt is not None and self.additional_video_start_dt is not None:
             abs_time = self.alignment.clock_datetime(self.video_start_dt, t_seconds)
-            t2 = self.secondary_alignment.video_seconds_for_clock(
-                self.secondary_video_start_dt, abs_time
+            t2 = self.additional_alignment.video_seconds_for_clock(
+                self.additional_video_start_dt, abs_time
             )
         else:
             t2 = t_seconds
-        frame_index = int(round(t2 * self.secondary_fps)) + int(self.secondary_manual_offset_frames)
-        if self.secondary_frame_count > 0:
-            frame_index = max(0, min(self.secondary_frame_count - 1, frame_index))
+        frame_index = int(round(t2 * self.additional_fps)) + int(self.additional_manual_offset_frames)
+        if self.additional_frame_count > 0:
+            frame_index = max(0, min(self.additional_frame_count - 1, frame_index))
         else:
             frame_index = max(0, frame_index)
-        if frame_index == self.secondary_current_frame and self.secondary_last_qimage is not None:
+        if frame_index == self.additional_current_frame and self.additional_last_qimage is not None:
             return
-        self.secondary_current_frame = frame_index
+        self.additional_current_frame = frame_index
         if not _position_capture_sequential(
-            self.secondary_cap,
-            self._seq_secondary_cap is self.secondary_cap,
-            self._seq_secondary_next_frame,
+            self.additional_cap,
+            self._seq_additional_cap is self.additional_cap,
+            self._seq_additional_next_frame,
             frame_index,
         ):
-            self.secondary_cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+            self.additional_cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
         t_read = time.perf_counter()
-        ret, frame = self.secondary_cap.read()
+        ret, frame = self.additional_cap.read()
         read_dt = time.perf_counter() - t_read
         if read_dt > 0.5:
             print(f"[viewer] secondary frame read took {read_dt:.2f}s", flush=True)
         if ret:
-            self._seq_secondary_cap = self.secondary_cap
-            self._seq_secondary_next_frame = frame_index + 1
+            self._seq_additional_cap = self.additional_cap
+            self._seq_additional_next_frame = frame_index + 1
         else:
-            self._seq_secondary_cap = None
+            self._seq_additional_cap = None
         if not ret:
             dt = time.perf_counter() - t0
             if dt > 0.5:
@@ -4904,7 +4904,7 @@ class VideoLogViewer(QWidget):
             frame = np.ascontiguousarray(frame)
         h, w, ch = frame.shape
         bytes_per_line = frame.strides[0]
-        self.secondary_last_qimage = QImage(
+        self.additional_last_qimage = QImage(
             frame.data,
             w,
             h,
@@ -5010,7 +5010,7 @@ class VideoLogViewer(QWidget):
                 pass
             return src
 
-    def open_ocr_roi_tool(self, auto_start: bool = True, auto_close_on_success: bool = False):
+    def open_sync_cctv_time(self, auto_start: bool = True, auto_close_on_success: bool = False):
         if not self.current_video_path:
             QMessageBox.information(self, "No video", "Load a video first.")
             return
@@ -5048,7 +5048,7 @@ class VideoLogViewer(QWidget):
                 self._ocr_tool_dialog.close()
             except Exception:
                 pass
-        dlg = OcrVideoPlayer(
+        dlg = SyncCctvTimeWindow(
             settings_path=self.ocr_settings_path,
             settings_key=pikpak_id,
             auto_analyze=auto_start,
@@ -5083,11 +5083,11 @@ class VideoLogViewer(QWidget):
             on_finished=self._hide_ocr_sync_progress,
         )
 
-    def open_secondary_ocr_tool(self, auto_start: bool = True, auto_close_on_success: bool = False):
-        if not self.secondary_video_path:
+    def open_additional_sync_cctv_time(self, auto_start: bool = True, auto_close_on_success: bool = False):
+        if not self.additional_video_path:
             QMessageBox.information(self, "No video", "Load an additional CCTV clip first.")
             return
-        key_path = self.secondary_video_original_path or Path(self.secondary_video_path)
+        key_path = self.additional_video_original_path or Path(self.additional_video_path)
         pikpak_id = self._extract_pikpak_id(key_path)
         if not pikpak_id:
             QMessageBox.information(self, "No PikPak ID", "Unable to detect PikPak ID.")
@@ -5101,14 +5101,14 @@ class VideoLogViewer(QWidget):
                 QMessageBox.warning(self, "OCR offset", f"An offset of {float(offset_seconds) / 60:+.0f} minutes is not plausible for the additional camera (the clock and the filename differ by seconds). Not applied.")
                 return
             try:
-                self.secondary_ocr_offset_seconds = float(offset_seconds)
-                self.secondary_ocr_frame_offset = int(frame_offset)
-                self.secondary_video_start_dt = video_start_dt
-                self.secondary_offset_store.set(
+                self.additional_ocr_offset_seconds = float(offset_seconds)
+                self.additional_ocr_frame_offset = int(frame_offset)
+                self.additional_video_start_dt = video_start_dt
+                self.additional_offset_store.set(
                     key, offset_seconds, frame_offset, source="additional"
                 )
-                self._refresh_secondary_after_sync()
-                self._secondary_sync_done = True
+                self._refresh_additional_after_sync()
+                self._additional_sync_done = True
                 self._update_sync_button_style()
             except Exception as exc:
                 QMessageBox.warning(
@@ -5125,7 +5125,7 @@ class VideoLogViewer(QWidget):
                 self._ocr_tool_dialog.close()
             except Exception:
                 pass
-        dlg = OcrVideoPlayer(
+        dlg = SyncCctvTimeWindow(
             settings_path=self.ocr_settings_path,
             settings_key=additional_camera_roi_key(pikpak_id),
             auto_analyze=auto_start,
@@ -5135,9 +5135,9 @@ class VideoLogViewer(QWidget):
         dlg.setAttribute(Qt.WA_DeleteOnClose, True)
         dlg.destroyed.connect(lambda _=None: setattr(self, "_ocr_tool_dialog", None))
         dlg.resize(900, 600)
-        # Hidden until the clip copy lands — see open_ocr_roi_tool.
+        # Hidden until the clip copy lands — see open_sync_cctv_time.
         self._ocr_tool_dialog = dlg
-        src, copy_to, wait_dl = self._plan_ocr_video_source(Path(self.secondary_video_path))
+        src, copy_to, wait_dl = self._plan_ocr_video_source(Path(self.additional_video_path))
 
         def _open_when_ready(ready_path):
             if self._ocr_tool_dialog is not dlg:
@@ -5145,7 +5145,7 @@ class VideoLogViewer(QWidget):
             dlg.show()
             dlg.open_video(str(ready_path))
 
-        self._ocr_secondary_sync_slot.start(
+        self._ocr_additional_sync_slot.start(
             lambda job, src=src, copy_to=copy_to, wait_dl=wait_dl: self._ocr_video_source(
                 src,
                 copy_to,
@@ -5215,7 +5215,7 @@ class VideoLogViewer(QWidget):
             if self._auto_ocr_attempted_key == key:
                 return
             self._auto_ocr_attempted_key = key
-            self.open_ocr_roi_tool(auto_start=True, auto_close_on_success=True)
+            self.open_sync_cctv_time(auto_start=True, auto_close_on_success=True)
             return
         if not settings.auto_ocr_sync and not force:
             return
@@ -5252,7 +5252,7 @@ class VideoLogViewer(QWidget):
                     "OCR failed",
                     "OCR sync failed. Please adjust the ROI and try again.",
                 )
-                self.open_ocr_roi_tool(auto_start=False)
+                self.open_sync_cctv_time(auto_start=False)
                 return
             if not plausible_ocr_offset(result.offset_seconds):
                 print(f"[ocr] automatic offset {result.offset_seconds:.0f}s is not plausible; ignored, using the filename time", flush=True)
@@ -5274,53 +5274,53 @@ class VideoLogViewer(QWidget):
             on_finished=self._hide_ocr_sync_progress,
         )
 
-    def _auto_sync_secondary_with_ocr(self, force: bool = False):
-        if not self.secondary_video_path:
+    def _auto_sync_additional_with_ocr(self, force: bool = False):
+        if not self.additional_video_path:
             return
-        cache_path = Path(self.secondary_video_path)
-        key_path = self.secondary_video_original_path or cache_path
+        cache_path = Path(self.additional_video_path)
+        key_path = self.additional_video_original_path or cache_path
         pikpak_id = self._extract_pikpak_id(key_path)
         key = self._offset_cache_key(key_path, tag="additional")
         settings = Settings.load()
-        cached = None if force else self.secondary_offset_store.get(key)
+        cached = None if force else self.additional_offset_store.get(key)
         if isinstance(cached, dict) and cached.get("source") != "additional":
             cached = None
         if cached:
             try:
-                self.secondary_ocr_offset_seconds = float(cached.get("offset_seconds"))
-                self.secondary_ocr_frame_offset = int(cached.get("frame_offset", 0))
+                self.additional_ocr_offset_seconds = float(cached.get("offset_seconds"))
+                self.additional_ocr_frame_offset = int(cached.get("frame_offset", 0))
             except Exception:
-                self.secondary_ocr_offset_seconds = None
-                self.secondary_ocr_frame_offset = 0
-            if self.secondary_ocr_offset_seconds is not None and not plausible_ocr_offset(self.secondary_ocr_offset_seconds):
-                print(f"[ocr] cached additional-camera offset {self.secondary_ocr_offset_seconds:.0f}s is not plausible; dropped", flush=True)
-                self.secondary_offset_store.remove(key)
-                self.secondary_ocr_offset_seconds = None
-                self.secondary_ocr_frame_offset = 0
-            if self.secondary_ocr_offset_seconds is not None:
+                self.additional_ocr_offset_seconds = None
+                self.additional_ocr_frame_offset = 0
+            if self.additional_ocr_offset_seconds is not None and not plausible_ocr_offset(self.additional_ocr_offset_seconds):
+                print(f"[ocr] cached additional-camera offset {self.additional_ocr_offset_seconds:.0f}s is not plausible; dropped", flush=True)
+                self.additional_offset_store.remove(key)
+                self.additional_ocr_offset_seconds = None
+                self.additional_ocr_frame_offset = 0
+            if self.additional_ocr_offset_seconds is not None:
                 filename_dt = parse_filename_datetime(key_path)
                 if filename_dt is None:
-                    filename_dt = self.secondary_video_filename_dt
-                if filename_dt is None and self.secondary_video_original_path is not None:
-                    filename_dt = parse_filename_datetime(self.secondary_video_original_path)
-                if filename_dt is None and self.secondary_video_original_path is not None:
+                    filename_dt = self.additional_video_filename_dt
+                if filename_dt is None and self.additional_video_original_path is not None:
+                    filename_dt = parse_filename_datetime(self.additional_video_original_path)
+                if filename_dt is None and self.additional_video_original_path is not None:
                     try:
-                        filename_dt = datetime.fromtimestamp(self.secondary_video_original_path.stat().st_mtime)
+                        filename_dt = datetime.fromtimestamp(self.additional_video_original_path.stat().st_mtime)
                     except Exception:
                         filename_dt = None
                 if filename_dt:
-                    self.secondary_video_start_dt = filename_dt + timedelta(seconds=self.secondary_ocr_offset_seconds)
-                    self._refresh_secondary_after_sync()
+                    self.additional_video_start_dt = filename_dt + timedelta(seconds=self.additional_ocr_offset_seconds)
+                    self._refresh_additional_after_sync()
                 return
         if settings.auto_ocr_open_on_missing:
             if not pikpak_id:
                 return
             if self._ocr_tool_dialog is not None:
                 return
-            if self._auto_secondary_ocr_attempted_key == key:
+            if self._auto_additional_ocr_attempted_key == key:
                 return
-            self._auto_secondary_ocr_attempted_key = key
-            self.open_secondary_ocr_tool(auto_start=True, auto_close_on_success=True)
+            self._auto_additional_ocr_attempted_key = key
+            self.open_additional_sync_cctv_time(auto_start=True, auto_close_on_success=True)
             return
         if not settings.auto_ocr_sync and not force:
             return
@@ -5347,7 +5347,7 @@ class VideoLogViewer(QWidget):
             )
 
         def _apply(result, src=src, key=key):
-            if not self.secondary_video_path or Path(self.secondary_video_path) != src:
+            if not self.additional_video_path or Path(self.additional_video_path) != src:
                 return  # secondary clip changed while OCR ran
             if result is None:
                 QMessageBox.information(
@@ -5359,17 +5359,17 @@ class VideoLogViewer(QWidget):
             if not plausible_ocr_offset(result.offset_seconds):
                 print(f"[ocr] automatic additional-camera offset {result.offset_seconds:.0f}s is not plausible; ignored", flush=True)
                 return
-            self.secondary_ocr_offset_seconds = result.offset_seconds
-            self.secondary_ocr_frame_offset = result.frame_offset
-            self.secondary_video_start_dt = result.video_start_dt
-            self.secondary_offset_store.set(
+            self.additional_ocr_offset_seconds = result.offset_seconds
+            self.additional_ocr_frame_offset = result.frame_offset
+            self.additional_video_start_dt = result.video_start_dt
+            self.additional_offset_store.set(
                 key, result.offset_seconds, result.frame_offset, source="additional"
             )
-            self._refresh_secondary_after_sync()
-            self._secondary_sync_done = True
+            self._refresh_additional_after_sync()
+            self._additional_sync_done = True
             self._update_sync_button_style()
 
-        self._ocr_secondary_sync_slot.start(
+        self._ocr_additional_sync_slot.start(
             _analyze,
             on_result=_apply,
             on_error=lambda msg: print(f"[ocr] secondary auto-sync failed: {msg}"),
@@ -5377,11 +5377,11 @@ class VideoLogViewer(QWidget):
             on_finished=lambda: self._hide_ocr_sync_progress(cam_label=" (2nd cam)"),
         )
 
-    def _refresh_secondary_after_sync(self):
-        if self.secondary_cap is None or self.secondary_fps <= 0:
+    def _refresh_additional_after_sync(self):
+        if self.additional_cap is None or self.additional_fps <= 0:
             return
         t = self.current_frame / self.fps if self.fps > 0 else 0.0
-        self._update_secondary_frame_for_time(t)
+        self._update_additional_frame_for_time(t)
         self.update_video_label()
 
     def _apply_auto_sync_if_possible(self):
@@ -5578,7 +5578,7 @@ class VideoLogViewer(QWidget):
             ("viewer: cancel log fetch", self._cancel_log_future),
             ("viewer: close tool windows", _close_tool_windows),
             ("viewer: OCR sync slot", self._ocr_sync_slot.shutdown),
-            ("viewer: secondary OCR slot", self._ocr_secondary_sync_slot.shutdown),
+            ("viewer: secondary OCR slot", self._ocr_additional_sync_slot.shutdown),
             ("viewer: log executor", _stop_log_executor),
         ):
             t0 = time.perf_counter()
@@ -5644,7 +5644,7 @@ def main():
     args, qt_args = parser.parse_known_args()
 
     app = QApplication([sys.argv[0]] + qt_args)
-    win = VideoLogViewer()
+    win = ReplayView()
     win.resize(1400, 700)
     win.show()
     if args.video:

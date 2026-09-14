@@ -123,7 +123,7 @@ class TargetOverlayController(QObject):
         self,
         viewer,
         buffer_widget,
-        time_picker,
+        replay_timeline,
         settings_provider: Callable,
         calibration_system_id_provider: Callable[[], str],
         parent_widget,
@@ -131,7 +131,7 @@ class TargetOverlayController(QObject):
         super().__init__(parent_widget)
         self._viewer = viewer
         self._buffer_widget = buffer_widget
-        self._time_picker = time_picker
+        self._replay_timeline = replay_timeline
         self._settings_provider = settings_provider
         self._calibration_system_id_provider = calibration_system_id_provider
         self._parent_widget = parent_widget
@@ -189,7 +189,7 @@ class TargetOverlayController(QObject):
                 self._buffer_clip_start,
                 self._buffer_clip_end,
             )
-            self._time_picker.set_clip_target_rate_heat(
+            self._replay_timeline.set_clip_target_rate_heat(
                 self._buffer_clip_start, self._buffer_clip_end, buckets
             )
         print(f"[buffer] {len(events)} buffer state transitions loaded")
@@ -200,7 +200,7 @@ class TargetOverlayController(QObject):
 
     def _recompute_gap_ids(self) -> None:
         self._close_gap_target_ids, self._wide_gap_target_ids = compute_gap_target_ids(
-            self._buffer_events, float(self._viewer.close_gap_threshold)
+            self._buffer_events, float(self._viewer.gap_threshold)
         )
 
     # ---- per-frame fan-in ------------------------------------------------
@@ -215,7 +215,7 @@ class TargetOverlayController(QObject):
         if self._cal_dialog is not None:
             self._cal_dialog.on_time(dt)
 
-    def on_close_gap_threshold_changed(self, _value: float) -> None:
+    def on_gap_threshold_changed(self, _value: float) -> None:
         if not self._buffer_events:
             return
         self._recompute_gap_ids()

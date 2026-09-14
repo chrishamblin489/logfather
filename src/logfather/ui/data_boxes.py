@@ -600,7 +600,7 @@ class SignalChannel(QObject):
         return True
 
 
-class SignalBoxes(QObject):
+class DataBoxes(QObject):
     """The Data box (Picks, Temps, Currents, Pressure) and the Additional
     data box, with their channels, for one owner: the Overview or the
     System Replay timeline (Chris, 2026-09-08). `prefix` keys the saved

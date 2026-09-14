@@ -536,7 +536,7 @@ def _deserialize_timeline_item(data: dict) -> TimelineItem | None:
 
 
 def _is_past_day(day) -> bool:
-    # `day` is a LOCAL calendar day (see Time_Picker.local_day_start_utc), so
+    # `day` is a LOCAL calendar day (see replay_timeline.local_day_start_utc), so
     # it must be compared to the local date. Comparing against the UTC date
     # classified the in-progress local day as "past" (making its cache
     # permanent mid-afternoon) for any user west of UTC.

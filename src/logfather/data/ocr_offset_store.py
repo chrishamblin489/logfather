@@ -1,7 +1,7 @@
 """Persistence for OCR-derived clip time offsets (Stage 3, review doc).
 
 One JSON file per camera family ({"offsets": {key: {offset_seconds,
-frame_offset[, source]}}}). Extracted from VideoLogViewer, which kept this
+frame_offset[, source]}}}). Extracted from ReplayView, which kept this
 as five methods threading an optional cache_path through every call. Key
 strings are composed by the caller (they need UI-side filename helpers).
 
