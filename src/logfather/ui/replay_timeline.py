@@ -13,6 +13,7 @@ from typing import Callable, Iterable, Optional, Dict, Tuple, List
 from PySide6.QtCore import Qt, Signal, QEvent, QRectF, QPointF, QTimer, QSize
 
 from logfather.ui.qt_worker import JobSlot
+from logfather.ui.progress import BusyDialog
 from logfather.ui import theme
 from logfather.ui.icons import zoom_glyph_icon
 from logfather.ui.data_boxes import DataBoxes, COMPACT_BOX_STYLE, COMPACT_FONT_PX, add_label_backdrop, CollapsibleGroupBox
@@ -20,7 +21,7 @@ from logfather.data import grafana_client
 from logfather.data.elastic_schema import robot_id_from_folder
 from types import SimpleNamespace
 from PySide6.QtGui import QAction, QBrush, QColor, QPen, QPolygonF, QFont, QFontMetrics, QPainterPath
-from PySide6.QtWidgets import QApplication, QProgressDialog, QMessageBox, QMenu, QToolButton
+from PySide6.QtWidgets import QApplication, QMessageBox, QMenu, QToolButton
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QPushButton, QHBoxLayout,
     QGraphicsScene, QGraphicsView, QGraphicsRectItem, QGraphicsItem,
@@ -328,7 +329,7 @@ class ReplayTimeline(QWidget):
         self._loading_rect = None
         self._loading_text = None
         self._loader_slot = JobSlot(self)
-        self._progress: QProgressDialog | None = None
+        self._progress = BusyDialog(self, "Loading timeline", default_message="Loading...")
         self._last_cursor_x: Optional[float] = None
         self._cache_root = cache_root
         self._selected_video_item: Optional[TimelineItem] = None
@@ -818,21 +819,12 @@ class ReplayTimeline(QWidget):
             if not self._items:
                 self.view.setEnabled(False)
                 self._show_loading_overlay()
-            if self._progress is None:
-                self._progress = QProgressDialog(message or "Loading...", None, 0, 0, self)
-                self._progress.setWindowTitle("Loading timeline")
-                self._progress.setWindowModality(Qt.NonModal)
-                self._progress.setCancelButton(None)
-                self._progress.setMinimumDuration(0)
-                self._progress.setRange(0, 0)  # indefinite spinner/progress
-                self._progress.show()
+            self._progress.show(message)
             QApplication.processEvents()
         else:
             QApplication.restoreOverrideCursor()
             self.view.setEnabled(True)
-            if self._progress:
-                self._progress.close()
-                self._progress = None
+            self._progress.hide()
             self._hide_loading_overlay()
 
     def _on_loaded(self, items: list[TimelineItem], day_loaded, root_loaded):
