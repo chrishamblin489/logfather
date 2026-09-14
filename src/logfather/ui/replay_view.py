@@ -34,6 +34,7 @@ from logfather.ui.progress import BusyDialog, StageProgress
 from logfather.ui.icons import sync_icon
 from logfather.ui.log_filter_panel import LogFilterPanel
 from logfather.ui.pulse import Pulser
+from logfather.ui.pane_animator import PaneAnimator
 from logfather.core.log_events import (
     LOCAL_TIMEZONE,
     MESSAGE_COLUMN,
@@ -54,7 +55,7 @@ from logfather.ui.viewer_widgets import (
 )
 
 import cv2
-from PySide6.QtCore import Qt, QTimer, Signal, QEvent, QMetaObject, Slot, QPoint, QPointF, QSize, Q_ARG, QVariantAnimation, QEasingCurve, QModelIndex
+from PySide6.QtCore import Qt, QTimer, Signal, QEvent, QMetaObject, Slot, QPoint, QPointF, QSize, Q_ARG, QModelIndex
 from PySide6.QtGui import QAction, QImage, QColor, QPainter, QPixmap
 import numpy as np
 from PySide6.QtWidgets import (
@@ -1053,10 +1054,6 @@ class ReplayView(QWidget):
         self.right_tabs.setMouseTracking(True)
         self.right_tabs.setMinimumWidth(0)
         self.right_tabs.setMaximumWidth(self._right_tabs_target_width)
-        self._right_tabs_anim = QVariantAnimation(self)
-        self._right_tabs_anim.setDuration(170)
-        self._right_tabs_anim.setEasingCurve(QEasingCurve.OutCubic)
-        self._right_tabs_anim.valueChanged.connect(self._on_right_tabs_anim_step)
 
         self._pin_btn = QPushButton("📌")
         self._pin_btn.setCheckable(True)
@@ -1138,6 +1135,9 @@ class ReplayView(QWidget):
         # bottom). Ignore that minimum: the column takes the row height.
         self.right_column.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
         root_layout.addWidget(self.right_column, stretch=0)
+        # The hover-reveal slides the column's width (it sits in a plain
+        # layout, not a splitter).
+        self._right_tabs_anim = PaneAnimator.for_width(self.right_column, parent=self)
 
         self.setLayout(root_layout)
         self.setMinimumSize(980, 560)
@@ -1210,20 +1210,15 @@ class ReplayView(QWidget):
         if visible == self._right_tabs_expanded:
             return
         self._right_tabs_expanded = visible
-        if self._right_tabs_anim.state() == QVariantAnimation.Running:
-            self._right_tabs_anim.stop()
-        current = self.right_column.width()
-        if current <= 0:
-            current = 0 if not visible else self._right_tabs_target_width
         end = self._right_tabs_target_width if visible else 0
-        self._right_tabs_anim.setStartValue(int(current))
-        self._right_tabs_anim.setEndValue(int(end))
-        self._right_tabs_anim.start()
-
-    def _on_right_tabs_anim_step(self, value):
-        width = max(0, int(value))
-        self.right_column.setMinimumWidth(width)
-        self.right_column.setMaximumWidth(width)
+        if self.right_column.width() <= 0:
+            # A column that reads 0 px (it does after every hide) jumps to
+            # its end state rather than sliding - the colleague's original
+            # started the slide at its end value in this case, kept as-is
+            # when the slide moved into PaneAnimator (2026-09-14).
+            self._right_tabs_anim.snap_to(end)
+        else:
+            self._right_tabs_anim.animate_to(end)
 
     def _auto_hide_right_tabs(self):
         if not self._right_tabs_expanded or self._right_tabs_pinned:

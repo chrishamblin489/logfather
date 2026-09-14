@@ -160,6 +160,9 @@ FILE_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
          "and the Conveyor dialog, and builds the product overlays the Track button draws."),
         ("ui/qt_worker.py", "src/logfather/ui/qt_worker.py",
          "The one background-job pattern (Job on a QThread, JobSlot to retire stale results) used by every loader."),
+        ("ui/progress.py", "src/logfather/ui/progress.py",
+         "The shared busy and progress dialogs: BusyDialog (indeterminate), StageProgress (with Cancel, "
+         "nothing shown headless) and job_progress (a dialog bound to a background JobSlot)."),
         ("ui/gear_menu.py", "src/logfather/ui/gear_menu.py",
          "The gear dropdown shared by the windows: Data sources, Settings, Stop report, Fit, zoom, About."),
         ("ui/day_selection.py", "src/logfather/ui/day_selection.py",
@@ -182,6 +185,9 @@ FILE_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
          "The painted icons (no image files): gear, calendar, conveyor, punnet, sync, first product, question block..."),
         ("ui/pulse.py", "src/logfather/ui/pulse.py",
          "The gentle breathing highlight on a button that needs attention (Sync: ?)."),
+        ("ui/pane_animator.py", "src/logfather/ui/pane_animator.py",
+         "The one splitter-pane slide: the Targets panel, the date picker, the timeline and the log tabs "
+         "open and close through it (show before, hide after, restart from wherever a slide is)."),
         ("ui/window_placement.py", "src/logfather/ui/window_placement.py",
          "Keeps secondary windows on screen and over their parent."),
         ("ui/app_assets.py", "src/logfather/ui/app_assets.py",
