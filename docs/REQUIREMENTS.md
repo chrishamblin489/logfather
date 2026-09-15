@@ -22,6 +22,12 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ## Shipped
 
+### 2026-09-15
+
+- Replay frame-step buttons (Chris, 2026-09-15): -10 and +10 either side
+  of the play button under the CCTV picture, stepping the clip ten frames
+  back or forward (pausing first); hold to keep stepping.
+
 ### 2026-09-14
 
 - Fixes after the refactor (Chris, 2026-09-14): the Overview PikPaks

@@ -437,6 +437,20 @@ class ReplayView(QWidget):
         self.play_pause_btn.setFixedSize(QSize(54, 44))
         self.play_pause_btn.setToolTip("Play / pause (space)")
         self.play_pause_btn.clicked.connect(self.toggle_play_pause)
+        # -10 / +10 frames either side of the play button (Chris,
+        # 2026-09-15), placed by hand with it; hold to keep stepping.
+        minus = chr(0x2212)
+        self.back10_btn = QPushButton(f"{minus}10", self)
+        self.fwd10_btn = QPushButton("+10", self)
+        for btn, delta, tip in (
+            (self.back10_btn, -10, "Back 10 frames"),
+            (self.fwd10_btn, 10, "Forward 10 frames"),
+        ):
+            btn.setFixedSize(QSize(50, 44))
+            btn.setToolTip(tip)
+            btn.setAutoRepeat(True)
+            btn.setAutoRepeatInterval(160)
+            btn.clicked.connect(lambda _checked=False, d=delta: self.scrub_by_frames(d))
         self.annotate_btn = QPushButton("Annotate")
         self.annotate_btn.clicked.connect(self._open_annotation_popout)
         self.birds_eye_btn = QPushButton("Bird's Eye")
@@ -658,6 +672,12 @@ class ReplayView(QWidget):
             centre_y = clock.geometry().center().y()
             play.move(max(0, centre_x - play.width() // 2), max(0, centre_y - play.height() // 2))
             play.raise_()
+            gap = 6
+            back, fwd = self.back10_btn, self.fwd10_btn
+            back.move(max(0, play.x() - gap - back.width()), play.y())
+            fwd.move(play.x() + play.width() + gap, play.y())
+            back.raise_()
+            fwd.raise_()
 
     def _build_analysis_controls(self):
         """The Analysis controls (analysis_panel.py): the widget itself is the
