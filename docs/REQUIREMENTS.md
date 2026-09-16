@@ -24,9 +24,12 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ### 2026-09-15
 
-- Replay frame-step buttons (Chris, 2026-09-15): -10 and +10 either side
-  of the play button under the CCTV picture, stepping the clip ten frames
-  back or forward (pausing first); hold to keep stepping.
+- Replay step buttons (Chris, 2026-09-15/16): -1s and +1s either side of
+  the play button under the CCTV picture, stepping the clip one second
+  (the clip's own frame rate in frames) back or forward, pausing first;
+  hold to keep stepping. First shipped as -10 / +10 frames, but a backward
+  step seeks and lands on the nearest keyframe, which these cameras write
+  once a second, so it showed a whole second anyway; the label now matches.
 
 ### 2026-09-14
 

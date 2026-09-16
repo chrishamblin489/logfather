@@ -437,20 +437,24 @@ class ReplayView(QWidget):
         self.play_pause_btn.setFixedSize(QSize(54, 44))
         self.play_pause_btn.setToolTip("Play / pause (space)")
         self.play_pause_btn.clicked.connect(self.toggle_play_pause)
-        # -10 / +10 frames either side of the play button (Chris,
-        # 2026-09-15), placed by hand with it; hold to keep stepping.
+        # -1s / +1s either side of the play button (Chris, 2026-09-15/16),
+        # placed by hand with it; hold to keep stepping. One second rather
+        # than ten frames: a backward step has to seek, and OpenCV lands
+        # on the nearest keyframe, which these cameras write once a second
+        # - so ten frames back showed a whole second anyway. Stepping a
+        # full second makes both directions do what the label says.
         minus = chr(0x2212)
-        self.back10_btn = QPushButton(f"{minus}10", self)
-        self.fwd10_btn = QPushButton("+10", self)
-        for btn, delta, tip in (
-            (self.back10_btn, -10, "Back 10 frames"),
-            (self.fwd10_btn, 10, "Forward 10 frames"),
+        self.back1s_btn = QPushButton(f"{minus}1s", self)
+        self.fwd1s_btn = QPushButton("+1s", self)
+        for btn, sign, tip in (
+            (self.back1s_btn, -1, "Back 1 second"),
+            (self.fwd1s_btn, 1, "Forward 1 second"),
         ):
             btn.setFixedSize(QSize(50, 44))
             btn.setToolTip(tip)
             btn.setAutoRepeat(True)
-            btn.setAutoRepeatInterval(160)
-            btn.clicked.connect(lambda _checked=False, d=delta: self.scrub_by_frames(d))
+            btn.setAutoRepeatInterval(220)
+            btn.clicked.connect(lambda _checked=False, d=sign: self.scrub_by_seconds(d))
         self.annotate_btn = QPushButton("Annotate")
         self.annotate_btn.clicked.connect(self._open_annotation_popout)
         self.birds_eye_btn = QPushButton("Bird's Eye")
@@ -673,7 +677,7 @@ class ReplayView(QWidget):
             play.move(max(0, centre_x - play.width() // 2), max(0, centre_y - play.height() // 2))
             play.raise_()
             gap = 6
-            back, fwd = self.back10_btn, self.fwd10_btn
+            back, fwd = self.back1s_btn, self.fwd1s_btn
             back.move(max(0, play.x() - gap - back.width()), play.y())
             fwd.move(play.x() + play.width() + gap, play.y())
             back.raise_()
@@ -1723,6 +1727,11 @@ class ReplayView(QWidget):
         else:
             self.scrub_by_frames(delta_steps)
 
+
+    def scrub_by_seconds(self, delta_seconds: float):
+        """Step by whole seconds of the clip's own frame rate."""
+        fps = self.fps if self.fps and self.fps > 0 else 25.0
+        self.scrub_by_frames(int(round(delta_seconds * fps)))
 
     def scrub_by_frames(self, delta_frames: int):
         if self.cap is None:
