@@ -33,3 +33,6 @@ Output/
 
 # Agent worktrees
 .claude/worktrees/
+
+# Raw Elastic fetch behind docs/analysis/build_overcurrent_crate_change_page.py
+docs/analysis/.overcurrent_crate_change_raw.json
