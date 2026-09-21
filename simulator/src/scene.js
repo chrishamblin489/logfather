@@ -713,6 +713,7 @@
     const set = (id, text) => { $(id).textContent = text; };
     set("sPacked", sim.stats.packed);
     set("sTrays", sim.stats.crates * state.pattern.trays);
+    set("sTraysBar", sim.stats.crates * state.pattern.trays);
     set("sPpm", sim.rollingPpm().toFixed(0));
     set("sCapacity", capacity.toFixed(0));
     set("sBusy", Math.round(sim.utilisation() * 100) + "%");
