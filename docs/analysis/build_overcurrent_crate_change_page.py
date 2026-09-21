@@ -68,7 +68,7 @@ def fetch_raw() -> dict:
             b = {
                 "size": size,
                 "sort": [{"@timestamp": {"order": "asc", "format": "strict_date_optional_time"}}],
-                "_source": ["@timestamp", "state_name", "system_id", "leap_robot_id", "source", "message", "servo_id"],
+                "_source": ["@timestamp", "@timestamp_ros", "state_name", "system_id", "leap_robot_id", "source", "message", "servo_id"],
                 "query": {"bool": {"filter": [time_range], "must": [query]}},
             }
             if after:
@@ -78,7 +78,11 @@ def fetch_raw() -> dict:
         res = paginate(body, session=session, endpoint=endpoint, headers=headers, page_size=2000,
                        max_pages=200, timeout_sec=90, label=label, max_hits=400000)
         print(f"{label}: {len(res.hits)} documents, truncated={res.truncated}")
-        return [[h["_source"].get("@timestamp"), robot_of(h), h["_source"].get("message"), h["_source"].get("servo_id")]
+        # The robot's own clock, not the ingest time: @timestamp bunches
+        # whole minutes of buffered documents into one second after a
+        # network gap (found 2026-09-21), which fakes coincidences.
+        return [[h["_source"].get("@timestamp_ros") or h["_source"].get("@timestamp"), robot_of(h),
+                 h["_source"].get("message"), h["_source"].get("servo_id")]
                 for h in res.hits]
 
     raw = {
