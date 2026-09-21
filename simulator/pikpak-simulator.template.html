@@ -44,6 +44,17 @@
   .verdict.over { border-left-color: var(--over); }
   #problems { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
   #problems .error { color: var(--over); } #problems .warning { color: var(--ink-2); }
+  .plan { position: fixed; top: 16px; right: 16px; width: 300px; padding: 14px 16px 16px; display: grid; gap: 10px;
+    background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 10px; }
+  .plan h2 { margin: 0; }
+  .plan .note { margin: 0; }
+  #plan { display: block; width: 100%; height: auto; }
+  #plan .tray { fill: color-mix(in srgb, var(--ok) 16%, transparent); stroke: var(--ok); stroke-width: 6; }
+  #plan .slot { fill: none; stroke: var(--ink-3); stroke-width: 2.5; stroke-dasharray: 10 8; }
+  #plan .slot.packed { fill: color-mix(in srgb, var(--accent) 30%, var(--surface)); stroke: var(--accent); stroke-dasharray: none; }
+  #plan .slot.below { fill: color-mix(in srgb, var(--ink-3) 18%, transparent); }
+  #plan text { font: 600 44px Consolas, "SF Mono", Menlo, ui-monospace, monospace; fill: var(--ink-2); text-anchor: middle; dominant-baseline: central; }
+  #plan image { opacity: .92; }
   .transport { position: fixed; left: calc(50% + 178px); bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
     padding: 8px 12px; background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 10px; white-space: nowrap; }
   .transport button.primary { min-width: 84px; background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
@@ -52,9 +63,11 @@
   .transport output, .transport .clock { font-family: Consolas, "SF Mono", Menlo, ui-monospace, monospace; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 12px; }
   .transport label { color: var(--ink-3); font-size: 12px; }
   body.paused #view { outline: 3px solid color-mix(in srgb, var(--ok) 60%, transparent); outline-offset: -3px; }
-  #reach { position: fixed; right: 16px; top: 44px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--over); color: var(--over); }
-  .hint { position: fixed; right: 16px; top: 16px; color: var(--ink-3); font-size: 12px; }
+  #reach { position: fixed; left: calc(50% + 178px); transform: translateX(-50%); top: 16px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--over); color: var(--over); }
+  .hint { position: fixed; right: 16px; bottom: 12px; color: var(--ink-3); font-size: 12px; }
+  @media (max-width: 1180px) { .hint { display: none; } }
   @media (max-width: 760px) { .panel { width: auto; right: 16px; top: auto; max-height: 40vh; } .hint { display: none; }
+    .plan { display: none; }
     .transport { left: 50%; top: 12px; bottom: auto; } .transport .clock, .transport label { display: none; } }
 </style>
 </head>
@@ -108,6 +121,17 @@
   <section>
     <label class="note" style="display:block;margin:0"><input id="axes" type="checkbox" checked> Show the X, Y, Z axes of the machine's CAD (mm, origin at the 0)</label>
   </section>
+</aside>
+
+<aside class="plan" aria-label="Tray plan">
+  <h2>Tray from above</h2>
+  <svg id="plan" role="img" aria-label="Plan view of the tray showing where each product is packed"></svg>
+  <p class="note" id="planNote"></p>
+  <div class="kpis">
+    <div class="kpi"><span>Layers</span><b id="planLayers">0</b></div>
+    <div class="kpi"><span>Products per tray</span><b id="planTotal">0</b></div>
+  </div>
+  <p class="note" id="planPair" hidden></p>
 </aside>
 
 <div class="transport" role="group" aria-label="Playback">

@@ -123,6 +123,12 @@ Living record of agreed functionality: what is open, and what has shipped
   run time sit in a bar under the 3D view, always in sight (they were at the
   bottom of the panel, below the fold); space bar pauses and plays; a paused
   view is outlined and the camera still turns, zooms and pans.
+- Simulator tray plan (Chris, 2026-09-22): card at the top right with the tray
+  from above (two half trays when they go side by side), drawn from the same
+  slots the arm fills: each product in its place, turned where the layout
+  turns it, carrying its picture if one was uploaded and the number of the
+  lift that packs it; the layer being packed fills in live. Underneath: the
+  number of layers and the products per tray (and per pair of half trays).
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

@@ -44,6 +44,17 @@
   .verdict.over { border-left-color: var(--over); }
   #problems { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
   #problems .error { color: var(--over); } #problems .warning { color: var(--ink-2); }
+  .plan { position: fixed; top: 16px; right: 16px; width: 300px; padding: 14px 16px 16px; display: grid; gap: 10px;
+    background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 10px; }
+  .plan h2 { margin: 0; }
+  .plan .note { margin: 0; }
+  #plan { display: block; width: 100%; height: auto; }
+  #plan .tray { fill: color-mix(in srgb, var(--ok) 16%, transparent); stroke: var(--ok); stroke-width: 6; }
+  #plan .slot { fill: none; stroke: var(--ink-3); stroke-width: 2.5; stroke-dasharray: 10 8; }
+  #plan .slot.packed { fill: color-mix(in srgb, var(--accent) 30%, var(--surface)); stroke: var(--accent); stroke-dasharray: none; }
+  #plan .slot.below { fill: color-mix(in srgb, var(--ink-3) 18%, transparent); }
+  #plan text { font: 600 44px Consolas, "SF Mono", Menlo, ui-monospace, monospace; fill: var(--ink-2); text-anchor: middle; dominant-baseline: central; }
+  #plan image { opacity: .92; }
   .transport { position: fixed; left: calc(50% + 178px); bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
     padding: 8px 12px; background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 10px; white-space: nowrap; }
   .transport button.primary { min-width: 84px; background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
@@ -52,9 +63,11 @@
   .transport output, .transport .clock { font-family: Consolas, "SF Mono", Menlo, ui-monospace, monospace; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 12px; }
   .transport label { color: var(--ink-3); font-size: 12px; }
   body.paused #view { outline: 3px solid color-mix(in srgb, var(--ok) 60%, transparent); outline-offset: -3px; }
-  #reach { position: fixed; right: 16px; top: 44px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--over); color: var(--over); }
-  .hint { position: fixed; right: 16px; top: 16px; color: var(--ink-3); font-size: 12px; }
+  #reach { position: fixed; left: calc(50% + 178px); transform: translateX(-50%); top: 16px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--over); color: var(--over); }
+  .hint { position: fixed; right: 16px; bottom: 12px; color: var(--ink-3); font-size: 12px; }
+  @media (max-width: 1180px) { .hint { display: none; } }
   @media (max-width: 760px) { .panel { width: auto; right: 16px; top: auto; max-height: 40vh; } .hint { display: none; }
+    .plan { display: none; }
     .transport { left: 50%; top: 12px; bottom: auto; } .transport .clock, .transport label { display: none; } }
 </style>
 </head>
@@ -108,6 +121,17 @@
   <section>
     <label class="note" style="display:block;margin:0"><input id="axes" type="checkbox" checked> Show the X, Y, Z axes of the machine's CAD (mm, origin at the 0)</label>
   </section>
+</aside>
+
+<aside class="plan" aria-label="Tray plan">
+  <h2>Tray from above</h2>
+  <svg id="plan" role="img" aria-label="Plan view of the tray showing where each product is packed"></svg>
+  <p class="note" id="planNote"></p>
+  <div class="kpis">
+    <div class="kpi"><span>Layers</span><b id="planLayers">0</b></div>
+    <div class="kpi"><span>Products per tray</span><b id="planTotal">0</b></div>
+  </div>
+  <p class="note" id="planPair" hidden></p>
 </aside>
 
 <div class="transport" role="group" aria-label="Playback">
@@ -1277,6 +1301,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     fillStation();
     buildHead();
     describeSku();
+    drawPlan();
   }
 
   function describeSku() {
@@ -1295,6 +1320,72 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       dt.textContent = k; dd.textContent = v;
       $("skuInfo").append(dt, dd);
     }
+  }
+
+  // ---------- tray plan ----------
+  // The tray (or the two half trays side by side) from above, drawn from the
+  // same slots the arm fills. Each product carries the number of the lift that
+  // packs it; the layer being packed fills in as the arm works.
+  const SVG = "http://www.w3.org/2000/svg";
+  const el = (name, attrs, parent) => {
+    const node = document.createElementNS(SVG, name);
+    for (const key of Object.keys(attrs)) node.setAttribute(key, attrs[key]);
+    parent.append(node);
+    return node;
+  };
+  let planSlots = [];
+  function drawPlan() {
+    const svg = $("plan"), pat = state.pattern, tray = state.sku.tray, wall = CELL.trayWall;
+    svg.innerHTML = "";
+    planSlots = [];
+    const pair = pat.trays === 2;
+    // Station x runs along the 600: a half tray lies with its width along it.
+    const trayX = pair ? tray.width : tray.length, trayY = pair ? tray.length : tray.width;
+    const spanX = pair ? pat.trayPitch + trayX : trayX;
+    const pad = wall + 14;
+    svg.setAttribute("viewBox", `${-spanX / 2 - pad} ${-trayY / 2 - pad} ${spanX + 2 * pad} ${trayY + 2 * pad}`);
+    for (let k = 0; k < pat.trays; k++) {
+      const cx = pair ? (k - 0.5) * pat.trayPitch : 0;
+      el("rect", { class: "tray", x: cx - trayX / 2 - wall / 2, y: -trayY / 2 - wall / 2, width: trayX + wall, height: trayY + wall, rx: 18 }, svg);
+    }
+    const sizeX = pair ? pat.slotSize.width : pat.slotSize.length, sizeY = pair ? pat.slotSize.length : pat.slotSize.width;
+    const picture = state.images[state.sku.id] || (/^(https?:|data:)/i.test(state.sku.image || "") ? state.sku.image : null);
+    const perPick = state.sim.config.productsPerPick;
+    for (const slot of pat.stationSlots.filter((q) => q.layer === 0)) {
+      const g = el("g", {}, svg);
+      const rect = el("rect", { class: "slot", x: slot.x - sizeX / 2 + 3, y: slot.y - sizeY / 2 + 3, width: sizeX - 6, height: sizeY - 6, rx: 10 }, g);
+      let image = null;
+      if (picture) {
+        // The picture is of the product lying lengthways; turn it where the product is turned.
+        const long = Math.max(sizeX, sizeY) - 6, short = Math.min(sizeX, sizeY) - 6;
+        const lengthAlongY = sizeY > sizeX;
+        image = el("image", { href: picture, x: slot.x - long / 2, y: slot.y - short / 2, width: long, height: short, preserveAspectRatio: "none",
+          transform: lengthAlongY ? `rotate(90 ${slot.x} ${slot.y})` : "" }, g);
+      }
+      const text = el("text", { x: slot.x, y: slot.y }, g);
+      planSlots.push({ rect, image, text, place: slot.index, perPick });
+    }
+    $("planLayers").textContent = pat.layers;
+    $("planTotal").textContent = pat.perTray;
+    $("planPair").hidden = !pair;
+    $("planPair").textContent = pair ? `Two half-size trays side by side, packed together: ${pat.total} products each time.` : "";
+    updatePlan();
+  }
+  function updatePlan() {
+    if (!state.sim || !planSlots.length) return;
+    const pat = state.pattern, perLayer = pat.perLayer * pat.trays;
+    const count = state.sim.crate.changing ? pat.total : state.sim.crate.count;
+    const layer = Math.min(pat.layers - 1, Math.floor(count / perLayer));
+    for (const q of planSlots) {
+      const index = layer * perLayer + q.place;
+      const packed = index < count;
+      q.rect.setAttribute("class", "slot" + (packed ? " packed" : layer > 0 ? " below" : ""));
+      if (q.image) q.image.style.display = packed ? "" : "none";
+      q.text.textContent = Math.floor(index / q.perPick) + 1;
+      q.text.style.opacity = packed && q.image ? 0 : 1;
+    }
+    $("planNote").textContent = state.sim.crate.changing ? "Tray full: changing trays"
+      : `Packing layer ${layer + 1} of ${pat.layers}. Numbers are the lift that packs each product.`;
   }
 
   // ---------- frame loop ----------
@@ -1472,6 +1563,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   }
 
   function showStats(sim) {
+    updatePlan();
     const capacity = Engine.estimateCapacityPpm(sim.config);
     const set = (id, text) => { $(id).textContent = text; };
     set("sPacked", sim.stats.packed);

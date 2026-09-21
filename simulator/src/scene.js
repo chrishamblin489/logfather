@@ -424,6 +424,7 @@
     fillStation();
     buildHead();
     describeSku();
+    drawPlan();
   }
 
   function describeSku() {
@@ -442,6 +443,72 @@
       dt.textContent = k; dd.textContent = v;
       $("skuInfo").append(dt, dd);
     }
+  }
+
+  // ---------- tray plan ----------
+  // The tray (or the two half trays side by side) from above, drawn from the
+  // same slots the arm fills. Each product carries the number of the lift that
+  // packs it; the layer being packed fills in as the arm works.
+  const SVG = "http://www.w3.org/2000/svg";
+  const el = (name, attrs, parent) => {
+    const node = document.createElementNS(SVG, name);
+    for (const key of Object.keys(attrs)) node.setAttribute(key, attrs[key]);
+    parent.append(node);
+    return node;
+  };
+  let planSlots = [];
+  function drawPlan() {
+    const svg = $("plan"), pat = state.pattern, tray = state.sku.tray, wall = CELL.trayWall;
+    svg.innerHTML = "";
+    planSlots = [];
+    const pair = pat.trays === 2;
+    // Station x runs along the 600: a half tray lies with its width along it.
+    const trayX = pair ? tray.width : tray.length, trayY = pair ? tray.length : tray.width;
+    const spanX = pair ? pat.trayPitch + trayX : trayX;
+    const pad = wall + 14;
+    svg.setAttribute("viewBox", `${-spanX / 2 - pad} ${-trayY / 2 - pad} ${spanX + 2 * pad} ${trayY + 2 * pad}`);
+    for (let k = 0; k < pat.trays; k++) {
+      const cx = pair ? (k - 0.5) * pat.trayPitch : 0;
+      el("rect", { class: "tray", x: cx - trayX / 2 - wall / 2, y: -trayY / 2 - wall / 2, width: trayX + wall, height: trayY + wall, rx: 18 }, svg);
+    }
+    const sizeX = pair ? pat.slotSize.width : pat.slotSize.length, sizeY = pair ? pat.slotSize.length : pat.slotSize.width;
+    const picture = state.images[state.sku.id] || (/^(https?:|data:)/i.test(state.sku.image || "") ? state.sku.image : null);
+    const perPick = state.sim.config.productsPerPick;
+    for (const slot of pat.stationSlots.filter((q) => q.layer === 0)) {
+      const g = el("g", {}, svg);
+      const rect = el("rect", { class: "slot", x: slot.x - sizeX / 2 + 3, y: slot.y - sizeY / 2 + 3, width: sizeX - 6, height: sizeY - 6, rx: 10 }, g);
+      let image = null;
+      if (picture) {
+        // The picture is of the product lying lengthways; turn it where the product is turned.
+        const long = Math.max(sizeX, sizeY) - 6, short = Math.min(sizeX, sizeY) - 6;
+        const lengthAlongY = sizeY > sizeX;
+        image = el("image", { href: picture, x: slot.x - long / 2, y: slot.y - short / 2, width: long, height: short, preserveAspectRatio: "none",
+          transform: lengthAlongY ? `rotate(90 ${slot.x} ${slot.y})` : "" }, g);
+      }
+      const text = el("text", { x: slot.x, y: slot.y }, g);
+      planSlots.push({ rect, image, text, place: slot.index, perPick });
+    }
+    $("planLayers").textContent = pat.layers;
+    $("planTotal").textContent = pat.perTray;
+    $("planPair").hidden = !pair;
+    $("planPair").textContent = pair ? `Two half-size trays side by side, packed together: ${pat.total} products each time.` : "";
+    updatePlan();
+  }
+  function updatePlan() {
+    if (!state.sim || !planSlots.length) return;
+    const pat = state.pattern, perLayer = pat.perLayer * pat.trays;
+    const count = state.sim.crate.changing ? pat.total : state.sim.crate.count;
+    const layer = Math.min(pat.layers - 1, Math.floor(count / perLayer));
+    for (const q of planSlots) {
+      const index = layer * perLayer + q.place;
+      const packed = index < count;
+      q.rect.setAttribute("class", "slot" + (packed ? " packed" : layer > 0 ? " below" : ""));
+      if (q.image) q.image.style.display = packed ? "" : "none";
+      q.text.textContent = Math.floor(index / q.perPick) + 1;
+      q.text.style.opacity = packed && q.image ? 0 : 1;
+    }
+    $("planNote").textContent = state.sim.crate.changing ? "Tray full: changing trays"
+      : `Packing layer ${layer + 1} of ${pat.layers}. Numbers are the lift that packs each product.`;
   }
 
   // ---------- frame loop ----------
@@ -619,6 +686,7 @@
   }
 
   function showStats(sim) {
+    updatePlan();
     const capacity = Engine.estimateCapacityPpm(sim.config);
     const set = (id, text) => { $(id).textContent = text; };
     set("sPacked", sim.stats.packed);
