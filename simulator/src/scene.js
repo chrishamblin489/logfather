@@ -41,7 +41,7 @@
     hover: 130,             // how far above the products the head waits
     trayWall: 12,
   };
-  const COLORS = { arm: 0xf08a24, joint: 0x2b2f36, belt: 0x30363d, frame: 0x9aa4af, gate: 0xd9482b,
+  const COLORS = { arm: 0xf08a24, joint: 0x2b2f36, belt: 0x30363d, frame: 0x9aa4af, gate: 0x52c6da,
     tray: 0x1f7a4d, cup: 0x1b1e23, punnet: 0xdfe7ea, floor: 0xe9edf0 };
 
   const $ = (id) => document.getElementById(id);
@@ -58,10 +58,10 @@
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(38, 1, 50, 30000);
-  const dark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
+  // Leap's brand ground (helloleap.ai): near-black, the same in every browser theme.
   function applyTheme() {
-    scene.background = new THREE.Color(dark() ? 0x14191f : 0xf3f5f7);
-    floor.material.color.set(dark() ? 0x1d242c : COLORS.floor);
+    scene.background = new THREE.Color(0x13151a);
+    floor.material.color.set(0x1b1e26);
   }
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f98, 1.0));
@@ -447,7 +447,6 @@
       ["Tray", `${s.tray.name || "Tray"}: ${s.tray.length} x ${s.tray.width} x ${s.tray.depth} mm inside` + (p.trays === 2 ? ", two side by side" : "")],
       ["Layout", `${s.rows} x ${s.columns} per layer, ${s.layers} layer${s.layers > 1 ? "s" : ""}: ${p.perTray} per tray` + (p.rotated ? ", turned 90 degrees" : "")],
       ["Room to spare", `x ${p.spare.x} mm, y ${p.spare.y} mm, z ${p.spare.z} mm` + (p.tight ? " (tight fit, inside the squeeze allowance)" : "")],
-      ["On the belt", `${p.leading === "length" ? "narrow" : "wide"} edge leading, so a line of ${perPick} is ${Math.round(perPick * p.linePitch)} mm long` + (placeYaw() ? " and turns a quarter turn into the tray" : "")],
       ["Each lift", `${perPick} products` + (perPick < s.productsPerPick ? ` (not ${s.productsPerPick}: one rigid line cannot cross between two trays)` : "") + (s.weightG ? `, ${kg.toFixed(2)} kg of the arm's ${Arm.SPEC.payloadKg} kg` : "")],
     ];
     for (const [k, v] of rows) {
@@ -492,8 +491,8 @@
       let image = null;
       if (picture) {
         // The picture is of the product lying lengthways; turn it where the product is turned.
-        const long = (lengthAlongY ? sizeY : sizeX) - 6, short = (lengthAlongY ? sizeX : sizeY) - 6;
         const lengthAlongY = (pat.line === "y") === (pat.leading === "length");
+        const long = (lengthAlongY ? sizeY : sizeX) - 6, short = (lengthAlongY ? sizeX : sizeY) - 6;
         image = el("image", { href: picture, x: slot.x - long / 2, y: slot.y - short / 2, width: long, height: short, preserveAspectRatio: "none",
           transform: lengthAlongY ? `rotate(90 ${slot.x} ${slot.y})` : "" }, g);
       }
@@ -810,7 +809,6 @@
   // ---------- start ----------
   const builtIn = Sku.parseSkuFile($("builtInSkus").textContent, "built-in.csv");
   state.skus = builtIn.skus;
-  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
   applyTheme();
   placeCamera();
   resize();

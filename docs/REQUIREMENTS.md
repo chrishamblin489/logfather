@@ -153,6 +153,21 @@ Living record of agreed functionality: what is open, and what has shipped
   when the next tray change is due, which then waits; `crateChangeS` is now
   the index-on plus the next empty tray coming in. The nearest tray place
   is inside the arm's unreachable column, which this explains.
+- Simulator branding (Chris, 2026-09-22): matched to helloleap.ai, read off the
+  live site: the Leap AI logo (the site's own SVG, `simulator/assets/`) in
+  place of the words "Leap Automation"; one dark theme on the brand's
+  near-black (#13151a) because the logo is drawn for a dark ground; teal
+  accent (#52c6da) for section labels, the play button, the chosen speed and
+  the gate; blue (#3b82f6) for the paused state; Plus Jakarta Sans embedded
+  in the file (27 KB, OFL) so it still works offline; 8 and 16 px corners.
+- Simulator product pictures (Chris, 2026-09-22, who cleared the downloads and
+  the copyright question): top-down pack photos fetched from Open Food
+  Facts, cropped lengthways to the punnet, kept with the customer SKU file
+  in `simulator/skus/images/` (out of git). Found so far: Aldi 400g closed
+  cup, Tesco closed cup (two), Tesco 200g baby button. Open Food Facts
+  throttles searches and the retailers' sites block scripted access, so
+  the rest still need finding. CAD axes now hidden by default; the "On the
+  belt" line was removed from the panel (Chris).
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 
