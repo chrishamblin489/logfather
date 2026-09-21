@@ -78,6 +78,18 @@ Living record of agreed functionality: what is open, and what has shipped
   tray 400 x 300 or less inside; `perStation` is what is packed between two
   tray changes. three.js r160 is vendored in `simulator/vendor/` for the
   single-file page.
+- Simulator page, first version (Chris): `python simulator/build.py` inlines
+  three.js, the engine, the arm, the SKU reader and `src/scene.js` into
+  `simulator/pikpak-simulator.html`, one file that works offline. 3D cell
+  in simple blocks: infeed belt, the gate across it, the AUBO i10 on a
+  pedestal posed by `solveToolDown` every frame, a vacuum head with one cup
+  per product, the tray station (one tray or two half trays) on a
+  placeholder track that rolls full trays out. Moves swing around the
+  robot's base. Panel: product list, upload of SKU file plus pictures (the
+  picture goes on the product's top face), refused and tight-fit lines,
+  sliders for arrivals, spacing, belt speed, robot move, tray change and
+  playback speed, and the result (packed per minute, the most it can pack,
+  arm busy, belt backed up, a plain keeps-up verdict). Orbit, zoom, pan.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

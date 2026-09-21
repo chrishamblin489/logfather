@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PikPak Simulator</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --surface: #ffffff; --surface-2: #f3f5f7; --ink: #14202b; --ink-2: #4a5866; --ink-3: #7b8794;
+    --rule: #d9dfe5; --accent: #eb6834; --ok: #1f7a4d; --over: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --surface: #1b2128; --surface-2: #14191f; --ink: #e8edf2; --ink-2: #b3bdc8; --ink-3: #8592a0; --rule: #2f3843; --ok: #4cc38a; --over: #ff7b6b; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--surface-2); color: var(--ink); font: 14px/1.45 "Segoe UI", "Helvetica Neue", Arial, system-ui, sans-serif; overflow: hidden; }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #view:active { cursor: grabbing; }
+  .panel { position: fixed; top: 16px; left: 16px; bottom: 16px; width: 340px; overflow-y: auto; padding: 18px;
+    background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 10px; display: grid; gap: 16px; align-content: start; }
+  .eyebrow { font: 600 11px/1 Consolas, "SF Mono", Menlo, ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+  h1 { font: 600 22px/1.15 "Segoe UI Semibold", "Segoe UI", system-ui, sans-serif; margin: 6px 0 0; }
+  h2 { font: 600 12px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 8px; }
+  section { border-top: 1px solid var(--rule); padding-top: 14px; }
+  select, button, .upload { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 10px; }
+  select { width: 100%; }
+  button, .upload { cursor: pointer; }
+  button:hover, .upload:hover { border-color: var(--accent); }
+  .upload { display: inline-block; margin-top: 8px; }
+  .upload input { display: none; }
+  .note { color: var(--ink-3); font-size: 12px; margin: 6px 0 0; }
+  dl { display: grid; grid-template-columns: 96px 1fr; gap: 4px 10px; margin: 10px 0 0; }
+  dt { color: var(--ink-3); } dd { margin: 0; }
+  .control { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-bottom: 10px; }
+  .control input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+  .control output, .kpi b { font-family: Consolas, "SF Mono", Menlo, ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kpi { border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; background: var(--surface); }
+  .kpi span { display: block; color: var(--ink-3); font-size: 12px; }
+  .kpi b { font-size: 20px; font-weight: 600; }
+  .verdict { margin: 10px 0 0; padding: 8px 10px; border-radius: 6px; border-left: 3px solid var(--ok); background: var(--surface); }
+  .verdict.over { border-left-color: var(--over); }
+  #problems { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
+  #problems .error { color: var(--over); } #problems .warning { color: var(--ink-2); }
+  .row { display: flex; gap: 8px; }
+  #reach { position: fixed; right: 16px; top: 16px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--over); color: var(--over); }
+  .hint { position: fixed; right: 16px; bottom: 12px; color: var(--ink-3); font-size: 12px; }
+  @media (max-width: 760px) { .panel { width: auto; right: 16px; top: auto; max-height: 46vh; } .hint { display: none; } }
+</style>
+</head>
+<body>
+<canvas id="view" aria-label="3D view of the PikPak cell: infeed belt, gate, robot arm and tray station"></canvas>
+
+<aside class="panel">
+  <header>
+    <div class="eyebrow">Leap Automation</div>
+    <h1>PikPak Simulator</h1>
+  </header>
+
+  <section>
+    <h2>Product</h2>
+    <select id="sku" aria-label="Product"></select>
+    <label class="upload">Upload SKU file and pictures
+      <input id="files" type="file" multiple accept=".csv,.json,.txt,image/*">
+    </label>
+    <p class="note" id="uploadNote"></p>
+    <ul id="problems"></ul>
+    <dl id="skuInfo"></dl>
+  </section>
+
+  <section>
+    <h2>Line</h2>
+    <div class="control"><label for="infeed">Products arriving</label><output id="infeedV"></output>
+      <input id="infeed" type="range" min="5" max="160" step="1" value="60"></div>
+    <div class="control"><label for="spacing">Spacing</label>
+      <select id="spacing" style="grid-column:1/-1"><option value="even">Even</option><option value="random">Random</option></select></div>
+    <div class="control"><label for="belt">Belt speed</label><output id="beltV"></output>
+      <input id="belt" type="range" min="100" max="800" step="10" value="400"></div>
+    <div class="control"><label for="cycle">Robot move (pick, place, return)</label><output id="cycleV"></output>
+      <input id="cycle" type="range" min="1.2" max="5" step="0.01" value="1.71"></div>
+    <div class="control"><label for="change">Tray change</label><output id="changeV"></output>
+      <input id="change" type="range" min="1" max="15" step="0.5" value="4"></div>
+  </section>
+
+  <section>
+    <h2>Result</h2>
+    <div class="kpis">
+      <div class="kpi"><span>Packed per minute</span><b id="sPpm">0</b></div>
+      <div class="kpi"><span>Most it can pack</span><b id="sCapacity">0</b></div>
+      <div class="kpi"><span>Products packed</span><b id="sPacked">0</b></div>
+      <div class="kpi"><span>Trays filled</span><b id="sTrays">0</b></div>
+      <div class="kpi"><span>Arm busy</span><b id="sBusy">0%</b></div>
+      <div class="kpi"><span>Belt backed up</span><b id="sBlocked">0 s</b></div>
+    </div>
+    <p id="verdict" class="verdict"></p>
+  </section>
+
+  <section>
+    <div class="control"><label for="speed">Playback speed</label><output id="speedV"></output>
+      <input id="speed" type="range" min="0.25" max="4" step="0.25" value="1"></div>
+    <div class="row"><button id="pause">Pause</button><button id="reset">Restart</button>
+      <span class="note" style="margin-left:auto">Run time <span id="sTime">0 s</span></span></div>
+  </section>
+</aside>
+
+<div id="reach" hidden>That point is outside the arm's reach</div>
+<div class="hint">Drag to turn, scroll to zoom, right-drag to move</div>
+
+<script id="builtInSkus" type="text/plain">__BUILT_IN_SKUS__</script>
+<script>__THREE__</script>
+<script>__ENGINE__</script>
+<script>__AUBO__</script>
+<script>__SKU__</script>
+<script>__SCENE__</script>
+</body>
+</html>
