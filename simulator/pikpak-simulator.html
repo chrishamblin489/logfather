@@ -100,6 +100,7 @@
   <section>
     <div class="control"><label for="speed">Playback speed</label><output id="speedV"></output>
       <input id="speed" type="range" min="0.25" max="4" step="0.25" value="1"></div>
+    <label class="note" style="display:block;margin:0 0 10px"><input id="axes" type="checkbox" checked> Show the X, Y, Z axes of the machine's CAD (mm, origin at the 0)</label>
     <div class="row"><button id="pause">Pause</button><button id="reset">Restart</button>
       <span class="note" style="margin-left:auto">Run time <span id="sTime">0 s</span></span></div>
   </section>
@@ -847,30 +848,31 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
 
   // Cell layout: every position and size below is read out of the PikPak 2
   // general assembly (QLT35-001-7303) and reduced to plain blocks. Scene x
-  // runs along the machine in the direction the products travel (CAD z), z
-  // across it measured from the centre of the product belt (CAD x + 2755),
-  // y up from the floor. The CAD names are in the comments.
+  // runs along the machine in the direction the products travel (CAD +Z), y
+  // is up (CAD +Y), and z = -(CAD X + 2755): across the machine from the
+  // centre of the product belt, the tray lanes on the negative side. That is
+  // a turn of the CAD, not a mirror image of it. CAD names are in the comments.
   const CELL = {
     // INFEED CONVEYOR, 4.2m LONG, 405mm WIDE, 48m/min
     belt: { x0: -2370, x1: 1830, top: 730, width: 405, bodyWidth: 580, bodyDepth: 156 },
     // Not found in the CAD: where the line of products is held, level with the arm and the camera.
     gateX: -90,
     // WELDMENT FRAME
-    frame: { x0: -901, x1: 900, z0: -305, z1: 1805, height: 2140, plinth: 200 },
+    frame: { x0: -901, x1: 900, z0: -1805, z1: 305, height: 2140, plinth: 200 },
     // ROBOT, iS SERIES on WELDMENT, ROBOT PEDESTAL
-    robot: { x: -441, z: 468, pedestal: 690, pedestalX: 185, pedestalZ: 360 },
+    robot: { x: -441, z: -468, pedestal: 690, pedestalX: 185, pedestalZ: 360 },
     // CONVEYOR WITH RIVETS (internal tray belt, 600 wide) up to the ejector arm's END STOP GUIDE
-    trayBelt: { x0: -316, x1: 885, z: 670, width: 818, top: 471, endStop: -275 },
-    station: { x: -75, z: 670, floor: 471 },     // a 400 deep tray hard against the end stop
+    trayBelt: { x0: -316, x1: 885, z: -670, width: 818, top: 471, endStop: -275 },
+    station: { x: -75, z: -670, floor: 471 },     // a 400 deep tray hard against the end stop
     // POWERED ROLLERS ASSY, 1.2m SECTION (internal outfeed lane)
-    rollers: { x0: -315, x1: 889, z: 1368, width: 686, top: 466 },
+    rollers: { x0: -315, x1: 889, z: -1368, width: 686, top: 466 },
     // EXTERNAL INFEED ROLLERS: gravity lane, empty trays run down it into the machine
-    trayIn: { x0: 890, x1: 3290, z: 672, width: 686, topNear: 477, topFar: 655 },
+    trayIn: { x0: 890, x1: 3290, z: -672, width: 686, topNear: 477, topFar: 655 },
     // EXTERNAL OUTFEED ROLLERS: gravity lane with an END STOP, full trays run out along it
-    trayOut: { x0: 921, x1: 3321, z: 1368, width: 686, topNear: 402, topFar: 300 },
-    controlBox: { x: 64, z: -24, y: 467, size: [441, 176, 351] },    // ROBOT CONTROL BOX, under the belt
-    camera: { x: -465, z: 52, y: 1590, size: [195, 63, 60] },        // CAMERA ENCLOSURE over the pick
-    hmi: { x: -1096, z: -223, y: 1275, size: [270, 217, 40] },       // HMI TABLET CASE
+    trayOut: { x0: 921, x1: 3321, z: -1368, width: 686, topNear: 402, topFar: 300 },
+    controlBox: { x: 64, z: 24, y: 467, size: [441, 176, 351] },    // ROBOT CONTROL BOX, under the belt
+    camera: { x: -465, z: -52, y: 1590, size: [195, 63, 60] },        // CAMERA ENCLOSURE over the pick
+    hmi: { x: -1096, z: 223, y: 1275, size: [270, 217, 40] },       // HMI TABLET CASE
     headDrop: 170,          // tool flange down to the cup lips
     hover: 130,             // how far above the products the head waits
     trayWall: 12,
@@ -900,8 +902,8 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f98, 1.0));
   const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-  sun.position.set(-900, 4200, -2200);
-  sun.target.position.set(300, 500, 700);
+  sun.position.set(-900, 4200, 2200);
+  sun.target.position.set(300, 500, -700);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -3800, right: 3800, top: 3800, bottom: -3800, near: 100, far: 10000 });
@@ -919,7 +921,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   }
 
   // Minimal orbit control: drag to turn, wheel to zoom, right-drag or shift-drag to pan.
-  const orbit = { target: new THREE.Vector3(350, 600, 700), radius: 8600, theta: -2.75, phi: 0.98 };
+  const orbit = { target: new THREE.Vector3(450, 600, -650), radius: 8600, theta: -0.42, phi: 0.98 };
   function placeCamera() {
     const s = Math.sin(orbit.phi);
     camera.position.set(
@@ -965,6 +967,38 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     camera.updateProjectionMatrix();
   }
   window.addEventListener("resize", resize);
+
+  // ---------- axes ----------
+  // The STEP file's own axes, drawn at its origin (on the floor, beyond the tray
+  // lanes), so a position read off the CAD can be found in the scene and back.
+  const axes = new THREE.Group();
+  scene.add(axes);
+  function label(text, color) {
+    const c = document.createElement("canvas");
+    c.width = 256; c.height = 128;
+    const g = c.getContext("2d");
+    g.font = "600 84px Segoe UI, Arial, sans-serif";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillStyle = color;
+    g.fillText(text, 128, 66);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+    sprite.scale.set(360, 180, 1);
+    return sprite;
+  }
+  (function buildAxes() {
+    const origin = new THREE.Vector3(0, 0, -2755);   // CAD (0, 0, 0)
+    const each = [["X", new THREE.Vector3(0, 0, -1), "#e5484d"], ["Y", new THREE.Vector3(0, 1, 0), "#30a46c"], ["Z", new THREE.Vector3(1, 0, 0), "#3b82f6"]];
+    for (const [name, dir, color] of each) {
+      axes.add(new THREE.ArrowHelper(dir, origin, 800, color, 160, 90));
+      const text = label(name, color);
+      text.position.copy(origin).addScaledVector(dir, 980);
+      axes.add(text);
+    }
+    const zero = label("0", "#8592a0");
+    zero.position.copy(origin).add(new THREE.Vector3(-150, 60, 150));
+    zero.scale.set(240, 120, 1);
+    axes.add(zero);
+  })();
 
   // ---------- the cell ----------
   const cell = new THREE.Group();        // rebuilt per SKU: belt, gate, station
@@ -1018,7 +1052,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     put(box(tb.x1 - tb.x0, 185, tb.width, COLORS.frame, steel), (tb.x0 + tb.x1) / 2, tb.top - 10 - 92, tb.z);
     put(box(1047, 10, 600, COLORS.belt, { roughness: 0.9 }), (tb.x0 + tb.x1) / 2, tb.top - 5, tb.z);
     put(box(8, 90, 710, 0xd5dbe1, steel), tb.endStop - 4, 687, tb.z);   // END STOP GUIDE
-    put(box(60, 120, 834, 0x5b6673, steel), tb.endStop - 60, tb.top + 40, tb.z + 25);   // EJECTOR ARM's cylinder, across the lane
+    put(box(60, 120, 834, 0x5b6673, steel), tb.endStop - 60, tb.top + 40, tb.z - 25);   // EJECTOR ARM's cylinder, across the lane
     legs([tb.x0 + 60, tb.x1 - 60], [tb.z - 300, tb.z + 300], tb.top - 195);
     const ro = CELL.rollers;
     lane(ro.x0, ro.x1, ro.z, ro.width, ro.top, ro.top, 170, COLORS.frame);
@@ -1079,7 +1113,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     for (let k = 0; k < n; k++) {
       const tray = trayMesh(state.sku.tray);
       // Either way the unit is 600 across the lane and 400 along it.
-      if (n === 2) tray.position.z = (k - 0.5) * state.pattern.trayPitch;
+      if (n === 2) tray.position.z = -(k - 0.5) * state.pattern.trayPitch;
       else tray.rotation.y = Math.PI / 2;
       unit.add(tray);
     }
@@ -1128,7 +1162,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   }
 
   // The station's long side (600) lies across the lane, so the pattern's x runs along scene z.
-  const slotLocal = (slot) => new THREE.Vector3(slot.y, CELL.trayWall + slot.z + state.pattern.slotSize.height / 2, slot.x);
+  const slotLocal = (slot) => new THREE.Vector3(slot.y, CELL.trayWall + slot.z + state.pattern.slotSize.height / 2, -slot.x);
   const slotWorld = (slot) => slotLocal(slot).add(new THREE.Vector3(CELL.station.x, CELL.station.floor, CELL.station.z));
   // On the belt a product's length runs along x; in the tray it lies along the
   // pattern's x (scene z) unless the pattern turned it.
@@ -1167,10 +1201,10 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     ["upperArmEnd", knuckle(D.elbowJoint / 2)], ["forearmStart", knuckle(D.elbowJoint / 2)],
     ["forearmEnd", knuckle(D.wristJoint / 2)], ["wrist1", knuckle(D.wristJoint / 2)], ["wrist2", knuckle(D.wristJoint / 2)]];
   // Robot frame (z up) -> scene (y up), base on top of the pedestal.
-  const armToWorld = (p) => new THREE.Vector3(CELL.robot.x + p.x, CELL.robot.pedestal + p.z, CELL.robot.z + p.y);
+  const armToWorld = (p) => new THREE.Vector3(CELL.robot.x + p.x, CELL.robot.pedestal + p.z, CELL.robot.z - p.y);
 
   function poseArm(flangeWorld, yaw) {
-    const pose = Arm.solveToolDown({ x: flangeWorld.x - CELL.robot.x, y: flangeWorld.z - CELL.robot.z, z: flangeWorld.y - CELL.robot.pedestal }, yaw);
+    const pose = Arm.solveToolDown({ x: flangeWorld.x - CELL.robot.x, y: CELL.robot.z - flangeWorld.z, z: flangeWorld.y - CELL.robot.pedestal }, yaw);
     if (pose.reachable) state.armPose = pose;
     if (!state.armPose) return;
     const pts = {};
@@ -1302,7 +1336,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
 
     poseArm(flange, yaw);
     head.position.copy(flange);
-    head.rotation.y = -yaw;
+    head.rotation.y = yaw;
     // Cups sit over each product; with nothing held they wait at the belt pitch.
     let minX = Infinity, maxX = -Infinity;
     cups.forEach((cup, i) => {
@@ -1457,6 +1491,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   $("speed").addEventListener("input", () => { state.speed = +$("speed").value; showValues(); });
   $("pause").addEventListener("click", () => { state.running = !state.running; $("pause").textContent = state.running ? "Pause" : "Play"; });
   $("reset").addEventListener("click", restart);
+  $("axes").addEventListener("change", () => { axes.visible = $("axes").checked; });
   function showValues() {
     $("infeedV").textContent = $("infeed").value + " / min";
     $("beltV").textContent = $("belt").value + " mm/s";

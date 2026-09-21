@@ -106,6 +106,14 @@ Living record of agreed functionality: what is open, and what has shipped
   to the outfeed end stop and is lifted off after a while. The 3D view is
   centred beside the panel. Not in the CAD, so still an estimate: the
   product gate (placed so the line sits level with the robot and camera).
+- Simulator axes and handedness (Chris, 2026-09-22): the STEP file's own X,
+  Y, Z axes are drawn at its origin (checkbox in the panel), so a position
+  read off the CAD maps straight into the scene: scene x = CAD Z, y = CAD Y,
+  z = -(CAD X + 2755). The first CAD layout had the CAD X sign wrong, which
+  made the scene a mirror image of the machine (robot and tray lanes on the
+  wrong side of the belt, arm offsets mirrored); now a true turn. Trays
+  travel 600 across the lane, 400 along it (Chris: they were 90 degrees
+  out). Default view is from the HMI side: products run left to right.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 
