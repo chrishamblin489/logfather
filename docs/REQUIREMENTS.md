@@ -19,7 +19,6 @@ Living record of agreed functionality: what is open, and what has shipped
 - CCTV retention beyond ~30 days (2026-09-05): company decision on the
   share; the app assumes nothing about 30 days except the 14-day
   day-listing cache TTL and the overview's 14-day clip-scan cutoff.
-
 - PikPak customer simulator (Chris, 2026-09-21): interactive 3D page for
   sales meetings, one self-contained HTML in `simulator/`. The customer sets
   product size/shape, a photo for the top of the punnet, crate and pack
@@ -27,7 +26,9 @@ Living record of agreed functionality: what is open, and what has shipped
   real cell: infeed conveyor, the gate the products line up against, a
   simplified AUBO i10 arm with its vacuum-cup array, and the tray change
   system (Chris to describe). Engine and arm geometry shipped (below); the
-  3D scene is next. Still needed: real figures for cycle time, tray change
+  3D scene, with the SKU upload button and product list, is next. Still
+  needed: inside sizes of the standard trays (600 x 400 is the nominal
+  outside), a better-picture search for weak SKU images, and real figures for cycle time, tray change
   time and belt speed (the engine's defaults are placeholders, not claims).
 
 ## Shipped
@@ -51,6 +52,18 @@ Living record of agreed functionality: what is open, and what has shipped
   down, with the points the links are drawn between) and `minMoveTime`
   (joint-speed floor for a move). Housing diameters are scaled off the
   drawing, marked approximate.
+- Simulator SKU files (Chris): `simulator/src/sku.js` reads what the sales
+  team uploads, CSV saved from Excel (comma, semicolon with decimal commas,
+  tab, BOM, loose header spellings) or JSON. One line = one product in one
+  tray: product length/width/height mm, weight, top-down picture, tray
+  inside size (blank length and width = 600 x 400, most trays), rows x
+  columns per layer, layers, optional products per pick and orientation.
+  Fit check (Chris): `layoutPattern` in the engine works out the spare room
+  in x (tray length), y (tray width) and z (depth to the rim); a line where
+  any is below 0 is refused with the shortfall in mm, so it never reaches
+  the simulation. Missing weight or picture only warns. Pictures are paired
+  by file name (`matchImages`). Template and column guide in
+  `simulator/skus/`.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

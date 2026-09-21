@@ -17,6 +17,7 @@ vendor/
 *.txt
 !requirements.txt
 !requirements-dev.txt
+!simulator/skus/sku_template.csv
 version.json
 
 # Per-user settings (contains Elastic API key)
