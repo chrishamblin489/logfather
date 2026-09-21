@@ -168,6 +168,15 @@ Living record of agreed functionality: what is open, and what has shipped
   throttles searches and the retailers' sites block scripted access, so
   the rest still need finding. CAD axes now hidden by default; the "On the
   belt" line was removed from the panel (Chris).
+- Simulator customer builds (Chris, 2026-09-22: "populate the product dropdown"):
+  `build.py` also writes one file per customer SKU list in `skus/`,
+  `pikpak-simulator-<list>.html`, with that customer's products already in
+  the dropdown (real sizes, weights, trays, layouts and line rate) and their
+  pictures from `skus/images/` built in, so nothing has to be uploaded in the
+  meeting. Customer builds, lists and pictures all stay out of git; the
+  generic page keeps the two example products. Products whose layout does
+  not fit are listed in the dropdown greyed out. Panel wording: "kg total
+  payload" (Chris).
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

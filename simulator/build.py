@@ -4,8 +4,15 @@ Inlines three.js, the engine, the arm geometry, the SKU reader, the scene, the
 Leap logo and the brand font into the template, plus the built-in example products (skus/sku_template.csv).
 
     python simulator/build.py
+
+Every other CSV in skus/ (a customer's list, kept out of git) also gets its own
+file, pikpak-simulator-<list name>.html, with those products and their pictures
+(skus/images/) built in.
 """
 import base64
+import csv
+import io
+import mimetypes
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -21,20 +28,41 @@ PARTS = {
 FONT = HERE / "assets" / "PlusJakartaSans-latin.woff2"   # Plus Jakarta Sans (OFL), as on helloleap.ai
 
 
-def build() -> Path:
+def with_pictures(sku_csv: Path) -> str:
+    """The SKU list as CSV text, each picture file name swapped for the picture itself
+    (a data: URI), so the one HTML file carries everything."""
+    rows = list(csv.reader(io.StringIO(sku_csv.read_text(encoding="utf-8-sig"))))
+    column = rows[0].index("image") if "image" in rows[0] else None
+    for row in rows[1:]:
+        if column is None or column >= len(row) or not row[column].strip():
+            continue
+        picture = sku_csv.parent / "images" / row[column].strip()
+        if picture.exists():
+            kind = mimetypes.guess_type(picture.name)[0] or "image/jpeg"
+            row[column] = f"data:{kind};base64,{base64.b64encode(picture.read_bytes()).decode('ascii')}"
+    out = io.StringIO()
+    csv.writer(out, lineterminator="\n").writerows(rows)
+    return out.getvalue()
+
+
+def build(sku_csv: Path | None = None) -> Path:
+    """The generic simulator, or with `sku_csv` a customer's own: their products in the
+    dropdown from the start. Customer builds are named after the list and stay out of git."""
     page = (HERE / "pikpak-simulator.template.html").read_text(encoding="utf-8")
     for placeholder, path in PARTS.items():
         assert page.count(placeholder) == 1, placeholder
-        text = path.read_text(encoding="utf-8")
+        text = with_pictures(sku_csv) if sku_csv and placeholder == "__BUILT_IN_SKUS__" else path.read_text(encoding="utf-8")
         # A literal closing script tag inside a script would end it early.
         page = page.replace(placeholder, text.replace("</script", "<\\/script"))
     assert page.count("__FONT__") == 1
     page = page.replace("__FONT__", base64.b64encode(FONT.read_bytes()).decode("ascii"))
-    out = HERE / "pikpak-simulator.html"
+    out = HERE / (f"pikpak-simulator-{sku_csv.stem}.html" if sku_csv else "pikpak-simulator.html")
     out.write_text(page, encoding="utf-8", newline="\n")
     return out
 
 
 if __name__ == "__main__":
-    built = build()
-    print(f"{built} ({built.stat().st_size / 1024:.0f} KB)")
+    lists = [None] + sorted(p for p in (HERE / "skus").glob("*.csv") if p.name != "sku_template.csv")
+    for sku_list in lists:
+        built = build(sku_list)
+        print(f"{built} ({built.stat().st_size / 1024:.0f} KB)")

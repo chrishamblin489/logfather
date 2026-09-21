@@ -111,7 +111,7 @@
         if (raw[field] !== undefined && String(raw[field]).trim() !== "" && !(Number.isInteger(v) && v > 0)) errors.push(`${field} must be a whole number above 0`);
       }
       if (errors.length) {
-        errors.forEach((message) => problems.push({ level: "error", line, sku: label, message }));
+        errors.forEach((message) => problems.push({ level: "error", line, sku: label, name: String(raw.name || "").trim() || label, message }));
         return;
       }
       let weightG = num("weightG");
@@ -135,7 +135,7 @@
         productsPerPick: Number.isInteger(perPick) && perPick > 0 ? perPick : num("columns"),
         infeedPpm: num("infeedPpm") > 0 ? num("infeedPpm") : null,   // the customer's line rate
       };
-      const warn = (message) => problems.push({ level: "warning", line, sku: label, message });
+      const warn = (message) => problems.push({ level: "warning", line, sku: label, name: sku.name, message });
       if (sku.weightG == null) warn("no weight: the payload check is skipped");
       if (!sku.image) warn("no image: the product is drawn plain");
       // The layout has to fit: room left along the tray (x), across it (y)
@@ -152,7 +152,7 @@
       if (!fit.fits) {
         for (const k of ["x", "y", "z"]) {
           if (fit.spare[k] + fit.allowance[k] < 0) {
-            problems.push({ level: "error", line, sku: label,
+            problems.push({ level: "error", line, sku: label, name: sku.name,
               message: `${what[k]}: ${-fit.spare[k]} mm over, more than the ${fit.allowance[k]} mm squeeze allowance (${squeeze} mm per product)` });
           }
         }

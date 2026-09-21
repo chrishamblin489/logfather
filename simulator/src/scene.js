@@ -46,7 +46,7 @@
 
   const $ = (id) => document.getElementById(id);
   const state = {
-    skus: [], sku: null, pattern: null, sim: null, images: {}, speed: 1, running: true,
+    skus: [], refused: [], sku: null, pattern: null, sim: null, images: {}, speed: 1, running: true,
     meshes: new Map(), placed: [], lastPlace: null, armPose: null, textureCache: {},
   };
 
@@ -447,7 +447,7 @@
       ["Tray", `${s.tray.name || "Tray"}: ${s.tray.length} x ${s.tray.width} x ${s.tray.depth} mm inside` + (p.trays === 2 ? ", two side by side" : "")],
       ["Layout", `${s.rows} x ${s.columns} per layer, ${s.layers} layer${s.layers > 1 ? "s" : ""}: ${p.perTray} per tray` + (p.rotated ? ", turned 90 degrees" : "")],
       ["Room to spare", `x ${p.spare.x} mm, y ${p.spare.y} mm, z ${p.spare.z} mm` + (p.tight ? " (tight fit, inside the squeeze allowance)" : "")],
-      ["Each lift", `${perPick} products` + (perPick < s.productsPerPick ? ` (not ${s.productsPerPick}: one rigid line cannot cross between two trays)` : "") + (s.weightG ? `, ${kg.toFixed(2)} kg of the arm's ${Arm.SPEC.payloadKg} kg` : "")],
+      ["Each lift", `${perPick} products` + (perPick < s.productsPerPick ? ` (not ${s.productsPerPick}: one rigid line cannot cross between two trays)` : "") + (s.weightG ? `, ${kg.toFixed(2)} kg total payload` : "")],
     ];
     for (const [k, v] of rows) {
       const dt = document.createElement("dt"), dd = document.createElement("dd");
@@ -734,6 +734,23 @@
       o.value = i; o.textContent = s.name + (s.tray.name ? ` - ${s.tray.name}` : "");
       select.append(o);
     });
+    // Products whose layout does not fit their tray are listed but cannot be chosen.
+    for (const name of state.refused) {
+      const o = document.createElement("option");
+      o.disabled = true; o.textContent = `${name} - does not fit its tray`;
+      select.append(o);
+    }
+  }
+  function showProblems(problems) {
+    state.refused = [...new Set(problems.filter((q) => q.level === "error").map((q) => q.name || q.sku))];
+    const list = $("problems");
+    list.innerHTML = "";
+    for (const p of problems.filter((q) => q.level === "error" || !/no image|no weight/.test(q.message))) {
+      const li = document.createElement("li");
+      li.className = p.level;
+      li.textContent = `${p.name || p.sku}: ${p.message}`;
+      list.append(li);
+    }
   }
   $("sku").addEventListener("change", () => chooseSku(state.skus[+$("sku").value]));
   for (const id of ["infeed", "belt", "cycle", "change", "spacing"]) {
@@ -789,14 +806,7 @@
       // Pictures on their own: the first one goes on the product showing now.
       state.images[state.sku.id] = URL.createObjectURL(pictures[0]);
     }
-    const list = $("problems");
-    list.innerHTML = "";
-    for (const p of problems.filter((q) => q.level === "error" || !/no image|no weight/.test(q.message))) {
-      const li = document.createElement("li");
-      li.className = p.level;
-      li.textContent = `${p.sku}: ${p.message}`;
-      list.append(li);
-    }
+    if (sheets.length) showProblems(problems);
     if (skus.length) {
       state.skus = skus;
       listSkus();
@@ -809,6 +819,7 @@
   // ---------- start ----------
   const builtIn = Sku.parseSkuFile($("builtInSkus").textContent, "built-in.csv");
   state.skus = builtIn.skus;
+  showProblems(builtIn.problems);
   applyTheme();
   placeCamera();
   resize();
