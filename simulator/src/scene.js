@@ -311,13 +311,16 @@
   }
 
   function productMesh() {
-    const size = state.pattern.slotSize, p = state.sku.product;
-    const l = state.pattern.rotated ? size.width : size.length;
-    const w = state.pattern.rotated ? size.length : size.width;
+    const pat = state.pattern;
     const side = new THREE.MeshStandardMaterial({ color: COLORS.punnet, roughness: 0.35, transparent: true, opacity: 0.92 });
     const tex = topTexture(state.sku);
+    if (tex) {
+      // The picture shows the product lengthways; wide edge leading, it lies across the belt.
+      tex.center.set(0.5, 0.5);
+      tex.rotation = pat.leading === "width" ? Math.PI / 2 : 0;
+    }
     const top = new THREE.MeshStandardMaterial(tex ? { map: tex, roughness: 0.5 } : { color: 0xf4f1e8, roughness: 0.6 });
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(Math.min(l, p.length), size.height, Math.min(w, p.width)), [side, side, top, side, side, side]);
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(pat.linePitch - 2, pat.slotSize.height, pat.crossSize - 2), [side, side, top, side, side, side]);
     mesh.castShadow = true; mesh.receiveShadow = true;
     return mesh;
   }
@@ -325,9 +328,11 @@
   // The station's long side (600) lies across the lane, so the pattern's x runs along scene z.
   const slotLocal = (slot) => new THREE.Vector3(slot.y, CELL.trayWall + slot.z + state.pattern.slotSize.height / 2, -slot.x);
   const slotWorld = (slot) => slotLocal(slot).add(new THREE.Vector3(CELL.station.x, CELL.station.floor, CELL.station.z));
-  // On the belt a product's length runs along x; in the tray it lies along the
-  // pattern's x (scene z) unless the pattern turned it.
-  const slotTurn = (slot) => (slot.rotated ? 0 : Math.PI / 2);
+  // The head and its line of products are one rigid piece. On the belt the line
+  // runs along scene x; a tray line along the pattern's x lies along scene z, so
+  // the whole piece turns a quarter turn on the way over (the front of the line
+  // ends up at the first slot); a line along the pattern's y needs no turn.
+  const placeYaw = () => (state.pattern.line === "x" ? -Math.PI / 2 : 0);
   const beltWorld = (x) => new THREE.Vector3(CELL.belt.x0 + x, CELL.belt.top + state.pattern.slotSize.height / 2, 0);
 
   // ---------- the arm ----------
@@ -414,7 +419,7 @@
     const sku = state.sku;
     state.sim = new Engine.Simulation({
       infeedPpm: +$("infeed").value, spacing: $("spacing").value, beltSpeed: +$("belt").value,
-      gateX: CELL.gateX - CELL.belt.x0, productLength: sku.product.length, productsPerPick: sku.productsPerPick,
+      gateX: CELL.gateX - CELL.belt.x0, productLength: state.pattern.linePitch, productsPerPick: state.pattern.productsPerPick,
       robotCycleS: +$("cycle").value, crateChangeS: +$("change").value, perCrate: state.pattern.total, seed: 1,
     });
     for (const mesh of state.meshes.values()) productLayer.remove(mesh);
@@ -429,14 +434,15 @@
 
   function describeSku() {
     const s = state.sku, p = state.pattern;
-    const kg = (s.weightG || 0) * s.productsPerPick / 1000;
+    const perPick = p.productsPerPick, kg = (s.weightG || 0) * perPick / 1000;
     $("skuInfo").innerHTML = "";
     const rows = [
       ["Product", `${s.product.length} x ${s.product.width} x ${s.product.height} mm` + (s.weightG ? `, ${s.weightG} g` : "")],
       ["Tray", `${s.tray.name || "Tray"}: ${s.tray.length} x ${s.tray.width} x ${s.tray.depth} mm inside` + (p.trays === 2 ? ", two side by side" : "")],
       ["Layout", `${s.rows} x ${s.columns} per layer, ${s.layers} layer${s.layers > 1 ? "s" : ""}: ${p.perTray} per tray` + (p.rotated ? ", turned 90 degrees" : "")],
       ["Room to spare", `x ${p.spare.x} mm, y ${p.spare.y} mm, z ${p.spare.z} mm` + (p.tight ? " (tight fit, inside the squeeze allowance)" : "")],
-      ["Each lift", `${s.productsPerPick} products` + (s.weightG ? `, ${kg.toFixed(2)} kg of the arm's ${Arm.SPEC.payloadKg} kg` : "")],
+      ["On the belt", `${p.leading === "length" ? "narrow" : "wide"} edge leading, so a line of ${perPick} is ${Math.round(perPick * p.linePitch)} mm long` + (placeYaw() ? " and turns a quarter turn into the tray" : "")],
+      ["Each lift", `${perPick} products` + (perPick < s.productsPerPick ? ` (not ${s.productsPerPick}: one rigid line cannot cross between two trays)` : "") + (s.weightG ? `, ${kg.toFixed(2)} kg of the arm's ${Arm.SPEC.payloadKg} kg` : "")],
     ];
     for (const [k, v] of rows) {
       const dt = document.createElement("dt"), dd = document.createElement("dd");
@@ -471,7 +477,7 @@
       const cx = pair ? (k - 0.5) * pat.trayPitch : 0;
       el("rect", { class: "tray", x: cx - trayX / 2 - wall / 2, y: -trayY / 2 - wall / 2, width: trayX + wall, height: trayY + wall, rx: 18 }, svg);
     }
-    const sizeX = pair ? pat.slotSize.width : pat.slotSize.length, sizeY = pair ? pat.slotSize.length : pat.slotSize.width;
+    const sizeX = pat.line === "x" ? pat.linePitch : pat.crossSize, sizeY = pat.line === "x" ? pat.crossSize : pat.linePitch;
     const picture = state.images[state.sku.id] || (/^(https?:|data:)/i.test(state.sku.image || "") ? state.sku.image : null);
     const perPick = state.sim.config.productsPerPick;
     for (const slot of pat.stationSlots.filter((q) => q.layer === 0)) {
@@ -480,8 +486,8 @@
       let image = null;
       if (picture) {
         // The picture is of the product lying lengthways; turn it where the product is turned.
-        const long = Math.max(sizeX, sizeY) - 6, short = Math.min(sizeX, sizeY) - 6;
-        const lengthAlongY = sizeY > sizeX;
+        const long = (lengthAlongY ? sizeY : sizeX) - 6, short = (lengthAlongY ? sizeX : sizeY) - 6;
+        const lengthAlongY = (pat.line === "y") === (pat.leading === "length");
         image = el("image", { href: picture, x: slot.x - long / 2, y: slot.y - short / 2, width: long, height: short, preserveAspectRatio: "none",
           transform: lengthAlongY ? `rotate(90 ${slot.x} ${slot.y})` : "" }, g);
       }
@@ -543,17 +549,16 @@
       const fromCentre = centroid(from.map((q) => q.clone())), toCentre = centroid(to.map((q) => q.clone()));
       const centre = swing(fromCentre, toCentre, s);
       centre.y += lift;
+      yaw = placeYaw() * s;
       r.group.forEach((p, i) => {
-        // Each product keeps its place in the line while the line closes up to the tray pitch.
-        const offset = from[i].clone().sub(fromCentre).lerp(to[i].clone().sub(toCentre), s);
-        const pos = centre.clone().add(offset);
+        // One rigid piece: every product keeps its place under the head and turns with it.
+        const pos = centre.clone().add(from[i].clone().sub(fromCentre).applyAxisAngle(UP, yaw));
         const mesh = state.meshes.get(p.id);
-        if (mesh) { mesh.position.copy(pos); mesh.rotation.y = slotTurn(state.pattern.stationSlots[r.slots[i]]) * s; }
+        if (mesh) { mesh.position.copy(pos); mesh.rotation.y = yaw; }
         cupTargets.push(pos);
       });
       flange = centre.clone();
       flange.y += state.pattern.slotSize.height / 2 + CELL.headDrop;
-      yaw = (state.pattern.line === "y" ? 0 : Math.PI / 2) * s;
       state.lastPlace = { flange: flange.clone(), yaw };
     } else if (r.phase === "toPick" && state.lastPlace) {
       const s = smooth(t);
@@ -599,7 +604,7 @@
           state.meshes.delete(id);
           productLayer.remove(mesh);
           mesh.position.copy(slotLocal(slot));
-          mesh.rotation.y = slotTurn(slot);
+          mesh.rotation.y = placeYaw();
           state.station.add(mesh);
         });
       } else if (e.type === "crateFull") {

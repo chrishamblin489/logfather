@@ -142,10 +142,18 @@
   // turned 90 degrees and set side by side so together they cover the same
   // footprint; the pair is filled and changed as one. Station coordinates:
   // origin at the centre of the station floor, x along its length (the 600),
-  // y across. `stationSlots` are in fill order: layer by layer, in lines of
-  // products the way the vacuum head sets them down. A line runs along x (and
-  // carries on from the first half tray into the second) unless the pick size
-  // only matches the rows across, as with 3 x 2 lifted three at a time.
+  // y across. `stationSlots` are in fill order: layer by layer, line by line.
+  //
+  // The vacuum head is one rigid piece: it lifts a line of products exactly as
+  // they stand against the gate, nose to tail, and sets the line down as it
+  // is, only turned as a whole. So along a line the slots touch at the same
+  // pitch the products have on the belt (`linePitch`), centred in the tray,
+  // and only the lines are spread evenly across it. A line runs along x unless
+  // the pick size only matches the rows across (3 x 2 lifted three at a time).
+  // A line cannot carry on over the wall between two half trays, so
+  // `productsPerPick` is capped at the line inside one tray (`lineCount`).
+  // `leading` says which way round the products must travel on the belt for
+  // that: "length" = narrow edge leading, "width" = wide edge leading.
   function stationPattern(tray, product, layout) {
     const base = layoutPattern(tray, product, layout);
     const trays = layout.traysSideBySide === 2 ? 2 : 1;
@@ -162,13 +170,31 @@
     const stationCols = trays === 1 ? base.cols : 2 * base.rows;
     const stationRows = trays === 1 ? base.rows : base.cols;
     const alongXPerTray = trays === 1 ? base.cols : base.rows;
-    const perPick = layout.productsPerPick || alongXPerTray;
-    const line = perPick === stationRows && perPick !== alongXPerTray && perPick !== stationCols ? "y" : "x";
+    const asked = layout.productsPerPick || alongXPerTray;
+    const line = asked === stationRows && asked !== alongXPerTray && asked !== stationCols ? "y" : "x";
+    // Product size along the station's x and y, and whether its length lies along x.
+    const sizeX = trays === 1 ? base.slotSize.length : base.slotSize.width;
+    const sizeY = trays === 1 ? base.slotSize.width : base.slotSize.length;
+    const lengthAlongX = trays === 1 ? !base.rotated : base.rotated;
+    const lineCount = line === "x" ? alongXPerTray : stationRows;
+    const linePitch = line === "x" ? sizeX : sizeY;
+    for (const slot of stationSlots) {
+      if (line === "x") {
+        const centre = trays === 1 ? 0 : (slot.tray - 0.5) * pitch;
+        const i = trays === 1 ? slot.sCol : slot.sCol - slot.tray * base.rows;
+        slot.x = centre + (i - (lineCount - 1) / 2) * linePitch;
+      } else {
+        slot.y = (slot.sRow - (lineCount - 1) / 2) * linePitch;
+      }
+    }
     stationSlots.sort((a, b) => a.layer - b.layer
       || (line === "x" ? a.sRow - b.sRow || a.sCol - b.sCol : a.sCol - b.sCol || a.sRow - b.sRow));
     stationSlots.forEach((slot, index) => { slot.index = index; });
     return Object.assign({}, base, {
       trays, trayPitch: pitch, stationSlots, stationCols, stationRows, line,
+      lineCount, linePitch, crossSize: line === "x" ? sizeY : sizeX,
+      leading: (line === "x") === lengthAlongX ? "length" : "width",
+      productsPerPick: Math.min(asked, lineCount),
       perTray: base.total, total: base.total * trays,
     });
   }

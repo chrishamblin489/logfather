@@ -132,6 +132,17 @@ Living record of agreed functionality: what is open, and what has shipped
   turns it, carrying its picture if one was uploaded and the number of the
   lift that packs it; the layer being packed fills in live. Underneath: the
   number of layers and the products per tray (and per pair of half trays).
+- Simulator rigid vacuum head (Chris, 2026-09-22: "everything needs to turn as
+  if it were a single piece"): the head and its line of products move and
+  turn as one; products no longer slide to their slots or turn on their own.
+  That ties the tray to the belt, so `stationPattern` now sets the slots
+  along a line touching at the pitch the products have on the belt
+  (`linePitch`), centred in the tray, with only the lines spread evenly;
+  works out which way round the products must travel (`leading`: narrow or
+  wide edge leading, shown in the panel with the line's length); and caps
+  the pick at the line inside one tray (`lineCount`), since a rigid line
+  cannot cross the wall between two half trays. The tray plan and the
+  product picture follow the same orientation.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

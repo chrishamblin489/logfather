@@ -94,6 +94,45 @@ test("stationPattern: three across lifted together are set down across the tray"
   assert.deepEqual(line.map((s) => s.sRow), [0, 1, 2]);
 });
 
+test("stationPattern: a line sits in the tray exactly as it stood on the belt", () => {
+  // 2 x 4 of 178 x 138 only fits turned: four across the 578, their 138 side along the line.
+  const p = stationPattern({ length: 578, width: 372, depth: 170 }, { length: 178, width: 138, height: 73 },
+    { rows: 2, columns: 4, layers: 2, productsPerPick: 4, squeeze: 5 });
+  assert.equal(p.line, "x");
+  assert.equal(p.lineCount, 4);
+  assert.equal(p.linePitch, 138);
+  assert.equal(p.crossSize, 178);
+  assert.equal(p.leading, "width");          // wide edge leading on the belt
+  const line = p.stationSlots.slice(0, 4);
+  for (let i = 1; i < 4; i++) assert.ok(Math.abs(line[i].x - line[i - 1].x - 138) < 1e-9);   // touching, not spread out
+  assert.ok(Math.abs(line[0].x + line[3].x) < 1e-9);                                        // centred in the tray
+  assert.ok(Math.abs(line[3].x) + 138 / 2 <= 578 / 2);
+  // The two lines are still spread evenly across the tray.
+  assert.ok(Math.abs(p.stationSlots[0].y + p.stationSlots[4].y) < 1e-9);
+});
+
+test("stationPattern: not turned means narrow edge leading; three across are lifted wide edge leading", () => {
+  const notTurned = stationPattern({ length: 600, width: 400, depth: 180 }, { length: 185, width: 115, height: 85 },
+    { rows: 3, columns: 3, layers: 2, productsPerPick: 3 });
+  assert.deepEqual([notTurned.line, notTurned.leading, notTurned.linePitch], ["x", "length", 185]);
+  const across = stationPattern({ length: 567, width: 367, depth: 193 }, { length: 268, width: 115, height: 65 },
+    { rows: 3, columns: 2, layers: 2, productsPerPick: 3 });
+  assert.deepEqual([across.line, across.leading, across.linePitch, across.lineCount], ["y", "width", 115, 3]);
+  const col = across.stationSlots.slice(0, 3);
+  assert.ok(Math.abs(col[1].y - col[0].y - 115) < 1e-9 && Math.abs(col[0].y + col[2].y) < 1e-9);
+});
+
+test("stationPattern: a rigid line cannot carry on over the wall between two half trays", () => {
+  const p = stationPattern({ length: 378, width: 272, depth: 147 }, { length: 178, width: 138, height: 33 },
+    { rows: 2, columns: 2, layers: 3, productsPerPick: 4, squeeze: 5, traysSideBySide: 2 });
+  assert.equal(p.lineCount, 2);
+  assert.equal(p.productsPerPick, 2);
+  const line = p.stationSlots.slice(0, 2);
+  assert.deepEqual(line.map((q) => q.tray), [0, 0]);
+  assert.ok(Math.abs(line[1].x - line[0].x - p.linePitch) < 1e-9);
+  assert.ok(Math.abs((line[0].x + line[1].x) / 2 + 150) < 1e-9);   // centred in the first half tray
+});
+
 test("parseSkuFile: half-size trays default to two side by side", () => {
   const csv = `${HEADER}\nH,Half,175,135,70,300,x.png,Half tray,364,264,144,2,2,2,2,auto,115,\nF,Full,178,138,73,300,x.png,Full tray,578,372,170,2,4,2,4,auto,115,\nS,Single half,175,135,70,300,x.png,Half tray,364,264,144,2,2,2,2,auto,115,1`;
   const result = parseSkuFile(csv, "skus.csv");
