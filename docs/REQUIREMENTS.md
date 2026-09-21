@@ -90,15 +90,22 @@ Living record of agreed functionality: what is open, and what has shipped
   sliders for arrivals, spacing, belt speed, robot move, tray change and
   playback speed, and the result (packed per minute, the most it can pack,
   arm busy, belt backed up, a plain keeps-up verdict). Orbit, zoom, pan.
-- Simulator cell layout from the PikPak 2 general assembly (Chris): block
-  positions and sizes read out of the STEP file (assembly tree, placements,
-  solid-vertex bounding boxes; no CAD kernel): 4.2 m product belt along one
-  side at 730 mm, open 2.1 x 1.8 x 2.14 m machine frame, arm on a 690 mm
-  base beside the belt, sloping tray infeed lane, level tray outfeed lane
-  beside it, cross transfer under the arm. Tray change: the full tray is
-  pushed across to the outfeed lane and runs out while the next empty one
-  runs down the infeed lane. Gate position and the exact packing position
-  are estimates, to be confirmed.
+- Simulator cell layout from the PikPak 2 general assembly (Chris, redone
+  2026-09-22 after his review: "not like the STEP file"): the STEP file's
+  part descriptions name every sub-assembly, so each block now sits where
+  the CAD has it (names in the `CELL` comments in `scene.js`): 4.2 m x
+  405 mm infeed conveyor at 730 mm running right through the machine (belt
+  speed default now its 48 m/min); robot on its pedestal at the head of the
+  tray lane, 468 mm from the belt centre, camera above the pick; internal
+  tray belt with the ejector arm's end stop beside the robot, where the
+  tray is filled 600 across the lane; powered rollers beside it; outside,
+  the sloping gravity infeed rollers and the gravity outfeed rollers with
+  their end stop, side by side; control box under the belt, HMI tablet,
+  open weldment frame. Trays: empties queue on the infeed rollers, one runs
+  in to the end stop, the ejector pushes the full tray across, it runs out
+  to the outfeed end stop and is lifted off after a while. The 3D view is
+  centred beside the panel. Not in the CAD, so still an estimate: the
+  product gate (placed so the line sits level with the robot and camera).
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

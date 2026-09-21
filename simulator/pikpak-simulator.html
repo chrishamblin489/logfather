@@ -77,7 +77,7 @@
     <div class="control"><label for="spacing">Spacing</label>
       <select id="spacing" style="grid-column:1/-1"><option value="even">Even</option><option value="random">Random</option></select></div>
     <div class="control"><label for="belt">Belt speed</label><output id="beltV"></output>
-      <input id="belt" type="range" min="100" max="800" step="10" value="400"></div>
+      <input id="belt" type="range" min="100" max="1000" step="10" value="800"></div>
     <div class="control"><label for="cycle">Robot move (pick, place, return)</label><output id="cycleV"></output>
       <input id="cycle" type="range" min="1.2" max="5" step="0.01" value="1.71"></div>
     <div class="control"><label for="change">Tray change</label><output id="changeV"></output>
@@ -845,18 +845,32 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   "use strict";
   const THREE = window.THREE, Engine = window.PikPakEngine, Arm = window.AuboI10, Sku = window.PikPakSku;
 
-  // Cell layout: positions and sizes from the PikPak 2 general assembly
-  // (QLT35-001-7303), reduced to plain blocks. x runs along the machine, z
-  // across it from the centre of the product belt, y up from the floor.
+  // Cell layout: every position and size below is read out of the PikPak 2
+  // general assembly (QLT35-001-7303) and reduced to plain blocks. Scene x
+  // runs along the machine in the direction the products travel (CAD z), z
+  // across it measured from the centre of the product belt (CAD x + 2755),
+  // y up from the floor. The CAD names are in the comments.
   const CELL = {
-    beltTop: 730, beltStart: -2370, beltEnd: 1830, beltWidth: 580,
-    gateX: -175,            // where the products are held, level with the arm
-    frame: { x0: -900, x1: 900, z0: -290, z1: 1805, height: 2140, plinth: 200 },
-    robot: { x: -530, z: 605, pedestal: 690 },
-    station: { x: 270, z: 675, floor: 613 },     // where a tray is filled
-    trayIn: { z: 675, width: 700, x0: 880, x1: 3300, rise: 210 },   // sloping roller lane, trays run down it into the machine
-    trayOut: { z: 1370, width: 700, x0: 920, x1: 3320, top: 402 },  // level lane the full trays leave on
-    transfer: { x0: -34, x1: 1691, z0: 320, z1: 1717 },             // full trays are pushed across from the first lane to the second
+    // INFEED CONVEYOR, 4.2m LONG, 405mm WIDE, 48m/min
+    belt: { x0: -2370, x1: 1830, top: 730, width: 405, bodyWidth: 580, bodyDepth: 156 },
+    // Not found in the CAD: where the line of products is held, level with the arm and the camera.
+    gateX: -90,
+    // WELDMENT FRAME
+    frame: { x0: -901, x1: 900, z0: -305, z1: 1805, height: 2140, plinth: 200 },
+    // ROBOT, iS SERIES on WELDMENT, ROBOT PEDESTAL
+    robot: { x: -441, z: 468, pedestal: 690, pedestalX: 185, pedestalZ: 360 },
+    // CONVEYOR WITH RIVETS (internal tray belt, 600 wide) up to the ejector arm's END STOP GUIDE
+    trayBelt: { x0: -316, x1: 885, z: 670, width: 818, top: 471, endStop: -275 },
+    station: { x: -75, z: 670, floor: 471 },     // a 400 deep tray hard against the end stop
+    // POWERED ROLLERS ASSY, 1.2m SECTION (internal outfeed lane)
+    rollers: { x0: -315, x1: 889, z: 1368, width: 686, top: 466 },
+    // EXTERNAL INFEED ROLLERS: gravity lane, empty trays run down it into the machine
+    trayIn: { x0: 890, x1: 3290, z: 672, width: 686, topNear: 477, topFar: 655 },
+    // EXTERNAL OUTFEED ROLLERS: gravity lane with an END STOP, full trays run out along it
+    trayOut: { x0: 921, x1: 3321, z: 1368, width: 686, topNear: 402, topFar: 300 },
+    controlBox: { x: 64, z: -24, y: 467, size: [441, 176, 351] },    // ROBOT CONTROL BOX, under the belt
+    camera: { x: -465, z: 52, y: 1590, size: [195, 63, 60] },        // CAMERA ENCLOSURE over the pick
+    hmi: { x: -1096, z: -223, y: 1275, size: [270, 217, 40] },       // HMI TABLET CASE
     headDrop: 170,          // tool flange down to the cup lips
     hover: 130,             // how far above the products the head waits
     trayWall: 12,
@@ -905,7 +919,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   }
 
   // Minimal orbit control: drag to turn, wheel to zoom, right-drag or shift-drag to pan.
-  const orbit = { target: new THREE.Vector3(250, 800, 600), radius: 5600, theta: -2.5, phi: 1.02 };
+  const orbit = { target: new THREE.Vector3(350, 600, 700), radius: 8600, theta: -2.75, phi: 0.98 };
   function placeCamera() {
     const s = Math.sin(orbit.phi);
     camera.position.set(
@@ -936,7 +950,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     });
     canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
-      orbit.radius = Math.min(9000, Math.max(1200, orbit.radius * (e.deltaY > 0 ? 1.1 : 0.9)));
+      orbit.radius = Math.min(14000, Math.max(1200, orbit.radius * (e.deltaY > 0 ? 1.1 : 0.9)));
       placeCamera();
     }, { passive: false });
   })();
@@ -945,16 +959,18 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     const w = canvas.clientWidth, h = canvas.clientHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / Math.max(h, 1);
+    // Centre the machine in the space beside the panel, not behind it.
+    const panel = w > 760 ? 356 : 0;
+    if (panel) camera.setViewOffset(w + panel, h, 0, 0, w, h); else camera.clearViewOffset();
     camera.updateProjectionMatrix();
   }
   window.addEventListener("resize", resize);
 
   // ---------- the cell ----------
   const cell = new THREE.Group();        // rebuilt per SKU: belt, gate, station
-  const stationGroup = new THREE.Group(); // trays being filled and what is packed in them
-  const leavingGroup = new THREE.Group(); // full trays on their way out
+  const trayLayer = new THREE.Group();    // every tray unit: waiting empty, being filled, leaving full
   const productLayer = new THREE.Group(); // products on the belt and in the head
-  scene.add(cell, stationGroup, leavingGroup, productLayer);
+  scene.add(cell, trayLayer, productLayer);
   const cleats = [];
 
   function buildCell() {
@@ -963,52 +979,68 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     const p = state.sku.product;
     const steel = { metalness: 0.5, roughness: 0.4 };
     const put = (mesh, x, y, z) => { mesh.position.set(x, y, z); cell.add(mesh); return mesh; };
-
-    // Product infeed belt, right through the machine along one side.
-    const length = CELL.beltEnd - CELL.beltStart, midX = (CELL.beltStart + CELL.beltEnd) / 2;
-    put(box(length, 40, CELL.beltWidth - 60, COLORS.belt, { roughness: 0.9 }), midX, CELL.beltTop - 20, 0);
-    put(box(length, 115, CELL.beltWidth, COLORS.frame, steel), midX, CELL.beltTop - 98, 0);
-    for (const side of [-1, 1]) {
-      put(box(length, 60, 30, COLORS.frame, steel), midX, CELL.beltTop + 30, side * (CELL.beltWidth / 2 - 15));
-      for (const x of [CELL.beltStart + 150, CELL.beltStart + 1100, CELL.beltEnd - 150]) {
-        put(box(50, CELL.beltTop - 155, 50, COLORS.frame, steel), x, (CELL.beltTop - 155) / 2, side * (CELL.beltWidth / 2 - 40));
+    const legs = (xs, zs, top) => { for (const x of xs) for (const z of zs) put(box(45, top, 45, COLORS.frame, steel), x, top / 2, z); };
+    // A roller lane that may slope: a slab from (x0, top0) to (x1, top1).
+    const lane = (x0, x1, z, width, top0, top1, depth, color) => {
+      const run = x1 - x0, angle = Math.atan2(top1 - top0, run);
+      const slab = put(box(Math.hypot(run, top1 - top0), depth, width, color, steel), (x0 + x1) / 2, (top0 + top1) / 2 - depth / 2, z);
+      slab.rotation.z = angle;
+      for (let i = 0; i < Math.floor(run / 150); i++) {   // rollers
+        const x = x0 + 75 + i * 150, y = top0 + ((x - x0) / run) * (top1 - top0);
+        const roller = new THREE.Mesh(new THREE.CylinderGeometry(25, 25, width - 60, 16), new THREE.MeshStandardMaterial({ color: 0xd5dbe1, metalness: 0.7, roughness: 0.3 }));
+        roller.rotation.x = Math.PI / 2;
+        put(roller, x, y - 25, z);
       }
-    }
+    };
+
+    // Product infeed conveyor, right through the machine along one side.
+    const b = CELL.belt, length = b.x1 - b.x0, midX = (b.x0 + b.x1) / 2;
+    put(box(length, b.bodyDepth, b.bodyWidth, COLORS.frame, steel), midX, b.top - 8 - b.bodyDepth / 2, 0);
+    put(box(length, 10, b.width, COLORS.belt, { roughness: 0.9 }), midX, b.top - 5, 0);
+    for (const side of [-1, 1]) put(box(3525, 30, 30, COLORS.frame, steel), -302, b.top - 41, side * (b.width / 2 + 27));
+    legs([b.x0 + 200, b.x0 + 1250, b.x1 - 200], [-b.bodyWidth / 2 + 50, b.bodyWidth / 2 - 50], b.top - b.bodyDepth);
     for (let i = 0; i < 24; i++) {
-      const cleat = box(8, 3, CELL.beltWidth - 70, 0x4a525c);
-      cleat.position.y = CELL.beltTop + 1;
+      const cleat = box(8, 3, b.width - 10, 0x4a525c);
+      cleat.position.y = b.top + 1;
       cell.add(cleat);
       cleats.push(cleat);
     }
     // The gate: a plate across the belt that the products run up against.
     const gateHeight = Math.max(p.height * 0.7, 40);
-    put(box(16, gateHeight, CELL.beltWidth - 64, COLORS.gate, { metalness: 0.2 }), CELL.gateX + 8, CELL.beltTop + gateHeight / 2, 0);
+    put(box(16, gateHeight, b.width, COLORS.gate, { metalness: 0.2 }), CELL.gateX + 8, b.top + gateHeight / 2, 0);
 
-    put(box(300, CELL.robot.pedestal, 300, COLORS.frame, steel), CELL.robot.x, CELL.robot.pedestal / 2, CELL.robot.z);
+    const r = CELL.robot;
+    put(box(r.pedestalX, r.pedestal - 15, r.pedestalZ, COLORS.frame, steel), r.x + 18, (r.pedestal - 15) / 2, r.z);
+    put(box(210, 15, 210, COLORS.joint), r.x, r.pedestal - 7, r.z);
 
-    // Tray infeed: a sloping roller lane, empty trays run down it into the machine.
-    const tin = CELL.trayIn, inLength = tin.x1 - tin.x0;
-    const slope = Math.atan2(tin.rise, inLength);
-    const lane = put(box(inLength / Math.cos(slope), 50, tin.width, COLORS.frame, steel), (tin.x0 + tin.x1) / 2, CELL.station.floor - 25 + tin.rise / 2, tin.z);
-    lane.rotation.z = slope;
-    for (const x of [tin.x0 + 200, tin.x1 - 200]) {
-      const h = CELL.station.floor - 60 + ((x - tin.x0) / inLength) * tin.rise;
-      for (const dz of [-tin.width / 2 + 30, tin.width / 2 - 30]) put(box(45, h, 45, COLORS.frame, steel), x, h / 2, tin.z + dz);
-    }
-    // Tray outfeed: a level lane beside it, full trays leave along it.
-    const tout = CELL.trayOut;
-    put(box(tout.x1 - tout.x0, 105, tout.width, COLORS.frame, steel), (tout.x0 + tout.x1) / 2, tout.top - 52, tout.z);
-    for (const x of [tout.x0 + 200, tout.x1 - 200]) {
-      for (const dz of [-tout.width / 2 + 30, tout.width / 2 - 30]) put(box(45, tout.top - 105, 45, COLORS.frame, steel), x, (tout.top - 105) / 2, tout.z + dz);
-    }
-    // Cross transfer inside the machine: carries the tray being filled and pushes full ones across.
-    const tr = CELL.transfer;
-    put(box(tr.x1 - tr.x0, 160, tr.z1 - tr.z0, 0x7f8a96, steel), (tr.x0 + tr.x1) / 2, CELL.station.floor - 80, (tr.z0 + tr.z1) / 2);
-    for (const x of [tr.x0 + 80, tr.x1 - 80]) {
-      for (const z of [tr.z0 + 80, tr.z1 - 80]) put(box(60, CELL.station.floor - 160, 60, COLORS.frame, steel), x, (CELL.station.floor - 160) / 2, z);
-    }
+    // Inside the machine: the tray belt the tray is filled on, its end stop, and the powered rollers beside it.
+    const tb = CELL.trayBelt;
+    put(box(tb.x1 - tb.x0, 185, tb.width, COLORS.frame, steel), (tb.x0 + tb.x1) / 2, tb.top - 10 - 92, tb.z);
+    put(box(1047, 10, 600, COLORS.belt, { roughness: 0.9 }), (tb.x0 + tb.x1) / 2, tb.top - 5, tb.z);
+    put(box(8, 90, 710, 0xd5dbe1, steel), tb.endStop - 4, 687, tb.z);   // END STOP GUIDE
+    put(box(60, 120, 834, 0x5b6673, steel), tb.endStop - 60, tb.top + 40, tb.z + 25);   // EJECTOR ARM's cylinder, across the lane
+    legs([tb.x0 + 60, tb.x1 - 60], [tb.z - 300, tb.z + 300], tb.top - 195);
+    const ro = CELL.rollers;
+    lane(ro.x0, ro.x1, ro.z, ro.width, ro.top, ro.top, 170, COLORS.frame);
+    legs([ro.x0 + 60, ro.x1 - 60], [ro.z - 300, ro.z + 300], ro.top - 170);
 
-    // The machine frame: plinth and 40 mm posts and rails, left open so the inside shows.
+    // Outside: the two gravity roller lanes, side by side.
+    const tin = CELL.trayIn, tout = CELL.trayOut;
+    lane(tin.x0, tin.x1, tin.z, tin.width, tin.topNear, tin.topFar, 105, COLORS.frame);
+    legs([tin.x0 + 250], [tin.z - 300, tin.z + 300], tin.topNear - 90);
+    legs([tin.x1 - 200], [tin.z - 300, tin.z + 300], tin.topFar - 110);
+    lane(tout.x0, tout.x1, tout.z, tout.width, tout.topNear, tout.topFar, 105, COLORS.frame);
+    legs([tout.x0 + 250], [tout.z - 300, tout.z + 300], tout.topNear - 110);
+    legs([tout.x1 - 200], [tout.z - 300, tout.z + 300], tout.topFar - 100);
+    put(box(40, 155, tout.width, 0xd5dbe1, steel), tout.x1 - 20, tout.topFar + 60, tout.z);   // END STOP
+
+    const cb = CELL.controlBox, cam = CELL.camera, hmi = CELL.hmi;
+    put(box(cb.size[0], cb.size[1], cb.size[2], 0x3a424c), cb.x, cb.y, cb.z);
+    put(box(cam.size[0], cam.size[1], cam.size[2], 0x3a424c), cam.x, cam.y, cam.z);
+    put(box(30, CELL.frame.height - cam.y - 60, 30, 0xc7ced6, steel), cam.x, (CELL.frame.height + cam.y) / 2, cam.z);
+    put(box(hmi.size[0], hmi.size[1], hmi.size[2], 0x20262d), hmi.x, hmi.y, hmi.z);
+
+    // The machine frame: plinth, 40 mm posts and rails, left open so the inside shows.
     const f = CELL.frame, fw = f.x1 - f.x0, fd = f.z1 - f.z0, post = 40;
     for (const x of [f.x0, f.x1]) {
       for (const z of [f.z0, f.z1]) put(box(post, f.height - f.plinth, post, 0xc7ced6, steel), x, f.plinth + (f.height - f.plinth) / 2, z);
@@ -1039,19 +1071,35 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     return g;
   }
 
-  function fillStation() {
-    stationGroup.clear();
-    state.placed = [];
-    stationGroup.position.set(CELL.station.x, CELL.station.floor, CELL.station.z);
+  // A tray unit is what moves through the machine as one: a full-size tray, or
+  // two half-size trays side by side. Its origin is the centre of its floor.
+  function trayUnit(x) {
+    const unit = new THREE.Group();
     const n = state.pattern.trays;
     for (let k = 0; k < n; k++) {
       const tray = trayMesh(state.sku.tray);
-      if (n === 2) {
-        tray.rotation.y = Math.PI / 2;
-        tray.position.x = (k - 0.5) * state.pattern.trayPitch;
-      }
-      stationGroup.add(tray);
+      // Either way the unit is 600 across the lane and 400 along it.
+      if (n === 2) tray.position.z = (k - 0.5) * state.pattern.trayPitch;
+      else tray.rotation.y = Math.PI / 2;
+      unit.add(tray);
     }
+    unit.position.set(x, laneTop(CELL.trayIn, CELL.trayBelt.top, x), CELL.station.z);
+    trayLayer.add(unit);
+    return unit;
+  }
+  // Height of the lane surface under x: level inside the machine, sloping outside it.
+  function laneTop(outside, insideTop, x) {
+    if (x <= outside.x0) return insideTop;
+    return outside.topNear + ((x - outside.x0) / (outside.x1 - outside.x0)) * (outside.topFar - outside.topNear);
+  }
+  const UNIT_PITCH = 470;       // centre to centre of trays queued on a lane
+  const WAIT_X = 1160;          // the first empty tray waits here, just outside the machine
+
+  function fillStation() {
+    trayLayer.clear();
+    state.station = trayUnit(CELL.station.x);
+    state.waiting = [0, 1, 2].map((i) => trayUnit(WAIT_X + i * UNIT_PITCH));
+    state.leaving = [];
   }
 
   // ---------- products ----------
@@ -1079,13 +1127,13 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     return mesh;
   }
 
-  const slotWorld = (slot) => new THREE.Vector3(
-    CELL.station.x + slot.x,
-    CELL.station.floor + CELL.trayWall + slot.z + state.pattern.slotSize.height / 2,
-    CELL.station.z + slot.y);
-  // In the tray a product either keeps the way it lay on the belt or is turned 90 degrees.
-  const slotTurn = (slot) => (slot.rotated ? Math.PI / 2 : 0);
-  const beltWorld = (x) => new THREE.Vector3(CELL.beltStart + x, CELL.beltTop + state.pattern.slotSize.height / 2, 0);
+  // The station's long side (600) lies across the lane, so the pattern's x runs along scene z.
+  const slotLocal = (slot) => new THREE.Vector3(slot.y, CELL.trayWall + slot.z + state.pattern.slotSize.height / 2, slot.x);
+  const slotWorld = (slot) => slotLocal(slot).add(new THREE.Vector3(CELL.station.x, CELL.station.floor, CELL.station.z));
+  // On the belt a product's length runs along x; in the tray it lies along the
+  // pattern's x (scene z) unless the pattern turned it.
+  const slotTurn = (slot) => (slot.rotated ? 0 : Math.PI / 2);
+  const beltWorld = (x) => new THREE.Vector3(CELL.belt.x0 + x, CELL.belt.top + state.pattern.slotSize.height / 2, 0);
 
   // ---------- the arm ----------
   const armGroup = new THREE.Group();
@@ -1171,14 +1219,13 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     const sku = state.sku;
     state.sim = new Engine.Simulation({
       infeedPpm: +$("infeed").value, spacing: $("spacing").value, beltSpeed: +$("belt").value,
-      gateX: CELL.gateX - CELL.beltStart, productLength: sku.product.length, productsPerPick: sku.productsPerPick,
+      gateX: CELL.gateX - CELL.belt.x0, productLength: sku.product.length, productsPerPick: sku.productsPerPick,
       robotCycleS: +$("cycle").value, crateChangeS: +$("change").value, perCrate: state.pattern.total, seed: 1,
     });
     for (const mesh of state.meshes.values()) productLayer.remove(mesh);
     state.meshes.clear();
     state.lastPlace = null;
     buildCell();
-    leavingGroup.clear();
     fillStation();
     buildHead();
     describeSku();
@@ -1218,7 +1265,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
 
   function animate(sim) {
     const r = sim.robot, n = sim.config.productsPerPick, L = sim.config.productLength;
-    const contactY = CELL.beltTop + state.pattern.slotSize.height + CELL.headDrop;
+    const contactY = CELL.belt.top + state.pattern.slotSize.height + CELL.headDrop;
     const waitCentre = new THREE.Vector3(CELL.gateX - (n * L) / 2, contactY + CELL.hover, 0);
     const t = r.duration > 0 ? Math.min(1, r.elapsed / r.duration) : 1;
     let flange = waitCentre.clone(), yaw = 0, cupTargets = null;
@@ -1244,7 +1291,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       });
       flange = centre.clone();
       flange.y += state.pattern.slotSize.height / 2 + CELL.headDrop;
-      yaw = (state.pattern.line === "y" ? Math.PI / 2 : 0) * s;
+      yaw = (state.pattern.line === "y" ? 0 : Math.PI / 2) * s;
       state.lastPlace = { flange: flange.clone(), yaw };
     } else if (r.phase === "toPick" && state.lastPlace) {
       const s = smooth(t);
@@ -1289,17 +1336,63 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
           const slot = state.pattern.stationSlots[e.slots[i]];
           state.meshes.delete(id);
           productLayer.remove(mesh);
-          mesh.position.copy(slotWorld(slot)).sub(new THREE.Vector3(CELL.station.x, CELL.station.floor, CELL.station.z));
+          mesh.position.copy(slotLocal(slot));
           mesh.rotation.y = slotTurn(slot);
-          stationGroup.add(mesh);
+          state.station.add(mesh);
         });
       } else if (e.type === "crateFull") {
-        leavingGroup.clear();
-        for (const child of [...stationGroup.children]) leavingGroup.add(child);
-        fillStation();
-      } else if (e.type === "crateIn") {
-        leavingGroup.clear();
+        // The full tray leaves, the first waiting tray comes in, another joins the queue outside.
+        state.leaving.push({ unit: state.station, since: state.sim.time, parkedAt: null });
+        state.station = state.waiting.shift();
+        state.station.userData.startX = state.station.position.x;
+        state.waiting.push(trayUnit(CELL.trayIn.x1 - 250));
       }
+    }
+  }
+
+  // Trays through the machine, as in the general assembly: empty trays queue on
+  // the sloping infeed rollers; one runs in on the tray belt to the end stop
+  // beside the arm and is filled there; the ejector arm pushes the full tray
+  // across onto the powered rollers, which send it back out onto the outfeed
+  // rollers, where it runs down to the end stop and is lifted off.
+  function moveTrays(sim, dt) {
+    const st = CELL.station, slopeIn = Math.atan2(CELL.trayIn.topFar - CELL.trayIn.topNear, CELL.trayIn.x1 - CELL.trayIn.x0);
+    const settle = (unit, x, outside, insideTop, slope) => {
+      unit.position.x = x;
+      unit.position.y = laneTop(outside, insideTop, x);
+      unit.rotation.z = x > outside.x0 + 200 ? slope : 0;
+    };
+    const toward = (from, to, step) => (Math.abs(to - from) <= step ? to : from + Math.sign(to - from) * step);
+
+    if (sim.crate.changing) {
+      const k = Math.min(1, sim.crate.changeElapsed / sim.config.crateChangeS);
+      const from = state.station.userData.startX != null ? state.station.userData.startX : WAIT_X;
+      settle(state.station, from + (st.x - from) * smooth(Math.max(0, (k - 0.25) / 0.75)), CELL.trayIn, CELL.trayBelt.top, slopeIn);
+    } else {
+      settle(state.station, st.x, CELL.trayIn, CELL.trayBelt.top, slopeIn);
+    }
+    state.waiting.forEach((unit, i) => settle(unit, toward(unit.position.x, WAIT_X + i * UNIT_PITCH, 700 * dt), CELL.trayIn, CELL.trayBelt.top, slopeIn));
+
+    const slopeOut = Math.atan2(CELL.trayOut.topFar - CELL.trayOut.topNear, CELL.trayOut.x1 - CELL.trayOut.x0);
+    const pushS = Math.min(1.2, sim.config.crateChangeS * 0.3);
+    state.leaving.forEach((tray, i) => {
+      const age = sim.time - tray.since, unit = tray.unit;
+      if (age < pushS) {        // ejector arm: across to the powered rollers
+        unit.position.z = st.z + (CELL.rollers.z - st.z) * smooth(age / pushS);
+        unit.position.y = st.floor + (CELL.rollers.top - st.floor) * (age / pushS);
+        return;
+      }
+      unit.position.z = CELL.rollers.z;
+      const park = CELL.trayOut.x1 - 60 - 230 - i * UNIT_PITCH;
+      settle(unit, toward(unit.position.x, park, 650 * dt), CELL.trayOut, CELL.rollers.top, slopeOut);
+      if (unit.position.x === park && tray.parkedAt == null) tray.parkedAt = sim.time;
+    });
+    // The tray against the end stop is lifted off after a while; the rest run down.
+    const first = state.leaving[0];
+    if (first && first.parkedAt != null && (sim.time - first.parkedAt > 8 || state.leaving.length > 4)) {
+      trayLayer.remove(first.unit);
+      state.leaving.shift();
+      state.leaving.forEach((tray) => { tray.parkedAt = null; });
     }
   }
 
@@ -1311,24 +1404,10 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       const mesh = state.meshes.get(p.id);
       if (mesh && (p.state === "belt" || p.state === "gripped")) { mesh.position.copy(beltWorld(p.x)); mesh.rotation.y = 0; }
     }
-    // Tray change: the full tray is pushed across to the outfeed lane and runs out
-    // along it; the next empty tray runs down the sloping infeed lane to the arm.
-    const st = CELL.station;
-    if (sim.crate.changing) {
-      const k = Math.min(1, sim.crate.changeElapsed / sim.config.crateChangeS);
-      const across = smooth(Math.min(1, k / 0.35)), out = smooth(Math.max(0, (k - 0.35) / 0.65));
-      leavingGroup.position.set(st.x + out * (CELL.trayOut.x1 - st.x + 500), st.floor + across * (CELL.trayOut.top - st.floor), st.z + across * (CELL.trayOut.z - st.z));
-      const arrive = 1 - smooth(Math.max(0, (k - 0.2) / 0.8));
-      const run = arrive * (CELL.trayIn.x1 - st.x - 400);
-      stationGroup.position.set(st.x + run, st.floor + (run / (CELL.trayIn.x1 - CELL.trayIn.x0)) * CELL.trayIn.rise, st.z);
-      stationGroup.rotation.z = arrive > 0.02 ? Math.atan2(CELL.trayIn.rise, CELL.trayIn.x1 - CELL.trayIn.x0) : 0;
-    } else {
-      stationGroup.position.set(st.x, st.floor, st.z);
-      stationGroup.rotation.z = 0;
-    }
-    const span = CELL.beltEnd - CELL.beltStart;
+    moveTrays(sim, dt);
+    const span = CELL.belt.x1 - CELL.belt.x0;
     cleats.forEach((cleat, i) => {
-      cleat.position.x = CELL.beltStart + ((sim.time * sim.config.beltSpeed + (i * span) / cleats.length) % span);
+      cleat.position.x = CELL.belt.x0 + ((sim.time * sim.config.beltSpeed + (i * span) / cleats.length) % span);
     });
     animate(sim);
     renderer.render(scene, camera);
