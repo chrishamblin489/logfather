@@ -123,6 +123,9 @@ Living record of agreed functionality: what is open, and what has shipped
   run time sit in a bar under the 3D view, always in sight (they were at the
   bottom of the panel, below the fold); space bar pauses and plays; a paused
   view is outlined and the camera still turns, zooms and pans.
+  Same day: the buttons carry icons, not words, drawn to the proportions of
+  Logfather's `media_icon` (pause bars / play triangle) and `refresh_icon`
+  (restart); the speed slider became three buttons, 0.5x, 1x, 2x.
 - Simulator tray plan (Chris, 2026-09-22): card at the top right with the tray
   from above (two half trays when they go side by side), drawn from the same
   slots the arm fills: each product in its place, turned where the layout

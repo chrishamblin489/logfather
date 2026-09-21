@@ -717,17 +717,23 @@
   for (const id of ["infeed", "belt", "cycle", "change", "spacing"]) {
     $(id).addEventListener("input", () => { showValues(); restart(); });
   }
-  $("speed").addEventListener("input", () => { state.speed = +$("speed").value; showValues(); });
+  for (const button of document.querySelectorAll(".speeds button")) {
+    button.addEventListener("click", () => {
+      state.speed = +button.dataset.speed;
+      for (const other of document.querySelectorAll(".speeds button")) other.setAttribute("aria-pressed", String(other === button));
+    });
+  }
   function setRunning(on) {
     state.running = on;
-    $("pause").textContent = on ? "Pause" : "Play";
-    $("pause").setAttribute("aria-pressed", String(!on));
+    $("pause").setAttribute("aria-pressed", String(!on));   // the pressed state shows the play glyph
+    $("pause").setAttribute("aria-label", on ? "Pause" : "Play");
+    $("pause").title = on ? "Pause (space bar)" : "Play (space bar)";
     document.body.classList.toggle("paused", !on);
   }
   $("pause").addEventListener("click", () => setRunning(!state.running));
-  // Space bar pauses and plays, unless a control that uses the space bar has the focus.
+  // Space bar pauses and plays, unless a slider or list that uses the space bar has the focus.
   window.addEventListener("keydown", (e) => {
-    if (e.code !== "Space" || /^(INPUT|SELECT|BUTTON|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    if (e.code !== "Space" || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
     e.preventDefault();
     setRunning(!state.running);
   });
@@ -738,7 +744,6 @@
     $("beltV").textContent = $("belt").value + " mm/s";
     $("cycleV").textContent = (+$("cycle").value).toFixed(2) + " s";
     $("changeV").textContent = (+$("change").value).toFixed(1) + " s";
-    $("speedV").textContent = $("speed").value + "x";
   }
 
   // Upload: the SKU file(s) and the product pictures, all in one go.
