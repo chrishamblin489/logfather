@@ -32,8 +32,10 @@
     rollers: { x0: -315, x1: 889, z: -1368, width: 686, top: 466 },
     // EXTERNAL INFEED ROLLERS: gravity lane, empty trays run down it into the machine
     trayIn: { x0: 890, x1: 3290, z: -672, width: 686, topNear: 477, topFar: 655 },
-    // EXTERNAL OUTFEED ROLLERS: gravity lane with an END STOP, full trays run out along it
-    trayOut: { x0: 921, x1: 3321, z: -1368, width: 686, topNear: 402, topFar: 300 },
+    // EXTERNAL OUTFEED ROLLERS: gravity lane with an END STOP, full trays run out along it.
+    // Raised from the CAD's 402 so it carries straight on from the powered rollers (466)
+    // with no drop (Chris, 2026-09-22; its legs adjust); same gentle slope.
+    trayOut: { x0: 921, x1: 3321, z: -1368, width: 686, topNear: 466, topFar: 364 },
     controlBox: { x: 64, z: 24, y: 467, size: [441, 176, 351] },    // ROBOT CONTROL BOX, under the belt
     camera: { x: -465, z: -52, y: 1590, size: [195, 63, 60] },        // CAMERA ENCLOSURE over the pick
     headDrop: 170,          // tool flange down to the cup lips
