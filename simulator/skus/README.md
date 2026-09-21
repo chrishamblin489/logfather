@@ -29,9 +29,12 @@ worked out in three directions and none may be below 0:
 - y: tray width - rows x product width
 - z: tray depth - layers x product height
 
-(with the product turned 90 degrees, length and width swap). A line that does
-not fit is refused and the message says which direction is short and by how
-many mm. Use the tray's inside size: a nominal 600 x 400 tray is smaller inside.
+(with the product turned 90 degrees, length and width swap). Real punnets give
+a little (rims flex, sides taper, film lids settle), so each product is allowed
+to squeeze by up to 5 mm in each direction: 4 columns may run up to 20 mm over
+in x. A layout inside that allowance loads with a "tight fit" note; one beyond
+it is refused, and the message says which direction is over and by how many mm.
+Use the tray's inside size: a nominal 600 x 400 tray is smaller inside.
 
 Customer SKU files (any `.csv` here except the template) are not committed to git.
 

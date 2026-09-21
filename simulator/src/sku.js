@@ -33,6 +33,9 @@
   };
   // Tray length and width may be left blank: most trays are 600 x 400 mm.
   const DEFAULT_TRAY = { length: 600, width: 400 };
+  // What one product may give in each direction before a layout is refused
+  // (Chris, 2026-09-21: real punnet layouts run a few mm over on paper).
+  const SQUEEZE_MM = 5;
   const REQUIRED = ["sku", "productLength", "productWidth", "productHeight",
     "trayDepth", "rows", "columns", "layers"];
   const TEMPLATE_HEADER = ["sku", "name", "product_length_mm", "product_width_mm", "product_height_mm",
@@ -132,18 +135,29 @@
       if (sku.weightG == null) warn("no weight: the payload check is skipped");
       if (!sku.image) warn("no image: the product is drawn plain");
       // The layout has to fit: room left along the tray (x), across it (y)
-      // and under the rim (z) must never be below 0.
-      const fit = engine.layoutPattern(sku.tray, sku.product, sku);
+      // and under the rim (z), plus the squeeze allowance, never below 0.
+      const squeeze = opts.squeeze != null ? opts.squeeze : SQUEEZE_MM;
+      const fit = engine.layoutPattern(sku.tray, sku.product, Object.assign({}, sku, { squeeze }));
+      const t = sku.tray;
+      const turned = fit.rotated ? " turned 90 degrees" : "";
+      const what = {
+        x: `${sku.columns} columns${turned} against the ${t.length} mm tray length (x)`,
+        y: `${sku.rows} rows${turned} against the ${t.width} mm tray width (y)`,
+        z: `${sku.layers} layers of ${sku.product.height} mm against the ${t.depth} mm tray depth (z)`,
+      };
       if (!fit.fits) {
-        const p = sku.product, t = sku.tray;
-        const turned = fit.rotated ? " turned 90 degrees" : "";
-        const short = [];
-        if (fit.spare.x < 0) short.push(`${sku.columns} columns${turned} are ${-fit.spare.x} mm too long for the ${t.length} mm tray length (x)`);
-        if (fit.spare.y < 0) short.push(`${sku.rows} rows${turned} are ${-fit.spare.y} mm too wide for the ${t.width} mm tray width (y)`);
-        if (fit.spare.z < 0) short.push(`${sku.layers} layers of ${p.height} mm stand ${-fit.spare.z} mm above the ${t.depth} mm tray depth (z)`);
-        short.forEach((message) => problems.push({ level: "error", line, sku: label, message }));
+        for (const k of ["x", "y", "z"]) {
+          if (fit.spare[k] + fit.allowance[k] < 0) {
+            problems.push({ level: "error", line, sku: label,
+              message: `${what[k]}: ${-fit.spare[k]} mm over, more than the ${fit.allowance[k]} mm squeeze allowance (${squeeze} mm per product)` });
+          }
+        }
         return;
       }
+      for (const k of ["x", "y", "z"]) {
+        if (fit.spare[k] < 0) warn(`tight fit, ${what[k]}: ${-fit.spare[k]} mm over, inside the ${fit.allowance[k]} mm squeeze allowance`);
+      }
+      sku.tight = fit.tight;
       sku.spare = fit.spare;
       sku.rotated = fit.rotated;
       sku.perTray = fit.total;
@@ -193,5 +207,5 @@
     return { matches, missing };
   }
 
-  return { parseCsv, parseSkuFile, buildSkus, matchImages, TEMPLATE_HEADER, DEFAULT_TRAY };
+  return { parseCsv, parseSkuFile, buildSkus, matchImages, TEMPLATE_HEADER, DEFAULT_TRAY, SQUEEZE_MM };
 });

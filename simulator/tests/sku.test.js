@@ -80,9 +80,35 @@ test("parseSkuFile: a layout that does not fit is rejected, with the shortfall i
   assert.deepEqual(result.skus.map((s) => s.sku), ["OK"]);
   const messages = errors(result).map((p) => `${p.sku}: ${p.message}`);
   assert.equal(messages.length, 2);
-  assert.match(messages[0], /^BIG: 4 columns are 140 mm too long for the 600 mm tray length \(x\)/);
-  assert.match(messages[1], /^TALL: 3 layers of 85 mm stand 75 mm above the 180 mm tray depth \(z\)/);
+  assert.match(messages[0], /^BIG: 4 columns against the 600 mm tray length \(x\): 140 mm over, more than the 20 mm squeeze allowance/);
+  assert.match(messages[1], /^TALL: 3 layers of 85 mm against the 180 mm tray depth \(z\): 75 mm over, more than the 15 mm/);
   assert.equal(errors(result)[0].line, 2);
+});
+
+test("layoutPattern: squeeze allowance is per product, per direction", () => {
+  const tray = { length: 364, width: 264, depth: 144 };
+  const product = { length: 175, width: 135, height: 70 };
+  const strict = layoutPattern(tray, product, { rows: 2, columns: 2, layers: 2 });
+  assert.equal(strict.spare.y, -6);
+  assert.equal(strict.fits, false);
+  const squeezed = layoutPattern(tray, product, { rows: 2, columns: 2, layers: 2, squeeze: 5 });
+  assert.deepEqual(squeezed.allowance, { x: 10, y: 10, z: 10 });
+  assert.equal(squeezed.fits, true);
+  assert.equal(squeezed.tight, true);
+  assert.equal(squeezed.slotSize.width, 132); // drawn squeezed, inside the tray
+  for (const slot of squeezed.slots) assert.ok(Math.abs(slot.y) + squeezed.slotSize.width / 2 <= 132 + 1e-9);
+  // 11 mm over with 2 rows is past the 10 mm allowance.
+  assert.equal(layoutPattern({ ...tray, width: 259 }, product, { rows: 2, columns: 2, layers: 2, squeeze: 5 }).fits, false);
+  // Plenty of room: not tight.
+  assert.equal(layoutPattern({ length: 600, width: 400, depth: 200 }, product, { rows: 2, columns: 2, layers: 2, squeeze: 5 }).tight, false);
+});
+
+test("parseSkuFile: a layout inside the 5 mm squeeze allowance loads with a tight-fit warning", () => {
+  const csv = `${HEADER}\nT300,Tesco 300g,175,135,70,300,x.png,TESCO Half,364,264,144,2,2,2,2,auto`;
+  const result = parseSkuFile(csv, "skus.csv");
+  assert.deepEqual(errors(result), []);
+  assert.equal(result.skus[0].tight, true);
+  assert.match(result.problems[0].message, /^tight fit, 2 rows against the 264 mm tray width \(y\): 6 mm over, inside the 10 mm/);
 });
 
 test("parseSkuFile: missing and bad values are errors, missing weight and image only warn", () => {

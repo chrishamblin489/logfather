@@ -60,8 +60,11 @@ Living record of agreed functionality: what is open, and what has shipped
   columns per layer, layers, optional products per pick, orientation and
   the customer's line rate (`infeed_ppm`).
   Fit check (Chris): `layoutPattern` in the engine works out the spare room
-  in x (tray length), y (tray width) and z (depth to the rim); a line where
-  any is below 0 is refused with the shortfall in mm, so it never reaches
+  in x (tray length), y (tray width) and z (depth to the rim). Each product
+  may squeeze by 5 mm per direction (Chris, same day, after 5 of Hughes
+  Group's 11 real layouts ran 4 to 14 mm over on paper): inside that
+  allowance the line loads flagged as a tight fit and is drawn squeezed;
+  beyond it the line is refused with the overrun in mm, so it never reaches
   the simulation. Missing weight or picture only warns. Pictures are paired
   by file name (`matchImages`). Template and column guide in
   `simulator/skus/`.

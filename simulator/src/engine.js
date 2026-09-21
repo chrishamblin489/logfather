@@ -81,12 +81,17 @@
   // Slots for a layout the SKU file states outright: `rows` x `columns` per
   // layer (columns run along the tray length) and `layers` high, spread evenly
   // across the tray. `tray` is the INTERNAL size. `spare` is the room left
-  // over in mm: x along the tray length, y across its width, z from the top
-  // of the stack up to the rim. The layout fits only when none is below 0.
-  // A layout that does not fit still gets its slots (centred, overlapping)
-  // so the clash can be drawn.
+  // over in mm with every product at its nominal size: x along the tray
+  // length, y across its width, z from the top of the stack up to the rim.
+  // `layout.squeeze` is how many mm one product may give in each direction
+  // (punnet rims flex, sides taper, film lids settle): a direction may run
+  // short by up to that much per product in it (`allowance`). The layout fits
+  // when spare + allowance is never below 0; `tight` says it needed the
+  // squeeze. `slotSize` is the size each product is left with, for drawing.
+  // A layout that does not fit still gets its slots so the clash can be drawn.
   function layoutPattern(tray, product, layout) {
     const rows = layout.rows, cols = layout.columns, layers = layout.layers;
+    const squeeze = Math.max(0, layout.squeeze || 0);
     const spareAs = (l, w) => ({
       x: tray.length - cols * l,
       y: tray.width - rows * w,
@@ -96,26 +101,30 @@
     const across = spareAs(product.width, product.length);
     const tightest = (spare) => Math.min(spare.x, spare.y);
     const orientation = layout.orientation || "auto";
-    // Auto keeps the product as it lies unless only the turned layout fits
-    // (or, when neither fits, the turned one misses by less).
+    // Auto keeps the product as it lies unless the turned layout has more room.
     const rotated = orientation === "across"
       || (orientation === "auto" && tightest(along) < 0 && tightest(across) > tightest(along));
     const spare = rotated ? across : along;
-    const l = rotated ? product.width : product.length;
-    const w = rotated ? product.length : product.width;
+    const allowance = { x: cols * squeeze, y: rows * squeeze, z: layers * squeeze };
+    const fits = ["x", "y", "z"].every((k) => spare[k] + allowance[k] >= 0);
+    const slotSize = {
+      length: Math.min(rotated ? product.width : product.length, tray.length / cols),
+      width: Math.min(rotated ? product.length : product.width, tray.width / rows),
+      height: fits ? Math.min(product.height, tray.depth / layers) : product.height,
+    };
     const gapX = Math.max(0, spare.x / (cols + 1));
     const gapY = Math.max(0, spare.y / (rows + 1));
-    const spanX = cols * l + (cols - 1) * gapX;
-    const spanY = rows * w + (rows - 1) * gapY;
+    const spanX = cols * slotSize.length + (cols - 1) * gapX;
+    const spanY = rows * slotSize.width + (rows - 1) * gapY;
     const slots = [];
     for (let layer = 0; layer < layers; layer++) {
       for (let row = 0; row < rows; row++) {
         for (let col = 0; col < cols; col++) {
           slots.push({
             index: slots.length, layer, row, col,
-            x: -spanX / 2 + l / 2 + col * (l + gapX),
-            y: -spanY / 2 + w / 2 + row * (w + gapY),
-            z: layer * product.height,
+            x: -spanX / 2 + slotSize.length / 2 + col * (slotSize.length + gapX),
+            y: -spanY / 2 + slotSize.width / 2 + row * (slotSize.width + gapY),
+            z: layer * slotSize.height,
             rotated,
           });
         }
@@ -123,8 +132,8 @@
     }
     return {
       rows, cols, layers, perLayer: rows * cols, total: slots.length, rotated, slots,
-      spare, fits: spare.x >= 0 && spare.y >= 0 && spare.z >= 0,
-      stackHeight: layers * product.height,
+      spare, allowance, fits, tight: fits && Math.min(spare.x, spare.y, spare.z) < 0,
+      slotSize, stackHeight: layers * product.height,
     };
   }
 
