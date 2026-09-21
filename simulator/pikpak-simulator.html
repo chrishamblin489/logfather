@@ -126,7 +126,7 @@
   </section>
 
   <section>
-    <label class="note" style="display:block;margin:0"><input id="axes" type="checkbox" checked> Show the X, Y, Z axes of the machine's CAD (mm, origin at the 0)</label>
+    <label class="note" style="display:block;margin:0"><input id="axes" type="checkbox"> Show the X, Y, Z axes of the machine's CAD (mm, origin at the 0)</label>
   </section>
 </aside>
 
@@ -1069,6 +1069,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   // The STEP file's own axes, drawn at its origin (on the floor, beyond the tray
   // lanes), so a position read off the CAD can be found in the scene and back.
   const axes = new THREE.Group();
+  axes.visible = false;   // off until the panel's checkbox asks for them
   scene.add(axes);
   function label(text, color) {
     const c = document.createElement("canvas");

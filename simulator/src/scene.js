@@ -136,6 +136,7 @@
   // The STEP file's own axes, drawn at its origin (on the floor, beyond the tray
   // lanes), so a position read off the CAD can be found in the scene and back.
   const axes = new THREE.Group();
+  axes.visible = false;   // off until the panel's checkbox asks for them
   scene.add(axes);
   function label(text, color) {
     const c = document.createElement("canvas");
