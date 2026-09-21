@@ -29,6 +29,7 @@
     layers: ["layers", "numberoflayers", "layercount"],
     productsPerPick: ["productsperpick", "perpick", "pickgroup"],
     orientation: ["orientation"],
+    traysSideBySide: ["trayssidebyside", "sidebyside", "traysperstation"],
     infeedPpm: ["infeedppm", "ppm", "packsperminute", "packsperminuteppm"],
   };
   // Tray length and width may be left blank: most trays are 600 x 400 mm.
@@ -36,11 +37,14 @@
   // What one product may give in each direction before a layout is refused
   // (Chris, 2026-09-21: real punnet layouts run a few mm over on paper).
   const SQUEEZE_MM = 5;
+  // Half-size trays (about 400 x 300 outside) go through in pairs, side by
+  // side, covering the same footprint as one 600 x 400 tray.
+  const isHalfTray = (tray) => tray.length <= 400 && tray.width <= 300;
   const REQUIRED = ["sku", "productLength", "productWidth", "productHeight",
     "trayDepth", "rows", "columns", "layers"];
   const TEMPLATE_HEADER = ["sku", "name", "product_length_mm", "product_width_mm", "product_height_mm",
     "weight_g", "image", "tray_name", "tray_length_mm", "tray_width_mm", "tray_depth_mm",
-    "rows", "columns", "layers", "products_per_pick", "orientation", "infeed_ppm"];
+    "rows", "columns", "layers", "products_per_pick", "orientation", "infeed_ppm", "trays_side_by_side"];
 
   const squash = (s) => String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -158,9 +162,12 @@
         if (fit.spare[k] < 0) warn(`tight fit, ${what[k]}: ${-fit.spare[k]} mm over, inside the ${fit.allowance[k]} mm squeeze allowance`);
       }
       sku.tight = fit.tight;
+      const sideBySide = num("traysSideBySide");
+      sku.traysSideBySide = sideBySide === 1 || sideBySide === 2 ? sideBySide : isHalfTray(sku.tray) ? 2 : 1;
       sku.spare = fit.spare;
       sku.rotated = fit.rotated;
       sku.perTray = fit.total;
+      sku.perStation = fit.total * sku.traysSideBySide;   // packed between two tray changes
       if (skus.some((other) => other.id === sku.id)) warn("same SKU and tray as an earlier line: the later one is used");
       const at = skus.findIndex((other) => other.id === sku.id);
       if (at >= 0) skus[at] = sku; else skus.push(sku);

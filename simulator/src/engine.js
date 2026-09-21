@@ -137,6 +137,42 @@
     };
   }
 
+  // The tray station: what the arm fills between two tray changes. It is one
+  // full-size tray (about 600 x 400), or two half-size trays (about 400 x 300)
+  // turned 90 degrees and set side by side so together they cover the same
+  // footprint; the pair is filled and changed as one. Station coordinates:
+  // origin at the centre of the station floor, x along its length (the 600),
+  // y across. `stationSlots` are in fill order: layer by layer, in lines of
+  // products the way the vacuum head sets them down. A line runs along x (and
+  // carries on from the first half tray into the second) unless the pick size
+  // only matches the rows across, as with 3 x 2 lifted three at a time.
+  function stationPattern(tray, product, layout) {
+    const base = layoutPattern(tray, product, layout);
+    const trays = layout.traysSideBySide === 2 ? 2 : 1;
+    const pitch = layout.trayPitch || 300;   // centre to centre of the two half trays
+    const stationSlots = [];
+    for (let k = 0; k < trays; k++) {
+      for (const slot of base.slots) {
+        stationSlots.push(trays === 1
+          ? { tray: 0, layer: slot.layer, sRow: slot.row, sCol: slot.col, x: slot.x, y: slot.y, z: slot.z, rotated: slot.rotated }
+          : { tray: k, layer: slot.layer, sRow: slot.col, sCol: k * base.rows + slot.row,
+              x: (k - 0.5) * pitch + slot.y, y: slot.x, z: slot.z, rotated: !slot.rotated });
+      }
+    }
+    const stationCols = trays === 1 ? base.cols : 2 * base.rows;
+    const stationRows = trays === 1 ? base.rows : base.cols;
+    const alongXPerTray = trays === 1 ? base.cols : base.rows;
+    const perPick = layout.productsPerPick || alongXPerTray;
+    const line = perPick === stationRows && perPick !== alongXPerTray && perPick !== stationCols ? "y" : "x";
+    stationSlots.sort((a, b) => a.layer - b.layer
+      || (line === "x" ? a.sRow - b.sRow || a.sCol - b.sCol : a.sCol - b.sCol || a.sRow - b.sRow));
+    stationSlots.forEach((slot, index) => { slot.index = index; });
+    return Object.assign({}, base, {
+      trays, trayPitch: pitch, stationSlots, stationCols, stationRows, line,
+      perTray: base.total, total: base.total * trays,
+    });
+  }
+
   // The flow: the belt runs products into a stop gate, where they bunch up
   // nose to tail (the belt slips underneath). Once `productsPerPick` of them
   // are pressed up in a line, the arm lowers an array of vacuum cups, one per
@@ -337,5 +373,5 @@
     return this.time > 0 ? this.stats.busyS / this.time : 0;
   };
 
-  return { packPattern, layoutPattern, estimateCapacityPpm, Simulation, DEFAULTS, mulberry32 };
+  return { packPattern, layoutPattern, stationPattern, estimateCapacityPpm, Simulation, DEFAULTS, mulberry32 };
 });

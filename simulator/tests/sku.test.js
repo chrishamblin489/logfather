@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
-const { layoutPattern } = require("../src/engine.js");
+const { layoutPattern, stationPattern } = require("../src/engine.js");
 const { parseCsv, parseSkuFile, matchImages, TEMPLATE_HEADER } = require("../src/sku.js");
 
 const HEADER = TEMPLATE_HEADER.join(",");
@@ -50,6 +50,55 @@ test("layoutPattern: auto turns the product only when that is what fits", () => 
   assert.equal(turned.rotated, true);
   assert.deepEqual(turned.spare, { x: 0, y: 20, z: 10 });
   assert.equal(turned.fits, true);
+});
+
+test("stationPattern: one full-size tray fills row by row along its length", () => {
+  const p = stationPattern({ length: 578, width: 372, depth: 170 }, { length: 178, width: 138, height: 73 },
+    { rows: 2, columns: 4, layers: 2, productsPerPick: 4, squeeze: 5 });
+  assert.equal(p.trays, 1);
+  assert.equal(p.total, 16);
+  assert.equal(p.line, "x");
+  const firstLine = p.stationSlots.slice(0, 4);
+  assert.ok(firstLine.every((s) => s.layer === 0 && s.y === firstLine[0].y));
+  assert.deepEqual(firstLine.map((s) => s.sCol), [0, 1, 2, 3]);
+});
+
+test("stationPattern: two half trays side by side cover the 600 x 400 footprint", () => {
+  const tray = { length: 378, width: 272, depth: 147 };
+  const p = stationPattern(tray, { length: 178, width: 138, height: 33 },
+    { rows: 2, columns: 2, layers: 3, productsPerPick: 2, squeeze: 5, traysSideBySide: 2 });
+  assert.equal(p.trays, 2);
+  assert.equal(p.perTray, 12);
+  assert.equal(p.total, 24);
+  assert.equal(p.stationCols, 4);
+  assert.equal(p.stationRows, 2);
+  // A line runs along the station and carries on into the second tray.
+  const line = p.stationSlots.slice(0, 4);
+  assert.deepEqual(line.map((s) => s.tray), [0, 0, 1, 1]);
+  assert.ok(line.every((s) => s.layer === 0 && Math.abs(s.y - line[0].y) < 1e-9));
+  assert.ok(line[0].x < line[1].x && line[1].x < line[2].x && line[2].x < line[3].x);
+  // Turned 90 degrees: the tray's 378 runs across the station, its 272 along it.
+  for (const s of p.stationSlots) {
+    assert.ok(Math.abs(s.y) <= tray.length / 2);
+    assert.ok(Math.abs(Math.abs(s.x) - 150) <= tray.width / 2);
+  }
+  assert.deepEqual(p.stationSlots.map((s) => s.index), [...Array(24).keys()]);
+});
+
+test("stationPattern: three across lifted together are set down across the tray", () => {
+  const p = stationPattern({ length: 567, width: 367, depth: 193 }, { length: 268, width: 115, height: 65 },
+    { rows: 3, columns: 2, layers: 2, productsPerPick: 3 });
+  assert.equal(p.line, "y");
+  const line = p.stationSlots.slice(0, 3);
+  assert.ok(line.every((s) => s.x === line[0].x));
+  assert.deepEqual(line.map((s) => s.sRow), [0, 1, 2]);
+});
+
+test("parseSkuFile: half-size trays default to two side by side", () => {
+  const csv = `${HEADER}\nH,Half,175,135,70,300,x.png,Half tray,364,264,144,2,2,2,2,auto,115,\nF,Full,178,138,73,300,x.png,Full tray,578,372,170,2,4,2,4,auto,115,\nS,Single half,175,135,70,300,x.png,Half tray,364,264,144,2,2,2,2,auto,115,1`;
+  const result = parseSkuFile(csv, "skus.csv");
+  assert.deepEqual(result.skus.map((s) => [s.sku, s.traysSideBySide, s.perTray, s.perStation]),
+    [["H", 2, 8, 16], ["F", 1, 16, 16], ["S", 1, 8, 8]]);
 });
 
 test("parseCsv: quotes, doubled quotes, CRLF, BOM and blank lines", () => {
@@ -104,7 +153,7 @@ test("layoutPattern: squeeze allowance is per product, per direction", () => {
 });
 
 test("parseSkuFile: a layout inside the 5 mm squeeze allowance loads with a tight-fit warning", () => {
-  const csv = `${HEADER}\nT300,Tesco 300g,175,135,70,300,x.png,TESCO Half,364,264,144,2,2,2,2,auto`;
+  const csv = `${HEADER}\nT300,Small punnet,175,135,70,300,x.png,Half tray,364,264,144,2,2,2,2,auto`;
   const result = parseSkuFile(csv, "skus.csv");
   assert.deepEqual(errors(result), []);
   assert.equal(result.skus[0].tight, true);

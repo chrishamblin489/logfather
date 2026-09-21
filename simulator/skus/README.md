@@ -18,6 +18,7 @@ the CSV together with the product pictures in one go.
 | `layers` | yes | Layers in a full tray |
 | `products_per_pick` | no | Products lifted together. Blank = one row (`columns`) |
 | `orientation` | no | `along`, `across` (product turned 90 degrees) or `auto` |
+| `trays_side_by_side` | no | `1` or `2`. Blank = 2 for a half-size tray (inside 400 x 300 or less), which goes through in pairs covering the same footprint as a 600 x 400 tray, else 1 |
 | `infeed_ppm` | no | The customer's line rate for this product, packs per minute. Sets the infeed slider when the SKU is chosen |
 
 ## The fit check

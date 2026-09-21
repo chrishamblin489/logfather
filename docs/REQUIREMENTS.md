@@ -61,13 +61,23 @@ Living record of agreed functionality: what is open, and what has shipped
   the customer's line rate (`infeed_ppm`).
   Fit check (Chris): `layoutPattern` in the engine works out the spare room
   in x (tray length), y (tray width) and z (depth to the rim). Each product
-  may squeeze by 5 mm per direction (Chris, same day, after 5 of Hughes
-  Group's 11 real layouts ran 4 to 14 mm over on paper): inside that
+  may squeeze by 5 mm per direction (Chris, same day, after 5 of a customer's
+  11 real layouts ran 4 to 14 mm over on paper): inside that
   allowance the line loads flagged as a tight fit and is drawn squeezed;
   beyond it the line is refused with the overrun in mm, so it never reaches
   the simulation. Missing weight or picture only warns. Pictures are paired
   by file name (`matchImages`). Template and column guide in
   `simulator/skus/`.
+- Simulator tray station (Chris): half-size trays (about 400 x 300) go
+  through side by side in pairs, turned 90 degrees, covering the same
+  footprint as one 600 x 400 tray and changed together. `stationPattern`
+  in the engine gives the slots in station coordinates in fill order (layer
+  by layer, in lines the way the vacuum head sets them down; a line carries
+  on from the first half tray into the second; 3 x 2 lifted three at a time
+  is set down across). SKU files default `trays_side_by_side` to 2 for a
+  tray 400 x 300 or less inside; `perStation` is what is packed between two
+  tray changes. three.js r160 is vendored in `simulator/vendor/` for the
+  single-file page.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 
