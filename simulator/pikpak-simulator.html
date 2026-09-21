@@ -971,7 +971,6 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     trayOut: { x0: 921, x1: 3321, z: -1368, width: 686, topNear: 402, topFar: 300 },
     controlBox: { x: 64, z: 24, y: 467, size: [441, 176, 351] },    // ROBOT CONTROL BOX, under the belt
     camera: { x: -465, z: -52, y: 1590, size: [195, 63, 60] },        // CAMERA ENCLOSURE over the pick
-    hmi: { x: -1096, z: 223, y: 1275, size: [270, 217, 40] },       // HMI TABLET CASE
     headDrop: 170,          // tool flange down to the cup lips
     hover: 130,             // how far above the products the head waits
     trayWall: 12,
@@ -1168,11 +1167,10 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     legs([tout.x1 - 200], [tout.z - 300, tout.z + 300], tout.topFar - 100);
     put(box(40, 155, tout.width, 0xd5dbe1, steel), tout.x1 - 20, tout.topFar + 60, tout.z);   // END STOP
 
-    const cb = CELL.controlBox, cam = CELL.camera, hmi = CELL.hmi;
+    const cb = CELL.controlBox, cam = CELL.camera;
     put(box(cb.size[0], cb.size[1], cb.size[2], 0x3a424c), cb.x, cb.y, cb.z);
     put(box(cam.size[0], cam.size[1], cam.size[2], 0x3a424c), cam.x, cam.y, cam.z);
     put(box(30, CELL.frame.height - cam.y - 60, 30, 0xc7ced6, steel), cam.x, (CELL.frame.height + cam.y) / 2, cam.z);
-    put(box(hmi.size[0], hmi.size[1], hmi.size[2], 0x20262d), hmi.x, hmi.y, hmi.z);
 
     // The machine frame: plinth, 40 mm posts and rails, left open so the inside shows.
     const f = CELL.frame, fw = f.x1 - f.x0, fd = f.z1 - f.z0, post = 40;

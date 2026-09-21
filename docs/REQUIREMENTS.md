@@ -100,8 +100,8 @@ Living record of agreed functionality: what is open, and what has shipped
   tray belt with the ejector arm's end stop beside the robot, where the
   tray is filled 600 across the lane; powered rollers beside it; outside,
   the sloping gravity infeed rollers and the gravity outfeed rollers with
-  their end stop, side by side; control box under the belt, HMI tablet,
-  open weldment frame. Trays: empties queue on the infeed rollers, one runs
+  their end stop, side by side; control box under the belt, open weldment
+  frame (the HMI tablet block was removed, Chris: it floated with no arm). Trays: empties queue on the infeed rollers, one runs
   in to the end stop, the ejector pushes the full tray across, it runs out
   to the outfeed end stop and is lifted off after a while. The 3D view is
   centred beside the panel. Not in the CAD, so still an estimate: the
