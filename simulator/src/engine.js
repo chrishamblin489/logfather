@@ -212,7 +212,12 @@
     productsPerPick: 4,       // vacuum cups in the array = products lifted together
     robotCycleS: 3,           // grip, move to the crate, release, move back
     gripS: 0.2,               // vacuum on (and again off) dwell, inside robotCycleS
-    crateChangeS: 6,          // eject the full crate and bring in the next
+    // The arm fills the SECOND tray on the tray belt, not the one nearest to it.
+    // A full tray indexes on to the place nearest the arm and waits there while
+    // the next one is filled; just before the arm's final lift into that next
+    // tray, the ejector pushes the waiting tray sideways onto the outfeed.
+    crateChangeS: 6,          // index the full tray on and bring the next empty one in
+    ejectS: 1.5,              // the sideways push; runs while the arm works, the index waits for it
     perCrate: 12,
     seed: 1,
   };
@@ -253,7 +258,8 @@
     this.backlog = 0;         // arrived upstream but no room on the belt yet
     // Phases: waiting (over the line) -> gripping -> toPlace -> releasing -> toPick.
     this.robot = { phase: "waiting", elapsed: 0, duration: 0, group: [], slots: [] };
-    this.crate = { count: 0, changing: false, changeElapsed: 0, number: 1 };
+    this.crate = { count: 0, changing: false, changeElapsed: 0, number: 1, parked: false };
+    this.eject = null;        // { elapsed } while the ejector is pushing the waiting tray out
     this.placeTimes = [];
     this.stats = { arrived: 0, packed: 0, picks: 0, crates: 0, busyS: 0, blockedS: 0 };
   };
@@ -326,11 +332,16 @@
       limit = p.x - c.productLength;
     }
 
-    // Crate change.
-    if (this.crate.changing) {
+    // The sideways push, then the tray change: the full tray cannot index on to
+    // the place by the arm until the tray before it has been pushed clear.
+    if (this.eject) {
+      this.eject.elapsed += h;
+      if (this.eject.elapsed >= c.ejectS) this.eject = null;
+    }
+    if (this.crate.changing && !this.eject) {
       this.crate.changeElapsed += h;
       if (this.crate.changeElapsed >= c.crateChangeS) {
-        this.crate = { count: 0, changing: false, changeElapsed: 0, number: this.crate.number + 1 };
+        this.crate = { count: 0, changing: false, changeElapsed: 0, number: this.crate.number + 1, parked: true };
         events.push({ type: "crateIn", number: this.crate.number });
       }
     }
@@ -347,6 +358,12 @@
         r.group = this.products.filter((p) => p.state === "belt").slice(0, want);
         r.slots = r.group.map((_, i) => this.crate.count + i);
         for (const p of r.group) p.state = "gripped";
+        if (this.crate.parked && this.crate.count + want >= c.perCrate) {
+          // The final lift into this tray is starting: push the waiting full tray out.
+          this.crate.parked = false;
+          this.eject = { elapsed: 0 };
+          events.push({ type: "eject", number: this.crate.number - 1 });
+        }
         this._phase("gripping", c.gripS);
         events.push({ type: "gripStart", ids: r.group.map((p) => p.id), slots: r.slots.slice() });
       }

@@ -103,6 +103,29 @@ test("simulation: a slow belt, not the arm, can be what limits the rate", () => 
   assert.ok(overallPpm <= slow * 1.01 && overallPpm > slow * 0.9, `sim ${overallPpm} vs estimate ${slow}`);
 });
 
+test("simulation: a full tray waits by the arm and is pushed out at the next tray's final lift", () => {
+  const sim = new Simulation({ infeedPpm: 60, productsPerPick: 4, perCrate: 12, beltSpeed: 800 });
+  const events = [];
+  for (let i = 0; i < 9000; i++) for (const e of sim.step(0.01)) events.push(Object.assign({ at: sim.time }, e));
+  const of = (type) => events.filter((e) => e.type === type);
+  // Nothing to push out while the first tray is filled; after that, one push per tray.
+  assert.equal(of("eject")[0].number, 1);
+  assert.ok(of("eject")[0].at > of("crateFull")[0].at);
+  assert.equal(of("eject").length, of("crateFull").length - (sim.crate.parked || sim.crate.changing ? 1 : 0));
+  // Each push starts with the grip of the last lift into the tray then being filled.
+  for (const push of of("eject")) {
+    const grip = of("gripStart").find((g) => Math.abs(g.at - push.at) < 1e-9);
+    assert.ok(grip && grip.slots[grip.slots.length - 1] === 11, `push at ${push.at}`);
+  }
+});
+
+test("simulation: the tray change waits for a slow push to clear", () => {
+  const quick = new Simulation({ infeedPpm: 200, productsPerPick: 4, perCrate: 4, ejectS: 0.5 });
+  const slow = new Simulation({ infeedPpm: 200, productsPerPick: 4, perCrate: 4, ejectS: 8 });
+  quick.step(120); slow.step(120);
+  assert.ok(slow.stats.crates < quick.stats.crates);
+});
+
 test("simulation: every arrival is packed or still in the cell", () => {
   const sim = new Simulation({ infeedPpm: 60, spacing: "random", seed: 7 });
   sim.step(120);

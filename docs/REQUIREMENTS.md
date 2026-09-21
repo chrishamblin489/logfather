@@ -143,6 +143,16 @@ Living record of agreed functionality: what is open, and what has shipped
   the pick at the line inside one tray (`lineCount`), since a rigid line
   cannot cross the wall between two half trays. The tray plan and the
   product picture follow the same orientation.
+- Simulator tray sequence (Chris, 2026-09-22, "another quirk of our system"):
+  the arm fills the SECOND tray on the tray belt, not the one nearest to it.
+  A full tray indexes on to the end stop beside the arm and waits there
+  while the next is filled; just before the arm's final lift into that next
+  tray the ejector pushes the waiting tray sideways onto the outfeed. In the
+  engine the push (`ejectS`, an `eject` event at that lift's grip) runs
+  alongside the packing and costs no cycle time unless it is still going
+  when the next tray change is due, which then waits; `crateChangeS` is now
+  the index-on plus the next empty tray coming in. The nearest tray place
+  is inside the arm's unreachable column, which this explains.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

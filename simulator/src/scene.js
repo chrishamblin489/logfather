@@ -24,7 +24,10 @@
     robot: { x: -441, z: -468, pedestal: 690, pedestalX: 185, pedestalZ: 360 },
     // CONVEYOR WITH RIVETS (internal tray belt, 600 wide) up to the ejector arm's END STOP GUIDE
     trayBelt: { x0: -316, x1: 885, z: -670, width: 818, top: 471, endStop: -275 },
-    station: { x: -75, z: -670, floor: 471 },     // a 400 deep tray hard against the end stop
+    // The arm fills the SECOND tray on the tray belt (Chris, 2026-09-22). A full tray
+    // indexes on to the place against the end stop and waits there to be pushed out.
+    station: { x: 355, z: -670, floor: 471 },
+    parkX: -75,             // a 400 deep tray hard against the end stop
     // POWERED ROLLERS ASSY, 1.2m SECTION (internal outfeed lane)
     rollers: { x0: -315, x1: 889, z: -1368, width: 686, top: 466 },
     // EXTERNAL INFEED ROLLERS: gravity lane, empty trays run down it into the machine
@@ -292,7 +295,9 @@
 
   function fillStation() {
     trayLayer.clear();
-    state.station = trayUnit(CELL.station.x);
+    state.station = trayUnit(CELL.station.x);     // being filled
+    state.indexing = null;                        // full, on its way to the end stop
+    state.parked = null;                          // full, waiting at the end stop to be pushed out
     state.waiting = [0, 1, 2].map((i) => trayUnit(WAIT_X + i * UNIT_PITCH));
     state.leaving = [];
   }
@@ -608,20 +613,31 @@
           state.station.add(mesh);
         });
       } else if (e.type === "crateFull") {
-        // The full tray leaves, the first waiting tray comes in, another joins the queue outside.
-        state.leaving.push({ unit: state.station, since: state.sim.time, parkedAt: null });
+        // The full tray indexes on to the end stop, the first waiting tray comes in to be
+        // filled, another joins the queue outside.
+        state.indexing = state.station;
         state.station = state.waiting.shift();
         state.station.userData.startX = state.station.position.x;
         state.waiting.push(trayUnit(CELL.trayIn.x1 - 250));
+      } else if (e.type === "crateIn") {
+        state.parked = state.indexing;
+        state.indexing = null;
+        if (state.parked) state.parked.position.x = CELL.parkX;
+      } else if (e.type === "eject" && state.parked) {
+        // The ejector arm pushes the waiting full tray sideways onto the powered rollers.
+        state.leaving.push({ unit: state.parked, since: state.sim.time, parkedAt: null });
+        state.parked = null;
       }
     }
   }
 
-  // Trays through the machine, as in the general assembly: empty trays queue on
-  // the sloping infeed rollers; one runs in on the tray belt to the end stop
-  // beside the arm and is filled there; the ejector arm pushes the full tray
-  // across onto the powered rollers, which send it back out onto the outfeed
-  // rollers, where it runs down to the end stop and is lifted off.
+  // Trays through the machine: empty trays queue on the sloping infeed rollers;
+  // one runs in on the tray belt to the SECOND place from the end stop and is
+  // filled there; full, it indexes on to the end stop beside the arm and waits
+  // while the next is filled; just before the arm's final lift into that next
+  // tray the ejector arm pushes it across onto the powered rollers, which send
+  // it back out onto the outfeed rollers, where it runs down to the end stop
+  // and is lifted off.
   function moveTrays(sim, dt) {
     const st = CELL.station, slopeIn = Math.atan2(CELL.trayIn.topFar - CELL.trayIn.topNear, CELL.trayIn.x1 - CELL.trayIn.x0);
     const settle = (unit, x, outside, insideTop, slope) => {
@@ -635,13 +651,14 @@
       const k = Math.min(1, sim.crate.changeElapsed / sim.config.crateChangeS);
       const from = state.station.userData.startX != null ? state.station.userData.startX : WAIT_X;
       settle(state.station, from + (st.x - from) * smooth(Math.max(0, (k - 0.25) / 0.75)), CELL.trayIn, CELL.trayBelt.top, slopeIn);
+      if (state.indexing) state.indexing.position.x = st.x + (CELL.parkX - st.x) * smooth(Math.min(1, k / 0.6));
     } else {
       settle(state.station, st.x, CELL.trayIn, CELL.trayBelt.top, slopeIn);
     }
     state.waiting.forEach((unit, i) => settle(unit, toward(unit.position.x, WAIT_X + i * UNIT_PITCH, 700 * dt), CELL.trayIn, CELL.trayBelt.top, slopeIn));
 
     const slopeOut = Math.atan2(CELL.trayOut.topFar - CELL.trayOut.topNear, CELL.trayOut.x1 - CELL.trayOut.x0);
-    const pushS = Math.min(1.2, sim.config.crateChangeS * 0.3);
+    const pushS = sim.config.ejectS;
     state.leaving.forEach((tray, i) => {
       const age = sim.time - tray.since, unit = tray.unit;
       if (age < pushS) {        // ejector arm: across to the powered rollers
