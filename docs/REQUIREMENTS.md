@@ -115,7 +115,8 @@ Living record of agreed functionality: what is open, and what has shipped
   travel 600 across the lane, 400 along it (Chris: they were 90 degrees
   out). Default view is from the HMI side: products run left to right.
 - Simulator gate position (Chris, 2026-09-22): about 1 m further from the
-  robot along Z, now CAD Z 900, flush with the outfeed side of the frame;
+  robot along Z, then back by about 200 mm: now CAD Z 700, 200 mm inside
+  the outfeed side of the frame;
   the line backs up inside the machine from there. Arm reach to the line
   checked for 2 to 6 products per pick (tightest 1254 of 1350 mm).
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and

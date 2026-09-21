@@ -16,8 +16,8 @@
     // INFEED CONVEYOR, 4.2m LONG, 405mm WIDE, 48m/min
     belt: { x0: -2370, x1: 1830, top: 730, width: 405, bodyWidth: 580, bodyDepth: 156 },
     // Not in the CAD. Chris, 2026-09-22: about 1 m further from the robot along Z than the
-    // first guess (-90), which puts it flush with the outfeed side of the frame (CAD Z 900).
-    gateX: 900,
+    // first guess (-90); then back by about 200 mm: CAD Z 700, inside the outfeed side of the frame.
+    gateX: 700,
     // WELDMENT FRAME
     frame: { x0: -901, x1: 900, z0: -1805, z1: 305, height: 2140, plinth: 200 },
     // ROBOT, iS SERIES on WELDMENT, ROBOT PEDESTAL
