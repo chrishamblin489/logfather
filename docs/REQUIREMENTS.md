@@ -121,8 +121,9 @@ Living record of agreed functionality: what is open, and what has shipped
   checked for 2 to 6 products per pick (tightest 1254 of 1350 mm).
 - Simulator playback bar (Chris, 2026-09-22): Pause / Play, Restart, speed and
   run time sit in a bar under the 3D view, always in sight (they were at the
-  bottom of the panel, below the fold); space bar pauses and plays; a paused
-  view is outlined and the camera still turns, zooms and pans.
+  bottom of the panel, below the fold); space bar pauses and plays; while
+  paused the camera still turns, zooms and pans (the outline round a paused
+  view was removed at Chris's request; the button's play glyph shows it).
   Same day: the buttons carry icons, not words, drawn to the proportions of
   Logfather's `media_icon` (pause bars / play triangle) and `refresh_icon`
   (restart); the speed slider became three buttons, 0.5x, 1x, 2x.
