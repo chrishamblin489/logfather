@@ -57,7 +57,8 @@ Living record of agreed functionality: what is open, and what has shipped
   tab, BOM, loose header spellings) or JSON. One line = one product in one
   tray: product length/width/height mm, weight, top-down picture, tray
   inside size (blank length and width = 600 x 400, most trays), rows x
-  columns per layer, layers, optional products per pick and orientation.
+  columns per layer, layers, optional products per pick, orientation and
+  the customer's line rate (`infeed_ppm`).
   Fit check (Chris): `layoutPattern` in the engine works out the spare room
   in x (tray length), y (tray width) and z (depth to the rim); a line where
   any is below 0 is refused with the shortfall in mm, so it never reaches

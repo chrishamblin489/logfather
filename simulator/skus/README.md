@@ -18,6 +18,7 @@ the CSV together with the product pictures in one go.
 | `layers` | yes | Layers in a full tray |
 | `products_per_pick` | no | Products lifted together. Blank = one row (`columns`) |
 | `orientation` | no | `along`, `across` (product turned 90 degrees) or `auto` |
+| `infeed_ppm` | no | The customer's line rate for this product, packs per minute. Sets the infeed slider when the SKU is chosen |
 
 ## The fit check
 
@@ -31,6 +32,8 @@ worked out in three directions and none may be below 0:
 (with the product turned 90 degrees, length and width swap). A line that does
 not fit is refused and the message says which direction is short and by how
 many mm. Use the tray's inside size: a nominal 600 x 400 tray is smaller inside.
+
+Customer SKU files (any `.csv` here except the template) are not committed to git.
 
 ## Pictures
 

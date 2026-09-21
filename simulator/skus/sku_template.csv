@@ -1,3 +1,3 @@
-sku,name,product_length_mm,product_width_mm,product_height_mm,weight_g,image,tray_name,tray_length_mm,tray_width_mm,tray_depth_mm,rows,columns,layers,products_per_pick,orientation
-EXAMPLE-001,Example punnet 250g (replace me),185,115,85,265,example-punnet.jpg,Standard 600x400,600,400,180,3,3,2,3,auto
-EXAMPLE-002,Example tray left blank = 600 x 400,140,140,70,420,example-tub.png,,,,150,2,4,2,,
+sku,name,product_length_mm,product_width_mm,product_height_mm,weight_g,image,tray_name,tray_length_mm,tray_width_mm,tray_depth_mm,rows,columns,layers,products_per_pick,orientation,infeed_ppm
+EXAMPLE-001,Example punnet 250g (replace me),185,115,85,265,example-punnet.jpg,Standard 600x400,600,400,180,3,3,2,3,auto,60
+EXAMPLE-002,Example tray left blank = 600 x 400,140,140,70,420,example-tub.png,,,,150,2,4,2,,,

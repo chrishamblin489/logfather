@@ -29,6 +29,7 @@
     layers: ["layers", "numberoflayers", "layercount"],
     productsPerPick: ["productsperpick", "perpick", "pickgroup"],
     orientation: ["orientation"],
+    infeedPpm: ["infeedppm", "ppm", "packsperminute", "packsperminuteppm"],
   };
   // Tray length and width may be left blank: most trays are 600 x 400 mm.
   const DEFAULT_TRAY = { length: 600, width: 400 };
@@ -36,7 +37,7 @@
     "trayDepth", "rows", "columns", "layers"];
   const TEMPLATE_HEADER = ["sku", "name", "product_length_mm", "product_width_mm", "product_height_mm",
     "weight_g", "image", "tray_name", "tray_length_mm", "tray_width_mm", "tray_depth_mm",
-    "rows", "columns", "layers", "products_per_pick", "orientation"];
+    "rows", "columns", "layers", "products_per_pick", "orientation", "infeed_ppm"];
 
   const squash = (s) => String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -125,6 +126,7 @@
         orientation,
         // The line lifted off the belt is set down as one row of the tray.
         productsPerPick: Number.isInteger(perPick) && perPick > 0 ? perPick : num("columns"),
+        infeedPpm: num("infeedPpm") > 0 ? num("infeedPpm") : null,   // the customer's line rate
       };
       const warn = (message) => problems.push({ level: "warning", line, sku: label, message });
       if (sku.weightG == null) warn("no weight: the payload check is skipped");

@@ -66,6 +66,8 @@ test("parseSkuFile: the shipped template loads clean", () => {
   assert.deepEqual(first.product, { length: 185, width: 115, height: 85 });
   assert.equal(first.weightG, 265);
   assert.equal(first.perTray, 18);
+  assert.equal(first.infeedPpm, 60);
+  assert.equal(second.infeedPpm, null);
   assert.deepEqual(first.spare, { x: 45, y: 55, z: 10 });
   // Tray length and width left blank: the usual 600 x 400.
   assert.deepEqual(second.tray, { name: null, length: 600, width: 400, depth: 150 });
