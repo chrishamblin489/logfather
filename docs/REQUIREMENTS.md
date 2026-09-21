@@ -20,7 +20,25 @@ Living record of agreed functionality: what is open, and what has shipped
   share; the app assumes nothing about 30 days except the 14-day
   day-listing cache TTL and the overview's 14-day clip-scan cutoff.
 
+- PikPak customer simulator (Chris, 2026-09-21): interactive 3D page for
+  sales meetings, one self-contained HTML in `simulator/`. The customer sets
+  product size/shape, a photo for the top of the punnet, crate and pack
+  pattern, infeed rate and spacing. Engine shipped (below); the 3D scene
+  waits on machine photos/CAD in `simulator/reference/`, and on real
+  figures for cycle time, crate change time and belt speed (the engine's
+  defaults are placeholders, not claims).
+
 ## Shipped
+
+### 2026-09-21
+
+- Simulator engine (Chris): `simulator/src/engine.js`, pure logic with no
+  DOM. `packPattern` (rows x columns x layers, auto 90 degree turn, gap,
+  layer cap, slot positions), `Simulation` (even or random arrivals, moving
+  pick inside the arm's reach, crate change with the infeed holding,
+  packed / missed / crates / rolling ppm / utilisation, seeded so a run
+  repeats) and `estimateCapacityPpm`. Tests in `simulator/tests` run under
+  node and from pytest (`tests/test_simulator_engine.py`).
 
 ### 2026-09-15
 
