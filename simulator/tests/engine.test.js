@@ -42,32 +42,71 @@ test("packPattern: slots are centred and stay inside the crate", () => {
   }
 });
 
-test("simulation: keeps up when the infeed is under capacity", () => {
-  const config = { infeedPpm: 30, robotCycleS: 1.2, crateChangeS: 6, perCrate: 12 };
+test("simulation: products bunch up against the gate, nose to tail", () => {
+  const sim = new Simulation({ infeedPpm: 60, productsPerPick: 99, perCrate: 99 });
+  sim.step(20); // the arm never gets its 99, so the line just grows
+  const { gateX, productLength } = sim.config;
+  assert.ok(sim.lineLength() >= 5);
+  sim.products.slice(0, sim.lineLength()).forEach((p, i) => {
+    assert.ok(Math.abs(p.x - (gateX - productLength / 2 - i * productLength)) < 1e-6);
+  });
+  assert.equal(sim.stats.packed, 0);
+});
+
+test("simulation: the arm lifts a whole line at once into consecutive slots", () => {
+  const sim = new Simulation({ infeedPpm: 40, productsPerPick: 4, perCrate: 12 });
+  const events = sim.step(60);
+  const picked = events.filter((e) => e.type === "picked");
+  const placed = events.filter((e) => e.type === "placed");
+  assert.ok(picked.length >= 3);
+  assert.ok(picked.every((e) => e.ids.length === 4));
+  assert.deepEqual(placed.slice(0, 4).map((e) => [e.crate, e.slots]),
+    [[1, [0, 1, 2, 3]], [1, [4, 5, 6, 7]], [1, [8, 9, 10, 11]], [2, [0, 1, 2, 3]]]);
+  // Front of the line first: ids leave in arrival order.
+  assert.deepEqual(placed[0].ids, [1, 2, 3, 4]);
+});
+
+test("simulation: a last pick smaller than the array tops the crate up exactly", () => {
+  const sim = new Simulation({ infeedPpm: 40, productsPerPick: 4, perCrate: 10 });
+  const placed = sim.step(60).filter((e) => e.type === "placed" && e.crate === 1);
+  assert.deepEqual(placed.map((e) => e.slots.length), [4, 4, 2]);
+});
+
+test("simulation: under capacity it packs what arrives and the belt never backs up", () => {
+  const config = { infeedPpm: 30, productsPerPick: 4, perCrate: 12 };
   assert.ok(estimateCapacityPpm(config) > 30);
   const sim = new Simulation(config);
-  sim.step(300);
-  assert.equal(sim.stats.missed, 0);
+  sim.step(600);
+  assert.equal(sim.stats.blockedS, 0);
   const overallPpm = (sim.stats.packed / sim.time) * 60;
   assert.ok(Math.abs(overallPpm - 30) < 1.5, `overall ppm ${overallPpm}`);
-  // The 60 s window wobbles with where the crate changes fall inside it.
-  assert.ok(Math.abs(sim.rollingPpm() - 30) < 6, `rolling ppm ${sim.rollingPpm()}`);
-  assert.ok(sim.stats.crates >= 11);
 });
 
-test("simulation: over capacity with the infeed never holding, products are missed", () => {
-  const config = { infeedPpm: 80, robotCycleS: 1.2, crateChangeS: 6, perCrate: 12, infeedHoldsDuringCrateChange: false };
+test("simulation: over capacity the line backs up and output matches the estimate", () => {
+  const config = { infeedPpm: 200, productsPerPick: 4, perCrate: 12 };
   const sim = new Simulation(config);
-  sim.step(300);
-  assert.ok(sim.stats.missed > 0);
-  assert.ok(sim.rollingPpm() <= estimateCapacityPpm(config) + 2);
+  sim.step(600);
+  assert.ok(sim.stats.blockedS > 0);
+  const overallPpm = (sim.stats.packed / sim.time) * 60;
+  const estimate = estimateCapacityPpm(config);
+  // The estimate is the ceiling: a real line re-forms a little slower than ideal.
+  assert.ok(overallPpm <= estimate * 1.01 && overallPpm > estimate * 0.9, `sim ${overallPpm} vs estimate ${estimate}`);
 });
 
-test("simulation: every arrival is packed, missed or still in the cell", () => {
+test("simulation: a slow belt, not the arm, can be what limits the rate", () => {
+  const fast = estimateCapacityPpm({ beltSpeed: 400, robotCycleS: 2 });
+  const slow = estimateCapacityPpm({ beltSpeed: 100, robotCycleS: 2 });
+  assert.ok(slow < fast);
+  const sim = new Simulation({ infeedPpm: 200, beltSpeed: 100, robotCycleS: 2 });
+  sim.step(600);
+  const overallPpm = (sim.stats.packed / sim.time) * 60;
+  assert.ok(overallPpm <= slow * 1.01 && overallPpm > slow * 0.9, `sim ${overallPpm} vs estimate ${slow}`);
+});
+
+test("simulation: every arrival is packed or still in the cell", () => {
   const sim = new Simulation({ infeedPpm: 60, spacing: "random", seed: 7 });
   sim.step(120);
-  const inCell = sim.products.length;
-  assert.equal(sim.stats.arrived, sim.stats.packed + sim.stats.missed + inCell);
+  assert.equal(sim.stats.arrived, sim.stats.packed + sim.products.length);
 });
 
 test("simulation: same seed repeats exactly", () => {
@@ -77,10 +116,4 @@ test("simulation: same seed repeats exactly", () => {
     return sim.stats;
   };
   assert.deepEqual(run(), run());
-});
-
-test("simulation: slots fill in order and the crate number advances", () => {
-  const sim = new Simulation({ infeedPpm: 40, perCrate: 4 });
-  const placed = sim.step(40).filter((e) => e.type === "placed");
-  assert.deepEqual(placed.slice(0, 5).map((e) => [e.crate, e.slot]), [[1, 0], [1, 1], [1, 2], [1, 3], [2, 0]]);
 });

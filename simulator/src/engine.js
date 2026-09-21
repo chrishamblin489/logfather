@@ -1,4 +1,4 @@
-// PikPak simulator engine: pack patterns and the pick-and-place flow.
+// PikPak simulator engine: pack patterns and the gate, line and group-pick flow.
 // Pure logic, no DOM and no three.js, so it runs under `node --test` and is
 // inlined unchanged into the page. Units: millimetres and seconds.
 (function (root, factory) {
@@ -78,26 +78,43 @@
     };
   }
 
+  // The flow: the belt runs products into a stop gate, where they bunch up
+  // nose to tail (the belt slips underneath). Once `productsPerPick` of them
+  // are pressed up in a line, the arm lowers an array of vacuum cups, one per
+  // product, lifts the whole line at once and releases it into the crate.
   const DEFAULTS = {
     infeedPpm: 40,            // products per minute arriving
     spacing: "even",          // "even" | "random"
     beltSpeed: 250,           // mm/s
-    beltLength: 2400,         // mm; a product passing the end was not packed
-    pickZoneStart: 900,       // mm along the belt the arm can reach
-    pickZoneEnd: 1700,
-    productLength: 180,       // mm, sets the closest two products can sit
-    robotCycleS: 1.2,         // one full pick-and-place cycle (planner_full_cycle_time)
+    gateX: 1800,              // mm from the belt start to the gate face
+    productLength: 180,       // mm the product takes up along the belt
+    productsPerPick: 4,       // vacuum cups in the array = products lifted together
+    robotCycleS: 3,           // grip, move to the crate, release, move back
+    gripS: 0.2,               // vacuum on (and again off) dwell, inside robotCycleS
     crateChangeS: 6,          // eject the full crate and bring in the next
-    infeedHoldsDuringCrateChange: true, // belt and arrivals wait while the crate is swapped
     perCrate: 12,
     seed: 1,
   };
 
-  // Packed products per minute the cell can sustain, crate changes included.
+  function moveS(c) {
+    return Math.max(0, (c.robotCycleS - 2 * c.gripS) / 2);
+  }
+
+  // Packed products per minute the cell can sustain. Two things pace a pick:
+  // the arm's own cycle, and the line re-forming at the gate (the last product
+  // of the next group has to travel a whole group length). The arm's return
+  // move overlaps the crate change.
   function estimateCapacityPpm(config) {
     const c = Object.assign({}, DEFAULTS, config);
-    if (c.perCrate <= 0 || c.robotCycleS <= 0) return 0;
-    const perCrateS = c.perCrate * c.robotCycleS + c.crateChangeS;
+    const n = Math.min(c.productsPerPick, c.perCrate);
+    if (n <= 0 || c.robotCycleS <= 0 || c.beltSpeed <= 0) return 0;
+    const picks = Math.ceil(c.perCrate / n);
+    // The line only starts closing up once the gripped products have lifted off.
+    const reform = c.gripS + (n * c.productLength) / c.beltSpeed;
+    const pickPeriod = Math.max(c.robotCycleS, reform);
+    const placeS = c.gripS + moveS(c) + c.gripS;
+    const lastPickS = Math.max(placeS + Math.max(moveS(c), c.crateChangeS), reform);
+    const perCrateS = (picks - 1) * pickPeriod + lastPickS;
     return (c.perCrate / perCrateS) * 60;
   }
 
@@ -110,26 +127,22 @@
     this.random = mulberry32(this.config.seed);
     this.time = 0;
     this.nextId = 1;
-    this.products = [];       // on the belt or in the gripper
+    this.products = [];       // on the belt, front (nearest the gate) first
     this.nextArrival = 0;
-    this.lastRelease = -Infinity;
-    this.backlog = 0;         // products waiting upstream of the held infeed
-    this.robot = { phase: "idle", elapsed: 0, duration: 0, product: null, slot: -1 };
+    this.backlog = 0;         // arrived upstream but no room on the belt yet
+    // Phases: waiting (over the line) -> gripping -> toPlace -> releasing -> toPick.
+    this.robot = { phase: "waiting", elapsed: 0, duration: 0, group: [], slots: [] };
     this.crate = { count: 0, changing: false, changeElapsed: 0, number: 1 };
     this.placeTimes = [];
-    this.stats = { arrived: 0, packed: 0, missed: 0, crates: 0, busyS: 0 };
+    this.stats = { arrived: 0, packed: 0, picks: 0, crates: 0, busyS: 0, blockedS: 0 };
   };
 
   Simulation.prototype._arrivalGap = function () {
     const c = this.config;
     const mean = 60 / Math.max(c.infeedPpm, 1e-6);
-    const min = this._minGap();
+    const min = (c.productLength * 1.05) / Math.max(c.beltSpeed, 1e-6);
     if (c.spacing !== "random" || mean <= min) return Math.max(mean, min);
     return min + -Math.log(1 - this.random()) * (mean - min);
-  };
-
-  Simulation.prototype._minGap = function () {
-    return (this.config.productLength * 1.1) / Math.max(this.config.beltSpeed, 1e-6);
   };
 
   // Advance by dt seconds; returns the events the renderer animates.
@@ -144,41 +157,53 @@
     return events;
   };
 
+  // Products pressed up in an unbroken line from the gate.
+  Simulation.prototype.lineLength = function () {
+    let n = 0;
+    for (const p of this.products) {
+      if (p.state !== "belt" || !p.settled) break;
+      n += 1;
+    }
+    return n;
+  };
+
   Simulation.prototype._tick = function (h, events) {
     const c = this.config;
     this.time += h;
-    const infeedRunning = !(c.infeedHoldsDuringCrateChange && this.crate.changing);
 
-    // Arrivals. While the infeed holds they queue upstream and follow on after.
+    // Arrivals wait upstream until the belt start is clear.
     if (c.infeedPpm > 0) {
       while (this.nextArrival <= this.time) {
         this.backlog += 1;
         this.nextArrival += this._arrivalGap();
       }
     }
-    if (infeedRunning && this.backlog > 0 && this.time - this.lastRelease >= this._minGap()) {
-      const product = { id: this.nextId++, x: 0, state: "belt" };
-      this.products.push(product);
-      this.backlog -= 1;
-      this.lastRelease = this.time;
-      this.stats.arrived += 1;
-      events.push({ type: "spawn", id: product.id });
+    const tail = this.products[this.products.length - 1];
+    if (this.backlog > 0) {
+      if (!tail || tail.state === "carried" || tail.x >= c.productLength * 1.05) {
+        const product = { id: this.nextId++, x: 0, state: "belt", settled: false };
+        this.products.push(product);
+        this.backlog -= 1;
+        this.stats.arrived += 1;
+        events.push({ type: "spawn", id: product.id });
+      } else if (tail.settled) {
+        this.stats.blockedS += h;   // the line has backed up to the belt start
+      }
     }
 
-    // Belt. A targeted product still rides the belt until the gripper has it.
-    if (infeedRunning) {
-      for (const p of this.products) {
-        if (p.state === "belt" || p.state === "targeted") p.x += c.beltSpeed * h;
-      }
-    }
+    // Belt: each product runs until it meets the gate or the product ahead.
+    // A gripped product has not left the belt yet, so it still holds its place.
+    let limit = c.gateX - c.productLength / 2;
+    let aheadSettled = true;
     for (const p of this.products) {
-      if (p.state === "belt" && p.x > c.beltLength) {
-        p.state = "missed";
-        this.stats.missed += 1;
-        events.push({ type: "missed", id: p.id });
+      if (p.state !== "belt" && p.state !== "gripped") continue;
+      if (p.state === "belt") {
+        p.x = Math.min(p.x + c.beltSpeed * h, limit);
+        p.settled = aheadSettled && p.x >= limit - 1e-6;
       }
+      aheadSettled = p.settled;
+      limit = p.x - c.productLength;
     }
-    this.products = this.products.filter((p) => p.state !== "missed" && p.state !== "placed");
 
     // Crate change.
     if (this.crate.changing) {
@@ -191,50 +216,53 @@
 
     // Robot.
     const r = this.robot;
-    if (r.phase !== "idle") {
+    if (r.phase !== "waiting") {
       r.elapsed += h;
       this.stats.busyS += h;
     }
-    if (r.phase === "toPick" && r.elapsed >= r.duration) {
-      r.product.state = "carried";
-      r.phase = "toPlace";
-      r.elapsed = 0;
-      events.push({ type: "picked", id: r.product.id, x: r.product.x });
+    if (r.phase === "waiting" && !this.crate.changing && c.perCrate > 0) {
+      const want = Math.min(c.productsPerPick, c.perCrate - this.crate.count);
+      if (want > 0 && this.lineLength() >= want) {
+        r.group = this.products.filter((p) => p.state === "belt").slice(0, want);
+        r.slots = r.group.map((_, i) => this.crate.count + i);
+        for (const p of r.group) p.state = "gripped";
+        this._phase("gripping", c.gripS);
+        events.push({ type: "gripStart", ids: r.group.map((p) => p.id), slots: r.slots.slice() });
+      }
+    } else if (r.phase === "gripping" && r.elapsed >= r.duration) {
+      for (const p of r.group) p.state = "carried";
+      this._phase("toPlace", moveS(c));
+      events.push({ type: "picked", ids: r.group.map((p) => p.id) });
     } else if (r.phase === "toPlace" && r.elapsed >= r.duration) {
-      r.product.state = "placed";
-      this.crate.count += 1;
-      this.stats.packed += 1;
-      this.placeTimes.push(this.time);
-      events.push({ type: "placed", id: r.product.id, slot: r.slot, crate: this.crate.number });
-      r.phase = "idle";
-      r.product = null;
+      this._phase("releasing", c.gripS);
+    } else if (r.phase === "releasing" && r.elapsed >= r.duration) {
+      for (const p of r.group) {
+        p.state = "placed";
+        this.placeTimes.push(this.time);
+      }
+      this.crate.count += r.group.length;
+      this.stats.packed += r.group.length;
+      this.stats.picks += 1;
+      events.push({ type: "placed", ids: r.group.map((p) => p.id), slots: r.slots.slice(), crate: this.crate.number });
+      this.products = this.products.filter((p) => p.state !== "placed");
+      r.group = [];
+      r.slots = [];
+      this._phase("toPick", moveS(c));
       if (this.crate.count >= c.perCrate) {
         this.crate.changing = true;
         this.crate.changeElapsed = 0;
         this.stats.crates += 1;
         events.push({ type: "crateFull", number: this.crate.number });
       }
+    } else if (r.phase === "toPick" && r.elapsed >= r.duration) {
+      this._phase("waiting", 0);
     }
-    if (r.phase === "idle" && !this.crate.changing && c.perCrate > 0) {
-      const half = c.robotCycleS / 2;
-      // Furthest-downstream product the arm can still meet inside its reach.
-      let best = null;
-      for (const p of this.products) {
-        if (p.state !== "belt") continue;
-        const meetX = p.x + c.beltSpeed * half;
-        if (meetX < c.pickZoneStart || meetX > c.pickZoneEnd) continue;
-        if (!best || p.x > best.x) best = p;
-      }
-      if (best) {
-        best.state = "targeted";
-        r.phase = "toPick";
-        r.elapsed = 0;
-        r.duration = half;
-        r.product = best;
-        r.slot = this.crate.count;
-        events.push({ type: "pickStart", id: best.id, slot: r.slot, meetX: best.x + c.beltSpeed * half });
-      }
-    }
+  };
+
+  Simulation.prototype._phase = function (phase, duration) {
+    this.robot.phase = phase;
+    this.robot.elapsed = 0;
+    this.robot.duration = duration;
   };
 
   // Packed products per minute over the trailing window (default 60 s).

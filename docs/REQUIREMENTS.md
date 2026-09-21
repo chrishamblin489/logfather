@@ -23,10 +23,12 @@ Living record of agreed functionality: what is open, and what has shipped
 - PikPak customer simulator (Chris, 2026-09-21): interactive 3D page for
   sales meetings, one self-contained HTML in `simulator/`. The customer sets
   product size/shape, a photo for the top of the punnet, crate and pack
-  pattern, infeed rate and spacing. Engine shipped (below); the 3D scene
-  waits on machine photos/CAD in `simulator/reference/`, and on real
-  figures for cycle time, crate change time and belt speed (the engine's
-  defaults are placeholders, not claims).
+  pattern, infeed rate and spacing. The model is a simplification of the
+  real cell: infeed conveyor, the gate the products line up against, a
+  simplified AUBO i10 arm with its vacuum-cup array, and the tray change
+  system (Chris to describe). Engine and arm geometry shipped (below); the
+  3D scene is next. Still needed: real figures for cycle time, tray change
+  time and belt speed (the engine's defaults are placeholders, not claims).
 
 ## Shipped
 
@@ -34,11 +36,23 @@ Living record of agreed functionality: what is open, and what has shipped
 
 - Simulator engine (Chris): `simulator/src/engine.js`, pure logic with no
   DOM. `packPattern` (rows x columns x layers, auto 90 degree turn, gap,
-  layer cap, slot positions), `Simulation` (even or random arrivals, moving
-  pick inside the arm's reach, crate change with the infeed holding,
-  packed / missed / crates / rolling ppm / utilisation, seeded so a run
-  repeats) and `estimateCapacityPpm`. Tests in `simulator/tests` run under
-  node and from pytest (`tests/test_simulator_engine.py`).
+  layer cap, slot positions). `Simulation` follows the real flow (Chris,
+  same day): the belt runs products into a stop gate where they bunch up
+  nose to tail; once `productsPerPick` are pressed up in a line the arm
+  lifts them all at once with one vacuum cup each and releases them into
+  consecutive slots; a full crate is changed while the arm returns. Reports
+  packed / picks / crates / rolling ppm / utilisation / time the line is
+  backed up to the belt start; seeded so a run repeats.
+  `estimateCapacityPpm` is the ceiling: the slower of the arm's cycle and
+  the line re-forming at the gate, plus the crate change.
+- AUBO i10 geometry (Chris): `simulator/src/aubo_i10.js` holds the link
+  lengths, side offsets, flanges, joint ranges and speeds from the AUBO
+  datasheet, `solveToolDown` (elbow-up pose for a flange facing straight
+  down, with the points the links are drawn between) and `minMoveTime`
+  (joint-speed floor for a move). Housing diameters are scaled off the
+  drawing, marked approximate.
+- Simulator tests live in `simulator/tests/*.test.js`, run under node and
+  from pytest (`tests/test_simulator_engine.py`).
 
 ### 2026-09-15
 
