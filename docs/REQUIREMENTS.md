@@ -90,6 +90,15 @@ Living record of agreed functionality: what is open, and what has shipped
   sliders for arrivals, spacing, belt speed, robot move, tray change and
   playback speed, and the result (packed per minute, the most it can pack,
   arm busy, belt backed up, a plain keeps-up verdict). Orbit, zoom, pan.
+- Simulator cell layout from the PikPak 2 general assembly (Chris): block
+  positions and sizes read out of the STEP file (assembly tree, placements,
+  solid-vertex bounding boxes; no CAD kernel): 4.2 m product belt along one
+  side at 730 mm, open 2.1 x 1.8 x 2.14 m machine frame, arm on a 690 mm
+  base beside the belt, sloping tray infeed lane, level tray outfeed lane
+  beside it, cross transfer under the arm. Tray change: the full tray is
+  pushed across to the outfeed lane and runs out while the next empty one
+  runs down the infeed lane. Gate position and the exact packing position
+  are estimates, to be confirmed.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 
