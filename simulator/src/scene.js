@@ -650,7 +650,19 @@
     $(id).addEventListener("input", () => { showValues(); restart(); });
   }
   $("speed").addEventListener("input", () => { state.speed = +$("speed").value; showValues(); });
-  $("pause").addEventListener("click", () => { state.running = !state.running; $("pause").textContent = state.running ? "Pause" : "Play"; });
+  function setRunning(on) {
+    state.running = on;
+    $("pause").textContent = on ? "Pause" : "Play";
+    $("pause").setAttribute("aria-pressed", String(!on));
+    document.body.classList.toggle("paused", !on);
+  }
+  $("pause").addEventListener("click", () => setRunning(!state.running));
+  // Space bar pauses and plays, unless a control that uses the space bar has the focus.
+  window.addEventListener("keydown", (e) => {
+    if (e.code !== "Space" || /^(INPUT|SELECT|BUTTON|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    e.preventDefault();
+    setRunning(!state.running);
+  });
   $("reset").addEventListener("click", restart);
   $("axes").addEventListener("change", () => { axes.visible = $("axes").checked; });
   function showValues() {
@@ -709,6 +721,6 @@
   showValues();
   listSkus();
   chooseSku(state.skus[0]);
-  window.pikpak = Object.assign(state, { head, orbit, placeCamera, CELL, advance, showStats });   // for poking at from the console
+  window.pikpak = Object.assign(state, { setRunning, head, orbit, placeCamera, CELL, advance, showStats });   // for poking at from the console
   requestAnimationFrame(frame);
 })();

@@ -119,6 +119,10 @@ Living record of agreed functionality: what is open, and what has shipped
   the outfeed side of the frame;
   the line backs up inside the machine from there. Arm reach to the line
   checked for 2 to 6 products per pick (tightest 1254 of 1350 mm).
+- Simulator playback bar (Chris, 2026-09-22): Pause / Play, Restart, speed and
+  run time sit in a bar under the 3D view, always in sight (they were at the
+  bottom of the panel, below the fold); space bar pauses and plays; a paused
+  view is outlined and the camera still turns, zooms and pans.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

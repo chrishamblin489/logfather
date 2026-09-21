@@ -44,10 +44,18 @@
   .verdict.over { border-left-color: var(--over); }
   #problems { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
   #problems .error { color: var(--over); } #problems .warning { color: var(--ink-2); }
-  .row { display: flex; gap: 8px; }
-  #reach { position: fixed; right: 16px; top: 16px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--over); color: var(--over); }
-  .hint { position: fixed; right: 16px; bottom: 12px; color: var(--ink-3); font-size: 12px; }
-  @media (max-width: 760px) { .panel { width: auto; right: 16px; top: auto; max-height: 46vh; } .hint { display: none; } }
+  .transport { position: fixed; left: calc(50% + 178px); bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 10px; white-space: nowrap; }
+  .transport button.primary { min-width: 84px; background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .transport button.primary[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); }
+  .transport input[type=range] { width: 120px; accent-color: var(--accent); }
+  .transport output, .transport .clock { font-family: Consolas, "SF Mono", Menlo, ui-monospace, monospace; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 12px; }
+  .transport label { color: var(--ink-3); font-size: 12px; }
+  body.paused #view { outline: 3px solid color-mix(in srgb, var(--ok) 60%, transparent); outline-offset: -3px; }
+  #reach { position: fixed; right: 16px; top: 44px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--over); color: var(--over); }
+  .hint { position: fixed; right: 16px; top: 16px; color: var(--ink-3); font-size: 12px; }
+  @media (max-width: 760px) { .panel { width: auto; right: 16px; top: auto; max-height: 40vh; } .hint { display: none; }
+    .transport { left: 50%; top: 12px; bottom: auto; } .transport .clock, .transport label { display: none; } }
 </style>
 </head>
 <body>
@@ -98,13 +106,18 @@
   </section>
 
   <section>
-    <div class="control"><label for="speed">Playback speed</label><output id="speedV"></output>
-      <input id="speed" type="range" min="0.25" max="4" step="0.25" value="1"></div>
-    <label class="note" style="display:block;margin:0 0 10px"><input id="axes" type="checkbox" checked> Show the X, Y, Z axes of the machine's CAD (mm, origin at the 0)</label>
-    <div class="row"><button id="pause">Pause</button><button id="reset">Restart</button>
-      <span class="note" style="margin-left:auto">Run time <span id="sTime">0 s</span></span></div>
+    <label class="note" style="display:block;margin:0"><input id="axes" type="checkbox" checked> Show the X, Y, Z axes of the machine's CAD (mm, origin at the 0)</label>
   </section>
 </aside>
+
+<div class="transport" role="group" aria-label="Playback">
+  <button id="pause" class="primary" aria-pressed="false" title="Pause or play (space bar)">Pause</button>
+  <button id="reset" title="Start again from an empty belt">Restart</button>
+  <label for="speed">Speed</label>
+  <input id="speed" type="range" min="0.25" max="4" step="0.25" value="1">
+  <output id="speedV"></output>
+  <span class="clock">Run time <span id="sTime">0 s</span></span>
+</div>
 
 <div id="reach" hidden>That point is outside the arm's reach</div>
 <div class="hint">Drag to turn, scroll to zoom, right-drag to move</div>
@@ -1490,7 +1503,19 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     $(id).addEventListener("input", () => { showValues(); restart(); });
   }
   $("speed").addEventListener("input", () => { state.speed = +$("speed").value; showValues(); });
-  $("pause").addEventListener("click", () => { state.running = !state.running; $("pause").textContent = state.running ? "Pause" : "Play"; });
+  function setRunning(on) {
+    state.running = on;
+    $("pause").textContent = on ? "Pause" : "Play";
+    $("pause").setAttribute("aria-pressed", String(!on));
+    document.body.classList.toggle("paused", !on);
+  }
+  $("pause").addEventListener("click", () => setRunning(!state.running));
+  // Space bar pauses and plays, unless a control that uses the space bar has the focus.
+  window.addEventListener("keydown", (e) => {
+    if (e.code !== "Space" || /^(INPUT|SELECT|BUTTON|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    e.preventDefault();
+    setRunning(!state.running);
+  });
   $("reset").addEventListener("click", restart);
   $("axes").addEventListener("change", () => { axes.visible = $("axes").checked; });
   function showValues() {
@@ -1549,7 +1574,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   showValues();
   listSkus();
   chooseSku(state.skus[0]);
-  window.pikpak = Object.assign(state, { head, orbit, placeCamera, CELL, advance, showStats });   // for poking at from the console
+  window.pikpak = Object.assign(state, { setRunning, head, orbit, placeCamera, CELL, advance, showStats });   // for poking at from the console
   requestAnimationFrame(frame);
 })();
 </script>
