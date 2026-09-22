@@ -514,7 +514,8 @@
     // Tray and layout, in short, under the plan (Chris, 2026-09-22).
     $("planInfo").innerHTML = "";
     const info = [
-      ["Tray", `${tray.name || "Tray"} (ID ${tray.length} x ${tray.width} x ${tray.depth} mm)` + (pair ? ", two side by side" : "")],
+      ["Tray", `${tray.name || "Tray"}${pair ? ", two side by side" : ""}
+(ID ${tray.length} x ${tray.width} x ${tray.depth} mm)`],
       ["Layout", `${state.sku.rows} x ${state.sku.columns}`],
     ];
     for (const [k, v] of info) {
