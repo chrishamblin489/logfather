@@ -809,7 +809,7 @@
     if (state.pattern) {
       const moves = +$("infeed").value / state.pattern.productsPerPick;
       const most = 60 / ROBOT_MOVE_S;
-      $("movesNote").textContent = `(robot moves / min: ${moves.toFixed(1)})`;
+      $("movesNote").textContent = `Robot: ${moves.toFixed(1)} moves / min`;
       $("movesNote").className = "note" + (moves > most ? " over" : "");
     }
     $("beltV").textContent = $("belt").value + " mm/s";

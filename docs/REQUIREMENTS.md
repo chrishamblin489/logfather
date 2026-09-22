@@ -212,7 +212,7 @@ Living record of agreed functionality: what is open, and what has shipped
 - Simulator panel: the "Room to spare" line is gone too (Chris, 2026-09-22); the
   product panel shows Product and Each lift, plus the tight-fit note.
 - Simulator robot moves note (Chris, 2026-09-22): under Products arriving,
-  "(robot moves / min: n)" = arrivals / products per lift, live with the
+  "Robot: n moves / min" = arrivals / products per lift, live with the
   slider; shown in the warning colour above the robot's 35 a minute
   (60 / 1.71 s).
 - Simulator customer logo (Chris, 2026-09-22): a customer build shows the
