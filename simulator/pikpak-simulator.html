@@ -63,6 +63,16 @@
   #plan .slot.below { fill: color-mix(in srgb, var(--ink-3) 18%, transparent); }
   #plan text { font: 700 46px "Plus Jakarta Sans", "Segoe UI", sans-serif; fill: var(--ink-2); text-anchor: middle; dominant-baseline: central; }
   #plan image { opacity: .92; }
+  .contact { position: fixed; right: 16px; bottom: 16px; padding: 9px 16px; font-weight: 700; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .contact:hover { filter: brightness(1.08); }
+  dialog { background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 16px; padding: 20px 22px; width: min(440px, calc(100vw - 32px)); font: inherit; }
+  dialog::backdrop { background: rgba(0, 0, 0, .55); }
+  dialog h2 { margin: 0 0 10px; }
+  dialog .who { margin: 0 0 14px; line-height: 1.5; }
+  dialog .who a { color: var(--accent); font-weight: 600; }
+  dialog textarea { display: block; width: 100%; margin: 4px 0 12px; padding: 8px 10px; font: inherit; color: var(--ink); background: var(--surface-2); border: 1px solid var(--rule); border-radius: 8px; resize: vertical; }
+  dialog .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  dialog button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
   .transport { position: fixed; left: calc(50% + 178px); bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
     padding: 8px 12px; background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 16px; white-space: nowrap; }
   .transport button.icon { width: 40px; height: 36px; padding: 0; display: grid; place-items: center; }
@@ -78,7 +88,7 @@
   .speeds button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); position: relative; font-weight: 700; }
   .transport .clock { font-family: var(--sans); font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 12px; }
   #reach { position: fixed; left: calc(50% + 178px); transform: translateX(-50%); top: 16px; padding: 8px 12px; border-radius: 6px; background: var(--surface); border: 1px solid var(--over); color: var(--over); }
-  .hint { position: fixed; right: 16px; bottom: 12px; color: var(--ink-3); font-size: 12px; }
+  .hint { position: fixed; right: 16px; bottom: 62px; color: var(--ink-3); font-size: 12px; }
   @media (max-width: 1180px) { .hint { display: none; } }
   @media (max-width: 760px) { .panel { width: auto; right: 16px; top: auto; max-height: 40vh; } .hint { display: none; }
     .plan { display: none; }
@@ -150,11 +160,28 @@
 
 <div id="reach" hidden>That point is outside the arm's reach</div>
 <div class="hint">Drag to turn, scroll to zoom, right-drag to move</div>
+<button id="contactOpen" class="contact">Contact us</button>
+<dialog id="contactDialog" aria-labelledby="contactTitle">
+  <form method="dialog">
+    <h2 id="contactTitle">Contact us</h2>
+    <p class="who"><b id="contactName"></b> <span id="contactRole" class="note"></span><br>
+      <a id="contactEmail" href="#"></a><span id="contactPhone" class="note"></span></p>
+    <label for="contactMessage" class="note">Your message</label>
+    <textarea id="contactMessage" rows="5" placeholder="Tell us about your product or line, or ask a question"></textarea>
+    <div class="row">
+      <button type="button" id="contactSend" class="primary">Send by email</button>
+      <button type="button" id="contactCopy">Copy address</button>
+      <button value="close">Close</button>
+    </div>
+    <p class="note">Send by email opens your own mail program with the message ready to go.</p>
+  </form>
+</dialog>
 
 <script id="builtInSkus" type="text/plain">sku,name,product_length_mm,product_width_mm,product_height_mm,weight_g,image,tray_name,tray_length_mm,tray_width_mm,tray_depth_mm,rows,columns,layers,products_per_pick,orientation,infeed_ppm,trays_side_by_side
 EXAMPLE-001,Example punnet 250g (replace me),185,115,85,265,example-punnet.jpg,Standard 600x400,600,400,180,3,3,2,3,auto,60,
 EXAMPLE-002,Example tray left blank = 600 x 400,140,140,70,420,example-tub.png,,,,150,2,4,2,,,,
 </script>
+<script id="contact" type="application/json">{"name": "Chris Hamblin", "role": "Leap AI", "email": "chris.hamblin@helloleap.ai", "phone": ""}</script>
 <script>console.warn('Scripts "build/three.js" and "build/three.min.js" are deprecated with r150+, and will be removed with r160. Please use ES Modules or alternatives: https://threejs.org/docs/index.html#manual/en/introduction/Installation'),
 /**
  * @license
@@ -1734,7 +1761,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   $("pause").addEventListener("click", () => setRunning(!state.running));
   // Space bar pauses and plays, unless a slider or list that uses the space bar has the focus.
   window.addEventListener("keydown", (e) => {
-    if (e.code !== "Space" || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    if (e.code !== "Space" || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) || $("contactDialog").open) return;
     e.preventDefault();
     setRunning(!state.running);
   });
@@ -1781,6 +1808,30 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     const refusedCount = new Set(problems.filter((p) => p.level === "error").map((p) => p.sku)).size;
     $("uploadNote").textContent = sheets.length ? `${skus.length} product${skus.length === 1 ? "" : "s"} loaded` + (refusedCount ? `, ${refusedCount} refused (listed greyed out)` : "") : "";
     event.target.value = "";
+  });
+
+  // ---------- contact ----------
+  // The rep for this build (build.py fills it in). The file works offline, so the
+  // message goes out through the customer's own mail program via a mailto link.
+  const contact = JSON.parse($("contact").textContent || "{}");
+  $("contactName").textContent = contact.name || "";
+  $("contactRole").textContent = contact.role ? `, ${contact.role}` : "";
+  $("contactEmail").textContent = contact.email || "";
+  $("contactEmail").href = contact.email ? `mailto:${contact.email}` : "#";
+  $("contactPhone").textContent = contact.phone ? ` · ${contact.phone}` : "";
+  const mailto = () => {
+    const subject = `PikPak simulator: ${state.sku ? state.sku.name : "enquiry"}`;
+    const body = $("contactMessage").value.trim() + (state.sku ? `
+
+(Product looked at: ${state.sku.name}${state.sku.tray.name ? ", " + state.sku.tray.name : ""})` : "");
+    return `mailto:${contact.email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+  $("contactOpen").addEventListener("click", () => { $("contactDialog").showModal(); $("contactMessage").focus(); });
+  $("contactSend").addEventListener("click", () => { window.location.href = mailto(); });
+  $("contactCopy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(contact.email || ""); $("contactCopy").textContent = "Copied"; }
+    catch (error) { $("contactCopy").textContent = contact.email || ""; }
+    setTimeout(() => { $("contactCopy").textContent = "Copy address"; }, 1800);
   });
 
   // ---------- start ----------

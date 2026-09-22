@@ -12,6 +12,7 @@ file, pikpak-simulator-<list name>.html, with those products and their pictures
 import base64
 import csv
 import io
+import json
 import mimetypes
 from pathlib import Path
 
@@ -25,6 +26,9 @@ PARTS = {
     "__BUILT_IN_SKUS__": HERE / "skus" / "sku_template.csv",
     "__LOGO__": HERE / "assets" / "leap-logo.svg",
 }
+# Who the Contact us button reaches. A customer list may bring its own
+# skus/<list>-contact.json with the same keys.
+DEFAULT_CONTACT = {"name": "Chris Hamblin", "role": "Leap AI", "email": "chris.hamblin@helloleap.ai", "phone": ""}
 FONT = HERE / "assets" / "PlusJakartaSans-latin.woff2"   # Plus Jakarta Sans (OFL), as on helloleap.ai
 
 
@@ -57,6 +61,10 @@ def build(sku_csv: Path | None = None) -> Path:
     logo = sku_csv.with_name(sku_csv.stem + "-logo.svg") if sku_csv else None
     assert page.count("__CUSTOMER_LOGO__") == 1
     page = page.replace("__CUSTOMER_LOGO__", f'<div class="customer-logo">{logo.read_text(encoding="utf-8").strip()}</div>' if logo and logo.exists() else "")
+    contact_file = sku_csv.with_name(sku_csv.stem + "-contact.json") if sku_csv else None
+    contact = json.loads(contact_file.read_text(encoding="utf-8")) if contact_file and contact_file.exists() else DEFAULT_CONTACT
+    assert page.count("__CONTACT__") == 1
+    page = page.replace("__CONTACT__", json.dumps(contact).replace("</", "<\\/"))
     assert page.count("__CUSTOMER_STYLE__") == 1
     page = page.replace("__CUSTOMER_STYLE__", '[data-customer-build="hide"] { display: none; }' if sku_csv else "")
     assert page.count("__FONT__") == 1

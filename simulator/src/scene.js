@@ -804,7 +804,7 @@
   $("pause").addEventListener("click", () => setRunning(!state.running));
   // Space bar pauses and plays, unless a slider or list that uses the space bar has the focus.
   window.addEventListener("keydown", (e) => {
-    if (e.code !== "Space" || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    if (e.code !== "Space" || /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) || $("contactDialog").open) return;
     e.preventDefault();
     setRunning(!state.running);
   });
@@ -851,6 +851,30 @@
     const refusedCount = new Set(problems.filter((p) => p.level === "error").map((p) => p.sku)).size;
     $("uploadNote").textContent = sheets.length ? `${skus.length} product${skus.length === 1 ? "" : "s"} loaded` + (refusedCount ? `, ${refusedCount} refused (listed greyed out)` : "") : "";
     event.target.value = "";
+  });
+
+  // ---------- contact ----------
+  // The rep for this build (build.py fills it in). The file works offline, so the
+  // message goes out through the customer's own mail program via a mailto link.
+  const contact = JSON.parse($("contact").textContent || "{}");
+  $("contactName").textContent = contact.name || "";
+  $("contactRole").textContent = contact.role ? `, ${contact.role}` : "";
+  $("contactEmail").textContent = contact.email || "";
+  $("contactEmail").href = contact.email ? `mailto:${contact.email}` : "#";
+  $("contactPhone").textContent = contact.phone ? ` · ${contact.phone}` : "";
+  const mailto = () => {
+    const subject = `PikPak simulator: ${state.sku ? state.sku.name : "enquiry"}`;
+    const body = $("contactMessage").value.trim() + (state.sku ? `
+
+(Product looked at: ${state.sku.name}${state.sku.tray.name ? ", " + state.sku.tray.name : ""})` : "");
+    return `mailto:${contact.email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+  $("contactOpen").addEventListener("click", () => { $("contactDialog").showModal(); $("contactMessage").focus(); });
+  $("contactSend").addEventListener("click", () => { window.location.href = mailto(); });
+  $("contactCopy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(contact.email || ""); $("contactCopy").textContent = "Copied"; }
+    catch (error) { $("contactCopy").textContent = contact.email || ""; }
+    setTimeout(() => { $("contactCopy").textContent = "Copy address"; }, 1800);
   });
 
   // ---------- start ----------

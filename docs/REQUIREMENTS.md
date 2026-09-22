@@ -225,6 +225,13 @@ Living record of agreed functionality: what is open, and what has shipped
 - Simulator live line controls (Chris, 2026-09-22): belt speed, products
   arriving and spacing change the running simulation in place; only a new
   product or Restart starts again.
+- Simulator Contact us (Chris, 2026-09-22): button at the bottom right opens a
+  dialog with the sales rep's name and email (and phone if given) and a
+  message box; "Send by email" opens the customer's own mail program with
+  the message, the product they were looking at and the address filled in
+  (the file is offline, so nothing can be sent from the page itself);
+  "Copy address" copies the email. Rep set in `build.py` (`DEFAULT_CONTACT`,
+  Chris for now) or per customer in `skus/<list>-contact.json` (out of git).
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 
