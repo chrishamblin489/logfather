@@ -191,9 +191,9 @@ Living record of agreed functionality: what is open, and what has shipped
   (pitch = one tray plus walls, 430 mm) and move as one train while the full
   tray indexes on to the end stop, in the first 40% of the tray change
   (twice the old speed); a newly joined empty tray runs down the rollers to
-  close up. From the start a packed tray from the previous run already
-  waits in the eject slot by the robot, so the first tray's final lift
-  pushes one out (engine `parked` starts true).
+  close up. From the start an EMPTY tray waits in the eject slot by the
+  robot (it is just the stop for the tray being packed, Chris) and goes out
+  empty at the first tray's final lift (engine `parked` starts true).
 - Simulator plan card (Chris, 2026-09-22): the Tray and Layout lines moved from
   the product panel to under the tray plan, shortened to "IFCO 6416 (ID 578 x
   372 x 170 mm)" and "2 x 4".

@@ -296,22 +296,15 @@
   const JOIN_X = CELL.trayIn.x1 - 230;                // where a new empty tray appears at the top of the infeed rollers
   const TRAIN_SHARE = 1;        // the tray change IS the trays moving on one place; the arm resumes as soon as they have
 
-  // The products a tray holds when it is already packed at the start.
-  function fillUnit(unit) {
-    for (const slot of state.pattern.stationSlots) {
-      const mesh = productMesh();
-      mesh.position.copy(slotLocal(slot));
-      mesh.rotation.y = placeYaw();
-      unit.add(mesh);
-    }
   }
 
   function fillStation() {
     trayLayer.clear();
     state.station = trayUnit(CELL.station.x);     // being filled
     state.indexing = null;                        // full, on its way to the end stop
-    state.parked = trayUnit(CELL.parkX);          // the tray packed before this run, waiting at the end stop
-    fillUnit(state.parked);
+    // At the start an empty tray sits at the end stop: it is only the stop for the tray
+    // being packed, and goes out empty (Chris, 2026-09-22).
+    state.parked = trayUnit(CELL.parkX);
     state.waiting = [0, 1, 2, 3].map((i) => trayUnit(WAIT_X + i * UNIT_PITCH));
     state.leaving = [];
   }
