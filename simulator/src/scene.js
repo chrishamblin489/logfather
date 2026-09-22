@@ -296,8 +296,6 @@
   const JOIN_X = CELL.trayIn.x1 - 230;                // where a new empty tray appears at the top of the infeed rollers
   const TRAIN_SHARE = 1;        // the tray change IS the trays moving on one place; the arm resumes as soon as they have
 
-  }
-
   function fillStation() {
     trayLayer.clear();
     state.station = trayUnit(CELL.station.x);     // being filled
