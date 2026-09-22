@@ -49,6 +49,7 @@
     background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 16px; }
   .plan h2 { margin: 0; }
   .plan .note { margin: 0; }
+  .plan dl { margin: 0; grid-template-columns: 64px 1fr; }
   #plan { display: block; width: 100%; height: auto; }
   #plan .tray { fill: color-mix(in srgb, #2fa36b 22%, transparent); stroke: #2fa36b; stroke-width: 6; }
   #plan .slot { fill: none; stroke: var(--ink-3); stroke-width: 2.5; stroke-dasharray: 10 8; }
@@ -136,6 +137,7 @@
   <h2>Tray from above</h2>
   <svg id="plan" role="img" aria-label="Plan view of the tray showing where each product is packed"></svg>
   <p class="note" id="planNote"></p>
+  <dl id="planInfo"></dl>
   <div class="kpis">
     <div class="kpi"><span>Layers</span><b id="planLayers">0</b></div>
     <div class="kpi"><span>Products per tray</span><b id="planTotal">0</b></div>
@@ -1395,8 +1397,6 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     $("skuInfo").innerHTML = "";
     const rows = [
       ["Product", `${s.product.length} x ${s.product.width} x ${s.product.height} mm` + (s.weightG ? `, ${s.weightG} g` : "")],
-      ["Tray", `${s.tray.name || "Tray"}: ${s.tray.length} x ${s.tray.width} x ${s.tray.depth} mm inside` + (p.trays === 2 ? ", two side by side" : "")],
-      ["Layout", `${s.rows} x ${s.columns} per layer, ${s.layers} layer${s.layers > 1 ? "s" : ""}: ${p.perTray} per tray` + (p.rotated ? ", turned 90 degrees" : "")],
       ["Room to spare", `x ${p.spare.x} mm, y ${p.spare.y} mm, z ${p.spare.z} mm` + (p.tight ? " (tight fit, inside the squeeze allowance)" : "")],
       ["Each lift", `${perPick} products` + (perPick < s.productsPerPick ? ` (not ${s.productsPerPick}: one rigid line cannot cross between two trays)` : "") + (s.weightG ? `, ${kg.toFixed(2)} kg total payload` : "")],
     ];
@@ -1450,6 +1450,17 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       }
       const text = el("text", { x: slot.x, y: slot.y }, g);
       planSlots.push({ rect, image, text, place: slot.index, perPick });
+    }
+    // Tray and layout, in short, under the plan (Chris, 2026-09-22).
+    $("planInfo").innerHTML = "";
+    const info = [
+      ["Tray", `${tray.name || "Tray"} (ID ${tray.length} x ${tray.width} x ${tray.depth} mm)` + (pair ? ", two side by side" : "")],
+      ["Layout", `${state.sku.rows} x ${state.sku.columns}`],
+    ];
+    for (const [k, v] of info) {
+      const dt = document.createElement("dt"), dd = document.createElement("dd");
+      dt.textContent = k; dd.textContent = v;
+      $("planInfo").append(dt, dd);
     }
     $("planLayers").textContent = pat.layers;
     $("planTotal").textContent = pat.perTray;

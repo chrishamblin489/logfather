@@ -457,8 +457,6 @@
     $("skuInfo").innerHTML = "";
     const rows = [
       ["Product", `${s.product.length} x ${s.product.width} x ${s.product.height} mm` + (s.weightG ? `, ${s.weightG} g` : "")],
-      ["Tray", `${s.tray.name || "Tray"}: ${s.tray.length} x ${s.tray.width} x ${s.tray.depth} mm inside` + (p.trays === 2 ? ", two side by side" : "")],
-      ["Layout", `${s.rows} x ${s.columns} per layer, ${s.layers} layer${s.layers > 1 ? "s" : ""}: ${p.perTray} per tray` + (p.rotated ? ", turned 90 degrees" : "")],
       ["Room to spare", `x ${p.spare.x} mm, y ${p.spare.y} mm, z ${p.spare.z} mm` + (p.tight ? " (tight fit, inside the squeeze allowance)" : "")],
       ["Each lift", `${perPick} products` + (perPick < s.productsPerPick ? ` (not ${s.productsPerPick}: one rigid line cannot cross between two trays)` : "") + (s.weightG ? `, ${kg.toFixed(2)} kg total payload` : "")],
     ];
@@ -512,6 +510,17 @@
       }
       const text = el("text", { x: slot.x, y: slot.y }, g);
       planSlots.push({ rect, image, text, place: slot.index, perPick });
+    }
+    // Tray and layout, in short, under the plan (Chris, 2026-09-22).
+    $("planInfo").innerHTML = "";
+    const info = [
+      ["Tray", `${tray.name || "Tray"} (ID ${tray.length} x ${tray.width} x ${tray.depth} mm)` + (pair ? ", two side by side" : "")],
+      ["Layout", `${state.sku.rows} x ${state.sku.columns}`],
+    ];
+    for (const [k, v] of info) {
+      const dt = document.createElement("dt"), dd = document.createElement("dd");
+      dt.textContent = k; dd.textContent = v;
+      $("planInfo").append(dt, dd);
     }
     $("planLayers").textContent = pat.layers;
     $("planTotal").textContent = pat.perTray;
