@@ -1407,6 +1407,8 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     const svg = $("plan"), pat = state.pattern, tray = state.sku.tray, wall = CELL.trayWall;
     svg.innerHTML = "";
     planSlots = [];
+    state.layerHold = null;
+    state.planCount = -1;
     const pair = pat.trays === 2;
     // Station x runs along the 600: a half tray lies with its width along it.
     const trayX = pair ? tray.width : tray.length, trayY = pair ? tray.length : tray.width;
@@ -1452,11 +1454,20 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     $("planPair").textContent = pair ? `Two half-size trays side by side, packed together: ${pat.total} products each time.` : "";
     updatePlan();
   }
+  const LAYER_HOLD_S = 1.0;   // simulation seconds a finished layer stays on show before the next layer's slots appear
   function updatePlan() {
     if (!state.sim || !planSlots.length) return;
-    const pat = state.pattern, perLayer = pat.perLayer * pat.trays;
-    const count = state.sim.crate.changing ? pat.total : state.sim.crate.count;
-    const layer = Math.min(pat.layers - 1, Math.floor(count / perLayer));
+    const pat = state.pattern, perLayer = pat.perLayer * pat.trays, sim = state.sim;
+    let count = sim.crate.changing ? pat.total : sim.crate.count;
+    // A layer just finished (and the tray is not full): hold it on show for a moment
+    // so the products can be seen to have gone in (Chris, 2026-09-22).
+    if (count !== state.planCount) {
+      if (count > 0 && count < pat.total && count % perLayer === 0) state.layerHold = { count, until: sim.time + LAYER_HOLD_S };
+      state.planCount = count;
+    }
+    const holding = state.layerHold && sim.time < state.layerHold.until && count >= state.layerHold.count;
+    if (holding) count = state.layerHold.count;
+    const layer = holding ? count / perLayer - 1 : Math.min(pat.layers - 1, Math.floor(count / perLayer));
     for (const q of planSlots) {
       const index = layer * perLayer + q.place;
       const packed = index < count;
@@ -1465,8 +1476,8 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       q.text.textContent = Math.floor(index / q.perPick) + 1;
       q.text.style.opacity = packed && q.image ? 0 : 1;
     }
-    $("planNote").textContent = state.sim.crate.changing ? "Tray full: changing trays"
-      : `Packing layer ${layer + 1} of ${pat.layers}`;
+    $("planNote").textContent = sim.crate.changing ? "Tray full: changing trays"
+      : holding ? `Layer ${layer + 1} of ${pat.layers} packed` : `Packing layer ${layer + 1} of ${pat.layers}`;
   }
 
   // ---------- frame loop ----------

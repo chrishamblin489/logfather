@@ -219,6 +219,9 @@ Living record of agreed functionality: what is open, and what has shipped
   customer's logo beside Leap's at the top of the panel when
   `skus/<list>-logo.svg` exists (out of git with the rest of their files);
   taken from their website, wordmark recoloured white for the dark ground.
+- Simulator plan layer hold (Chris, 2026-09-22): when a layer is completed the
+  plan keeps showing it full, with "Layer n of m packed", for 1 s of
+  simulation time before the next layer's empty slots appear.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 
