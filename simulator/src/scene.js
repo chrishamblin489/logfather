@@ -794,6 +794,13 @@
   $("reset").addEventListener("click", restart);
   function showValues() {
     $("infeedV").textContent = $("infeed").value + " / min";
+    // Robot moves a minute the arrivals need: one move lifts a whole line.
+    if (state.pattern) {
+      const moves = +$("infeed").value / state.pattern.productsPerPick;
+      const most = 60 / ROBOT_MOVE_S;
+      $("movesNote").textContent = `(robot moves / min: ${moves.toFixed(1)})`;
+      $("movesNote").className = "note" + (moves > most ? " over" : "");
+    }
     $("beltV").textContent = $("belt").value + " mm/s";
   }
 

@@ -45,6 +45,7 @@
   .verdict.over { border-left-color: var(--over); }
   #fitNote:empty { display: none; }
   #fitNote.warning { color: var(--ink-2); }
+  #movesNote.over { color: var(--over); }
   .plan { position: fixed; top: 16px; right: 16px; width: 300px; padding: 14px 16px 16px; display: grid; gap: 10px;
     background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 16px; }
   .plan h2 { margin: 0; }
@@ -106,6 +107,7 @@
     <h2>Line</h2>
     <div class="control"><label for="infeed">Products arriving</label><output id="infeedV"></output>
       <input id="infeed" type="range" min="5" max="160" step="1" value="60"></div>
+    <p class="note" id="movesNote" style="margin:-6px 0 12px"></p>
     <div class="control"><label for="spacing">Spacing</label>
       <select id="spacing" style="grid-column:1/-1"><option value="even">Even</option><option value="random">Random</option></select></div>
     <div class="control"><label for="belt">Belt speed</label><output id="beltV"></output>
@@ -1718,6 +1720,13 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   $("reset").addEventListener("click", restart);
   function showValues() {
     $("infeedV").textContent = $("infeed").value + " / min";
+    // Robot moves a minute the arrivals need: one move lifts a whole line.
+    if (state.pattern) {
+      const moves = +$("infeed").value / state.pattern.productsPerPick;
+      const most = 60 / ROBOT_MOVE_S;
+      $("movesNote").textContent = `(robot moves / min: ${moves.toFixed(1)})`;
+      $("movesNote").className = "note" + (moves > most ? " over" : "");
+    }
     $("beltV").textContent = $("belt").value + " mm/s";
   }
 
