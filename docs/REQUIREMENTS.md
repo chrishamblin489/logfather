@@ -238,6 +238,8 @@ Living record of agreed functionality: what is open, and what has shipped
   is "Send"; it posts the message as JSON to `contact.endpoint` and shows
   "Message sent" without leaving the page; with no endpoint, or if the post
   fails, it opens the mail program (mailto) as before. Copy address removed.
+  A Name field above the message (Chris, same day) is required and goes
+  out as `from` (and as a From: line in the mailto fallback).
   OPEN: the endpoint itself (a Power Automate "HTTP request received" flow
   emailing Steve, or a form service such as Formspree) still has to be set
   up and its URL put in `DEFAULT_CONTACT` / `skus/<list>-contact.json`.

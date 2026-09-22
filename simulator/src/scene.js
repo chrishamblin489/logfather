@@ -864,24 +864,28 @@
   $("contactPhone").textContent = contact.phone ? ` · ${contact.phone}` : "";
   const mailto = () => {
     const subject = `PikPak simulator: ${state.sku ? state.sku.name : "enquiry"}`;
-    const body = $("contactMessage").value.trim() + (state.sku ? `
+    const from = $("contactFrom").value.trim();
+    const body = (from ? `From: ${from}
+
+` : "") + $("contactMessage").value.trim() + (state.sku ? `
 
 (Product looked at: ${state.sku.name}${state.sku.tray.name ? ", " + state.sku.tray.name : ""})` : "");
     return `mailto:${contact.email || ""}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   };
-  $("contactOpen").addEventListener("click", () => { $("contactDialog").showModal(); $("contactMessage").focus(); });
+  $("contactOpen").addEventListener("click", () => { $("contactDialog").showModal(); $("contactFrom").focus(); });
   // Send posts the message to the build's endpoint (a form service or a Power
   // Automate flow that emails the rep) and stays in the page. With no endpoint
   // set, or if the post fails, it falls back to the customer's mail program.
   const status = (text, bad) => { $("contactStatus").textContent = text; $("contactStatus").className = "note" + (bad ? " over" : ""); };
   async function send() {
-    const message = $("contactMessage").value.trim();
+    const message = $("contactMessage").value.trim(), from = $("contactFrom").value.trim();
+    if (!from) { status("Please give your name.", true); $("contactFrom").focus(); return; }
     if (!message) { status("Please write a message first.", true); $("contactMessage").focus(); return; }
     if (!contact.endpoint) { window.location.href = mailto(); return; }
     $("contactSend").disabled = true;
     status("Sending...");
     const payload = {
-      to: contact.email, subject: `PikPak simulator: ${state.sku ? state.sku.name : "enquiry"}`, message,
+      to: contact.email, subject: `PikPak simulator: ${state.sku ? state.sku.name : "enquiry"}`, from, message,
       product: state.sku ? state.sku.name : "", tray: state.sku && state.sku.tray.name ? state.sku.tray.name : "",
       customer: (document.querySelector(".customer-logo svg") || {}).getAttribute ? (document.querySelector(".customer-logo svg").getAttribute("aria-label") || "") : "",
       sentAt: new Date().toISOString(),
@@ -895,6 +899,7 @@
       if (!contact.noCors && !response.ok) throw new Error(`HTTP ${response.status}`);
       status("Message sent. Thank you.");
       $("contactMessage").value = "";
+      $("contactFrom").value = "";
       setTimeout(() => { $("contactDialog").close(); status(""); }, 1600);
     } catch (error) {
       status("Could not send from here; opening your email instead.", true);

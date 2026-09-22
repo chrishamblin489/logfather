@@ -70,7 +70,7 @@
   dialog h2 { margin: 0 0 10px; }
   dialog .who { margin: 0 0 14px; line-height: 1.5; }
   dialog .who a { color: var(--accent); font-weight: 600; }
-  dialog textarea { display: block; width: 100%; margin: 4px 0 12px; padding: 8px 10px; font: inherit; color: var(--ink); background: var(--surface-2); border: 1px solid var(--rule); border-radius: 8px; resize: vertical; }
+  dialog textarea, dialog input[type=text] { display: block; width: 100%; margin: 4px 0 12px; padding: 8px 10px; font: inherit; color: var(--ink); background: var(--surface-2); border: 1px solid var(--rule); border-radius: 8px; resize: vertical; }
   dialog .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
   dialog #contactStatus.over { color: var(--over); }
   dialog button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
@@ -165,6 +165,8 @@
 <dialog id="contactDialog" aria-labelledby="contactTitle">
   <form method="dialog">
     <h2 id="contactTitle">Contact us</h2>
+    <label for="contactFrom" class="note">Name</label>
+    <input id="contactFrom" type="text" autocomplete="name" placeholder="Your name">
     <label for="contactMessage" class="note">Your message</label>
     <textarea id="contactMessage" rows="5" placeholder="Tell us about your product or line, or ask a question"></textarea>
     <p class="who"><b id="contactName"></b> <span id="contactRole" class="note"></span><br>

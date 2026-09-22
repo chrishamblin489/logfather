@@ -28,7 +28,7 @@ PARTS = {
 }
 # Who the Contact us button reaches. A customer list may bring its own
 # skus/<list>-contact.json with the same keys. `endpoint` is the URL the page
-# posts the message to (JSON: to, subject, message, product, tray, customer,
+# posts the message to (JSON: to, subject, from, message, product, tray, customer,
 # sentAt) for background sending; leave it empty and Send opens the customer's
 # mail program instead. `noCors` posts as text/plain without reading the reply,
 # for endpoints that send no CORS headers (a Power Automate HTTP trigger).
