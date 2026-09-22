@@ -222,6 +222,9 @@ Living record of agreed functionality: what is open, and what has shipped
 - Simulator plan layer hold (Chris, 2026-09-22): when a layer is completed the
   plan keeps showing it full, with "Layer n of m packed", for 1 s of
   simulation time before the next layer's empty slots appear.
+- Simulator live line controls (Chris, 2026-09-22): belt speed, products
+  arriving and spacing change the running simulation in place; only a new
+  product or Restart starts again.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

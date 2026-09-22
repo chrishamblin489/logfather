@@ -779,8 +779,14 @@
     note.textContent = mine.length ? "Tight fit: " + mine.map((q) => q.message.replace(/^tight fit, /, "")).join("; ") : "";
   }
   $("sku").addEventListener("change", () => chooseSku(state.skus[+$("sku").value]));
+  // The line controls change the running simulation in place: the engine reads
+  // its settings every tick, so nothing needs to restart (Chris, 2026-09-22).
   for (const id of ["infeed", "belt", "spacing"]) {
-    $(id).addEventListener("input", () => { showValues(); restart(); });
+    $(id).addEventListener("input", () => {
+      showValues();
+      if (!state.sim) return;
+      Object.assign(state.sim.config, { infeedPpm: +$("infeed").value, beltSpeed: +$("belt").value, spacing: $("spacing").value });
+    });
   }
   for (const button of document.querySelectorAll(".speeds button")) {
     button.addEventListener("click", () => {
