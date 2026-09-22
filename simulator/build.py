@@ -27,8 +27,13 @@ PARTS = {
     "__LOGO__": HERE / "assets" / "leap-logo.svg",
 }
 # Who the Contact us button reaches. A customer list may bring its own
-# skus/<list>-contact.json with the same keys.
-DEFAULT_CONTACT = {"name": "Steve Newman", "role": "Leap AI", "email": "steve.newman@helloleap.ai", "phone": ""}
+# skus/<list>-contact.json with the same keys. `endpoint` is the URL the page
+# posts the message to (JSON: to, subject, message, product, tray, customer,
+# sentAt) for background sending; leave it empty and Send opens the customer's
+# mail program instead. `noCors` posts as text/plain without reading the reply,
+# for endpoints that send no CORS headers (a Power Automate HTTP trigger).
+DEFAULT_CONTACT = {"name": "Steve Newman", "role": "Leap AI", "email": "steve.newman@helloleap.ai", "phone": "",
+                   "endpoint": "", "noCors": False}
 FONT = HERE / "assets" / "PlusJakartaSans-latin.woff2"   # Plus Jakarta Sans (OFL), as on helloleap.ai
 
 

@@ -71,7 +71,8 @@
   dialog .who { margin: 0 0 14px; line-height: 1.5; }
   dialog .who a { color: var(--accent); font-weight: 600; }
   dialog textarea { display: block; width: 100%; margin: 4px 0 12px; padding: 8px 10px; font: inherit; color: var(--ink); background: var(--surface-2); border: 1px solid var(--rule); border-radius: 8px; resize: vertical; }
-  dialog .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  dialog .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  dialog #contactStatus.over { color: var(--over); }
   dialog button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
   dialog button .glyph { width: 17px; height: 17px; vertical-align: -3px; margin-right: 7px; }
   .transport { position: fixed; left: calc(50% + 178px); bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
@@ -169,8 +170,8 @@
     <p class="who"><b id="contactName"></b> <span id="contactRole" class="note"></span><br>
       <a id="contactEmail" href="#"></a><span id="contactPhone" class="note"></span></p>
     <div class="row">
-      <button type="button" id="contactSend" class="primary"><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 6.5 12 13l8.5-6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>Send by email</button>
-      <button type="button" id="contactCopy">Copy address</button>
+      <button type="button" id="contactSend" class="primary"><svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3.5 6.5 12 13l8.5-6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span id="contactSendLabel">Send</span></button>
+      <span id="contactStatus" class="note" role="status"></span>
       <button value="close" style="margin-left:auto">Close</button>
     </div>
   </form>

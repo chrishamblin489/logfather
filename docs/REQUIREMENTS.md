@@ -234,6 +234,13 @@ Living record of agreed functionality: what is open, and what has shipped
   "Copy address" copies the email. The rep's details sit under the message
   box. Rep set in `build.py` (`DEFAULT_CONTACT`: Steve Newman,
   steve.newman@helloleap.ai, Chris 2026-09-22) or per customer in `skus/<list>-contact.json` (out of git).
+- Simulator Send (Chris, 2026-09-22: "send it in the background"): the button
+  is "Send"; it posts the message as JSON to `contact.endpoint` and shows
+  "Message sent" without leaving the page; with no endpoint, or if the post
+  fails, it opens the mail program (mailto) as before. Copy address removed.
+  OPEN: the endpoint itself (a Power Automate "HTTP request received" flow
+  emailing Steve, or a form service such as Formspree) still has to be set
+  up and its URL put in `DEFAULT_CONTACT` / `skus/<list>-contact.json`.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 
