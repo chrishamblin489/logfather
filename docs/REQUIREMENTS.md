@@ -209,6 +209,8 @@ Living record of agreed functionality: what is open, and what has shipped
   and the robot move at 1.71 s in `scene.js` (`TRAY_CHANGE_S`,
   `ROBOT_MOVE_S`); the axes can still be switched on from the console
   (`pikpak.axes`), and the result figures live in `pikpak.result`.
+- Simulator panel: the "Room to spare" line is gone too (Chris, 2026-09-22); the
+  product panel shows Product and Each lift, plus the tight-fit note.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

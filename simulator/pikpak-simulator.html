@@ -1374,7 +1374,6 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     $("skuInfo").innerHTML = "";
     const rows = [
       ["Product", `${s.product.length} x ${s.product.width} x ${s.product.height} mm` + (s.weightG ? `, ${s.weightG} g` : "")],
-      ["Room to spare", `x ${p.spare.x} mm, y ${p.spare.y} mm, z ${p.spare.z} mm` + (p.tight ? " (tight fit, inside the squeeze allowance)" : "")],
       ["Each lift", `${perPick} products` + (perPick < s.productsPerPick ? ` (not ${s.productsPerPick}: one rigid line cannot cross between two trays)` : "") + (s.weightG ? `, ${kg.toFixed(2)} kg total payload` : "")],
     ];
     for (const [k, v] of rows) {
