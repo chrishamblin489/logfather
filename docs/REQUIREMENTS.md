@@ -181,6 +181,12 @@ Living record of agreed functionality: what is open, and what has shipped
   generic page keeps the two example products. Products whose layout does
   not fit are listed in the dropdown greyed out. Panel wording: "kg total
   payload" (Chris).
+- Simulator panel tidy (Chris, 2026-09-22): customer builds hide the upload
+  button (their products are built in; the generic build keeps it, moved
+  below the product details); the list of every product's fit problems is
+  gone, replaced by one plain "Tight fit: ..." note for the chosen product
+  only, under its details. Refused products still show greyed out in the
+  dropdown.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

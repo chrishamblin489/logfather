@@ -47,7 +47,7 @@
 
   const $ = (id) => document.getElementById(id);
   const state = {
-    skus: [], refused: [], sku: null, pattern: null, sim: null, images: {}, speed: 1, running: true,
+    skus: [], refused: [], problems: [], sku: null, pattern: null, sim: null, images: {}, speed: 1, running: true,
     meshes: new Map(), placed: [], lastPlace: null, armPose: null, textureCache: {},
   };
 
@@ -454,6 +454,7 @@
       dt.textContent = k; dd.textContent = v;
       $("skuInfo").append(dt, dd);
     }
+    showFitNote();
   }
 
   // ---------- tray plan ----------
@@ -744,14 +745,14 @@
   }
   function showProblems(problems) {
     state.refused = [...new Set(problems.filter((q) => q.level === "error").map((q) => q.name || q.sku))];
-    const list = $("problems");
-    list.innerHTML = "";
-    for (const p of problems.filter((q) => q.level === "error" || !/no image|no weight/.test(q.message))) {
-      const li = document.createElement("li");
-      li.className = p.level;
-      li.textContent = `${p.name || p.sku}: ${p.message}`;
-      list.append(li);
-    }
+    state.problems = problems.filter((q) => q.level === "warning" && !/no image|no weight/.test(q.message));
+  }
+  // The fit note for the chosen product only, in plain words.
+  function showFitNote() {
+    const s = state.sku, note = $("fitNote");
+    const mine = state.problems.filter((q) => q.sku === s.sku && (!q.name || q.name === s.name));
+    note.className = "note" + (mine.length ? " warning" : "");
+    note.textContent = mine.length ? "Tight fit: " + mine.map((q) => q.message.replace(/^tight fit, /, "")).join("; ") : "";
   }
   $("sku").addEventListener("change", () => chooseSku(state.skus[+$("sku").value]));
   for (const id of ["infeed", "belt", "cycle", "change", "spacing"]) {
@@ -813,7 +814,8 @@
       listSkus();
       chooseSku(skus[0]);
     } else if (state.sku) restart();
-    $("uploadNote").textContent = sheets.length ? `${skus.length} product${skus.length === 1 ? "" : "s"} loaded` + (problems.some((p) => p.level === "error") ? ", some refused:" : "") : "";
+    const refusedCount = new Set(problems.filter((p) => p.level === "error").map((p) => p.sku)).size;
+    $("uploadNote").textContent = sheets.length ? `${skus.length} product${skus.length === 1 ? "" : "s"} loaded` + (refusedCount ? `, ${refusedCount} refused (listed greyed out)` : "") : "";
     event.target.value = "";
   });
 

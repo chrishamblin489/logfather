@@ -43,8 +43,8 @@
   .kpi b { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
   .verdict { margin: 10px 0 0; padding: 8px 10px; border-radius: 6px; border-left: 3px solid var(--ok); background: var(--surface); }
   .verdict.over { border-left-color: var(--over); }
-  #problems { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
-  #problems .error { color: var(--over); } #problems .warning { color: var(--ink-2); }
+  #fitNote:empty { display: none; }
+  #fitNote.warning { color: var(--ink-2); }
   .plan { position: fixed; top: 16px; right: 16px; width: 300px; padding: 14px 16px 16px; display: grid; gap: 10px;
     background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 16px; }
   .plan h2 { margin: 0; }
@@ -76,6 +76,7 @@
   @media (max-width: 760px) { .panel { width: auto; right: 16px; top: auto; max-height: 40vh; } .hint { display: none; }
     .plan { display: none; }
     .transport { left: 50%; top: 12px; bottom: auto; } .transport .clock { display: none; } }
+  
 </style>
 </head>
 <body>
@@ -91,12 +92,12 @@
   <section>
     <h2>Product</h2>
     <select id="sku" aria-label="Product"></select>
-    <label class="upload">Upload SKU file and pictures
+    <dl id="skuInfo"></dl>
+    <p class="note" id="fitNote"></p>
+    <label class="upload" data-customer-build="hide">Upload SKU file and pictures
       <input id="files" type="file" multiple accept=".csv,.json,.txt,image/*">
     </label>
     <p class="note" id="uploadNote"></p>
-    <ul id="problems"></ul>
-    <dl id="skuInfo"></dl>
   </section>
 
   <section>
@@ -982,7 +983,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
 
   const $ = (id) => document.getElementById(id);
   const state = {
-    skus: [], refused: [], sku: null, pattern: null, sim: null, images: {}, speed: 1, running: true,
+    skus: [], refused: [], problems: [], sku: null, pattern: null, sim: null, images: {}, speed: 1, running: true,
     meshes: new Map(), placed: [], lastPlace: null, armPose: null, textureCache: {},
   };
 
@@ -1389,6 +1390,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       dt.textContent = k; dd.textContent = v;
       $("skuInfo").append(dt, dd);
     }
+    showFitNote();
   }
 
   // ---------- tray plan ----------
@@ -1679,14 +1681,14 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   }
   function showProblems(problems) {
     state.refused = [...new Set(problems.filter((q) => q.level === "error").map((q) => q.name || q.sku))];
-    const list = $("problems");
-    list.innerHTML = "";
-    for (const p of problems.filter((q) => q.level === "error" || !/no image|no weight/.test(q.message))) {
-      const li = document.createElement("li");
-      li.className = p.level;
-      li.textContent = `${p.name || p.sku}: ${p.message}`;
-      list.append(li);
-    }
+    state.problems = problems.filter((q) => q.level === "warning" && !/no image|no weight/.test(q.message));
+  }
+  // The fit note for the chosen product only, in plain words.
+  function showFitNote() {
+    const s = state.sku, note = $("fitNote");
+    const mine = state.problems.filter((q) => q.sku === s.sku && (!q.name || q.name === s.name));
+    note.className = "note" + (mine.length ? " warning" : "");
+    note.textContent = mine.length ? "Tight fit: " + mine.map((q) => q.message.replace(/^tight fit, /, "")).join("; ") : "";
   }
   $("sku").addEventListener("change", () => chooseSku(state.skus[+$("sku").value]));
   for (const id of ["infeed", "belt", "cycle", "change", "spacing"]) {
@@ -1748,7 +1750,8 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
       listSkus();
       chooseSku(skus[0]);
     } else if (state.sku) restart();
-    $("uploadNote").textContent = sheets.length ? `${skus.length} product${skus.length === 1 ? "" : "s"} loaded` + (problems.some((p) => p.level === "error") ? ", some refused:" : "") : "";
+    const refusedCount = new Set(problems.filter((p) => p.level === "error").map((p) => p.sku)).size;
+    $("uploadNote").textContent = sheets.length ? `${skus.length} product${skus.length === 1 ? "" : "s"} loaded` + (refusedCount ? `, ${refusedCount} refused (listed greyed out)` : "") : "";
     event.target.value = "";
   });
 

@@ -54,6 +54,8 @@ def build(sku_csv: Path | None = None) -> Path:
         text = with_pictures(sku_csv) if sku_csv and placeholder == "__BUILT_IN_SKUS__" else path.read_text(encoding="utf-8")
         # A literal closing script tag inside a script would end it early.
         page = page.replace(placeholder, text.replace("</script", "<\\/script"))
+    assert page.count("__CUSTOMER_STYLE__") == 1
+    page = page.replace("__CUSTOMER_STYLE__", '[data-customer-build="hide"] { display: none; }' if sku_csv else "")
     assert page.count("__FONT__") == 1
     page = page.replace("__FONT__", base64.b64encode(FONT.read_bytes()).decode("ascii"))
     out = HERE / (f"pikpak-simulator-{sku_csv.stem}.html" if sku_csv else "pikpak-simulator.html")

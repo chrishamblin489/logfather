@@ -43,8 +43,8 @@
   .kpi b { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
   .verdict { margin: 10px 0 0; padding: 8px 10px; border-radius: 6px; border-left: 3px solid var(--ok); background: var(--surface); }
   .verdict.over { border-left-color: var(--over); }
-  #problems { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
-  #problems .error { color: var(--over); } #problems .warning { color: var(--ink-2); }
+  #fitNote:empty { display: none; }
+  #fitNote.warning { color: var(--ink-2); }
   .plan { position: fixed; top: 16px; right: 16px; width: 300px; padding: 14px 16px 16px; display: grid; gap: 10px;
     background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 16px; }
   .plan h2 { margin: 0; }
@@ -76,6 +76,7 @@
   @media (max-width: 760px) { .panel { width: auto; right: 16px; top: auto; max-height: 40vh; } .hint { display: none; }
     .plan { display: none; }
     .transport { left: 50%; top: 12px; bottom: auto; } .transport .clock { display: none; } }
+  __CUSTOMER_STYLE__
 </style>
 </head>
 <body>
@@ -90,12 +91,12 @@
   <section>
     <h2>Product</h2>
     <select id="sku" aria-label="Product"></select>
-    <label class="upload">Upload SKU file and pictures
+    <dl id="skuInfo"></dl>
+    <p class="note" id="fitNote"></p>
+    <label class="upload" data-customer-build="hide">Upload SKU file and pictures
       <input id="files" type="file" multiple accept=".csv,.json,.txt,image/*">
     </label>
     <p class="note" id="uploadNote"></p>
-    <ul id="problems"></ul>
-    <dl id="skuInfo"></dl>
   </section>
 
   <section>
