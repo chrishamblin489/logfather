@@ -21,6 +21,7 @@ vendor/
 !simulator/skus/sku_template.csv
 # Customer product pictures for the simulator stay local, like the customer SKU files
 simulator/skus/images/
+simulator/skus/*-logo.svg
 simulator/pikpak-simulator-*.html
 version.json
 

@@ -215,6 +215,10 @@ Living record of agreed functionality: what is open, and what has shipped
   "(robot moves / min: n)" = arrivals / products per lift, live with the
   slider; shown in the warning colour above the robot's 35 a minute
   (60 / 1.71 s).
+- Simulator customer logo (Chris, 2026-09-22): a customer build shows the
+  customer's logo beside Leap's at the top of the panel when
+  `skus/<list>-logo.svg` exists (out of git with the rest of their files);
+  taken from their website, wordmark recoloured white for the dark ground.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

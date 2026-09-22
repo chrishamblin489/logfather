@@ -7,7 +7,7 @@ Leap logo and the brand font into the template, plus the built-in example produc
 
 Every other CSV in skus/ (a customer's list, kept out of git) also gets its own
 file, pikpak-simulator-<list name>.html, with those products and their pictures
-(skus/images/) built in.
+(skus/images/) built in, and their logo beside Leap's if skus/<list name>-logo.svg exists.
 """
 import base64
 import csv
@@ -54,6 +54,9 @@ def build(sku_csv: Path | None = None) -> Path:
         text = with_pictures(sku_csv) if sku_csv and placeholder == "__BUILT_IN_SKUS__" else path.read_text(encoding="utf-8")
         # A literal closing script tag inside a script would end it early.
         page = page.replace(placeholder, text.replace("</script", "<\\/script"))
+    logo = sku_csv.with_name(sku_csv.stem + "-logo.svg") if sku_csv else None
+    assert page.count("__CUSTOMER_LOGO__") == 1
+    page = page.replace("__CUSTOMER_LOGO__", f'<div class="customer-logo">{logo.read_text(encoding="utf-8").strip()}</div>' if logo and logo.exists() else "")
     assert page.count("__CUSTOMER_STYLE__") == 1
     page = page.replace("__CUSTOMER_STYLE__", '[data-customer-build="hide"] { display: none; }' if sku_csv else "")
     assert page.count("__FONT__") == 1

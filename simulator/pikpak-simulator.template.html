@@ -21,7 +21,11 @@
   #view:active { cursor: grabbing; }
   .panel { position: fixed; top: 16px; left: 16px; bottom: 16px; width: 340px; overflow-y: auto; padding: 20px;
     background: color-mix(in srgb, var(--surface) 94%, transparent); border: 1px solid var(--rule); border-radius: 16px; display: grid; gap: 16px; align-content: start; }
+  .logos { display: flex; align-items: center; gap: 16px; }
   .logo { display: block; width: 150px; height: auto; }
+  .logo svg { display: block; width: 100%; height: auto; }
+  .customer-logo { display: block; height: 56px; padding-left: 16px; border-left: 1px solid var(--rule); }
+  .customer-logo svg { display: block; height: 100%; width: auto; }
   h1 { font: 700 24px/1.1 var(--sans); letter-spacing: -0.025em; margin: 14px 0 0; }
   h2 { font: 600 12px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin: 0 0 10px; }
   section { border-top: 1px solid var(--rule); padding-top: 14px; }
@@ -87,7 +91,7 @@
 
 <aside class="panel">
   <header>
-    <div class="logo">__LOGO__</div>
+    <div class="logos"><div class="logo">__LOGO__</div>__CUSTOMER_LOGO__</div>
     <h1>PikPak Simulator</h1>
   </header>
 
