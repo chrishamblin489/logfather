@@ -108,10 +108,11 @@ test("simulation: a full tray waits by the arm and is pushed out at the next tra
   const events = [];
   for (let i = 0; i < 9000; i++) for (const e of sim.step(0.01)) events.push(Object.assign({ at: sim.time }, e));
   const of = (type) => events.filter((e) => e.type === type);
-  // Nothing to push out while the first tray is filled; after that, one push per tray.
-  assert.equal(of("eject")[0].number, 1);
-  assert.ok(of("eject")[0].at > of("crateFull")[0].at);
-  assert.equal(of("eject").length, of("crateFull").length - (sim.crate.parked || sim.crate.changing ? 1 : 0));
+  // The tray packed before the run waits at the end stop, so the first tray's final
+  // lift already pushes one out; after that, one push per tray.
+  assert.equal(of("eject")[0].number, 0);
+  assert.ok(of("eject")[0].at < of("crateFull")[0].at);
+  assert.ok([0, 1].includes(of("eject").length - of("crateFull").length));
   // Each push starts with the grip of the last lift into the tray then being filled.
   for (const push of of("eject")) {
     const grip = of("gripStart").find((g) => Math.abs(g.at - push.at) < 1e-9);

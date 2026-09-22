@@ -258,7 +258,9 @@
     this.backlog = 0;         // arrived upstream but no room on the belt yet
     // Phases: waiting (over the line) -> gripping -> toPlace -> releasing -> toPick.
     this.robot = { phase: "waiting", elapsed: 0, duration: 0, group: [], slots: [] };
-    this.crate = { count: 0, changing: false, changeElapsed: 0, number: 1, parked: false };
+    // `parked`: a full tray is waiting at the end stop. True from the start: the
+    // tray packed before this run is already there (Chris, 2026-09-22).
+    this.crate = { count: 0, changing: false, changeElapsed: 0, number: 1, parked: true };
     this.eject = null;        // { elapsed } while the ejector is pushing the waiting tray out
     this.placeTimes = [];
     this.stats = { arrived: 0, packed: 0, picks: 0, crates: 0, busyS: 0, blockedS: 0 };

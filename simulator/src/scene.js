@@ -291,15 +291,28 @@
     if (x <= outside.x0) return insideTop;
     return outside.topNear + ((x - outside.x0) / (outside.x1 - outside.x0)) * (outside.topFar - outside.topNear);
   }
-  const UNIT_PITCH = 470;       // centre to centre of trays queued on a lane
-  const WAIT_X = 1160;          // the first empty tray waits here, just outside the machine
+  const UNIT_PITCH = CELL.station.x - CELL.parkX;   // trays on a lane touch: one 400 tray plus its walls
+  const WAIT_X = CELL.station.x + UNIT_PITCH;         // the first empty tray waits hard against the one being filled
+  const JOIN_X = CELL.trayIn.x1 - 230;                // where a new empty tray appears at the top of the infeed rollers
+  const TRAIN_SHARE = 0.4;      // the part of the tray change the trays spend moving (Chris: twice as fast as before)
+
+  // The products a tray holds when it is already packed at the start.
+  function fillUnit(unit) {
+    for (const slot of state.pattern.stationSlots) {
+      const mesh = productMesh();
+      mesh.position.copy(slotLocal(slot));
+      mesh.rotation.y = placeYaw();
+      unit.add(mesh);
+    }
+  }
 
   function fillStation() {
     trayLayer.clear();
     state.station = trayUnit(CELL.station.x);     // being filled
     state.indexing = null;                        // full, on its way to the end stop
-    state.parked = null;                          // full, waiting at the end stop to be pushed out
-    state.waiting = [0, 1, 2].map((i) => trayUnit(WAIT_X + i * UNIT_PITCH));
+    state.parked = trayUnit(CELL.parkX);          // the tray packed before this run, waiting at the end stop
+    fillUnit(state.parked);
+    state.waiting = [0, 1, 2, 3].map((i) => trayUnit(WAIT_X + i * UNIT_PITCH));
     state.leaving = [];
   }
 
@@ -619,7 +632,7 @@
         state.indexing = state.station;
         state.station = state.waiting.shift();
         state.station.userData.startX = state.station.position.x;
-        state.waiting.push(trayUnit(CELL.trayIn.x1 - 250));
+        state.waiting.push(trayUnit(JOIN_X));
       } else if (e.type === "crateIn") {
         state.parked = state.indexing;
         state.indexing = null;
@@ -648,15 +661,20 @@
     };
     const toward = (from, to, step) => (Math.abs(to - from) <= step ? to : from + Math.sign(to - from) * step);
 
+    // Trays on the infeed side touch and move as one train: while the full tray
+    // indexes on to the end stop, the next one and the whole queue behind it
+    // move up one tray with it.
+    let shift = 0;
     if (sim.crate.changing) {
       const k = Math.min(1, sim.crate.changeElapsed / sim.config.crateChangeS);
-      const from = state.station.userData.startX != null ? state.station.userData.startX : WAIT_X;
-      settle(state.station, from + (st.x - from) * smooth(Math.max(0, (k - 0.25) / 0.75)), CELL.trayIn, CELL.trayBelt.top, slopeIn);
-      if (state.indexing) state.indexing.position.x = st.x + (CELL.parkX - st.x) * smooth(Math.min(1, k / 0.6));
-    } else {
-      settle(state.station, st.x, CELL.trayIn, CELL.trayBelt.top, slopeIn);
+      shift = 1 - smooth(Math.min(1, k / TRAIN_SHARE));
+      if (state.indexing) state.indexing.position.x = CELL.parkX + shift * UNIT_PITCH;
     }
-    state.waiting.forEach((unit, i) => settle(unit, toward(unit.position.x, WAIT_X + i * UNIT_PITCH, 700 * dt), CELL.trayIn, CELL.trayBelt.top, slopeIn));
+    settle(state.station, st.x + shift * UNIT_PITCH, CELL.trayIn, CELL.trayBelt.top, slopeIn);
+    state.waiting.forEach((unit, i) => {
+      const target = WAIT_X + (i + shift) * UNIT_PITCH;
+      settle(unit, toward(unit.position.x, target, 1400 * dt), CELL.trayIn, CELL.trayBelt.top, slopeIn);
+    });
 
     const slopeOut = Math.atan2(CELL.trayOut.topFar - CELL.trayOut.topNear, CELL.trayOut.x1 - CELL.trayOut.x0);
     const pushS = sim.config.ejectS;

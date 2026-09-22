@@ -187,6 +187,13 @@ Living record of agreed functionality: what is open, and what has shipped
   gone, replaced by one plain "Tight fit: ..." note for the chosen product
   only, under its details. Refused products still show greyed out in the
   dropdown.
+- Simulator tray train (Chris, 2026-09-22): trays on the infeed side touch
+  (pitch = one tray plus walls, 430 mm) and move as one train while the full
+  tray indexes on to the end stop, in the first 40% of the tray change
+  (twice the old speed); a newly joined empty tray runs down the rollers to
+  close up. From the start a packed tray from the previous run already
+  waits in the eject slot by the robot, so the first tray's final lift
+  pushes one out (engine `parked` starts true).
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 
