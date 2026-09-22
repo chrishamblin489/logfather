@@ -423,7 +423,8 @@
   function chooseSku(sku) {
     state.sku = sku;
     state.pattern = Engine.stationPattern(sku.tray, sku.product, Object.assign({}, sku, { squeeze: Sku.SQUEEZE_MM }));
-    if (sku.infeedPpm) $("infeed").value = sku.infeedPpm;
+    if (sku.infeedPpm) $("infeed").value = sku.infeedPpm;   // the customer's line rate for this product
+    showValues();
     restart();
   }
 
