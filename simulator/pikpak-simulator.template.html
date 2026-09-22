@@ -109,28 +109,8 @@
       <select id="spacing" style="grid-column:1/-1"><option value="even">Even</option><option value="random">Random</option></select></div>
     <div class="control"><label for="belt">Belt speed</label><output id="beltV"></output>
       <input id="belt" type="range" min="100" max="1000" step="10" value="800"></div>
-    <div class="control"><label for="cycle">Robot move (pick, place, return)</label><output id="cycleV"></output>
-      <input id="cycle" type="range" min="1.2" max="5" step="0.01" value="1.71"></div>
-    <div class="control"><label for="change">Tray change (trays move on one place)</label><output id="changeV"></output>
-      <input id="change" type="range" min="0.5" max="6" step="0.1" value="1.5"></div>
   </section>
 
-  <section>
-    <h2>Result</h2>
-    <div class="kpis">
-      <div class="kpi"><span>Packed per minute</span><b id="sPpm">0</b></div>
-      <div class="kpi"><span>Most it can pack</span><b id="sCapacity">0</b></div>
-      <div class="kpi"><span>Products packed</span><b id="sPacked">0</b></div>
-      <div class="kpi"><span>Trays filled</span><b id="sTrays">0</b></div>
-      <div class="kpi"><span>Arm busy</span><b id="sBusy">0%</b></div>
-      <div class="kpi"><span>Belt backed up</span><b id="sBlocked">0 s</b></div>
-    </div>
-    <p id="verdict" class="verdict"></p>
-  </section>
-
-  <section>
-    <label class="note" style="display:block;margin:0"><input id="axes" type="checkbox"> Show the X, Y, Z axes of the machine's CAD (mm, origin at the 0)</label>
-  </section>
 </aside>
 
 <aside class="plan" aria-label="Tray plan">

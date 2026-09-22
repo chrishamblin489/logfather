@@ -202,6 +202,13 @@ Living record of agreed functionality: what is open, and what has shipped
   tray to the end stop, next empty one into its place). The "Tray change"
   slider is now that move (default 1.5 s, the speed the train already had),
   the trays move for the whole of it and the arm resumes straight after.
+- Simulator panel trimmed (Chris, 2026-09-22): the Result section (packed per
+  minute, most it can pack, products packed, trays filled, arm busy, belt
+  backed up, the keeps-up verdict), the CAD axes checkbox, the tray change
+  slider and the robot move slider are gone. Tray change is fixed at 1.5 s
+  and the robot move at 1.71 s in `scene.js` (`TRAY_CHANGE_S`,
+  `ROBOT_MOVE_S`); the axes can still be switched on from the console
+  (`pikpak.axes`), and the result figures live in `pikpak.result`.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

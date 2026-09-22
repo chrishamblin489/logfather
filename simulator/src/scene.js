@@ -294,6 +294,8 @@
   const UNIT_PITCH = CELL.station.x - CELL.parkX;   // trays on a lane touch: one 400 tray plus its walls
   const WAIT_X = CELL.station.x + UNIT_PITCH;         // the first empty tray waits hard against the one being filled
   const JOIN_X = CELL.trayIn.x1 - 230;                // where a new empty tray appears at the top of the infeed rollers
+  const ROBOT_MOVE_S = 1.71;    // pick, place and return: the PikPak 2 figure, fixed (Chris, 2026-09-22)
+  const TRAY_CHANGE_S = 1.5;    // the trays move on one place; fixed, not a slider (Chris, 2026-09-22)
   const TRAIN_SHARE = 1;        // the tray change IS the trays moving on one place; the arm resumes as soon as they have
 
   function fillStation() {
@@ -430,7 +432,7 @@
     state.sim = new Engine.Simulation({
       infeedPpm: +$("infeed").value, spacing: $("spacing").value, beltSpeed: +$("belt").value,
       gateX: CELL.gateX - CELL.belt.x0, productLength: state.pattern.linePitch, productsPerPick: state.pattern.productsPerPick,
-      robotCycleS: +$("cycle").value, crateChangeS: +$("change").value, perCrate: state.pattern.total, seed: 1,
+      robotCycleS: ROBOT_MOVE_S, crateChangeS: TRAY_CHANGE_S, perCrate: state.pattern.total, seed: 1,
     });
     for (const mesh of state.meshes.values()) productLayer.remove(mesh);
     state.meshes.clear();
@@ -731,19 +733,11 @@
     updatePlan();
     const capacity = Engine.estimateCapacityPpm(sim.config);
     const set = (id, text) => { $(id).textContent = text; };
-    set("sPacked", sim.stats.packed);
-    set("sTrays", sim.stats.crates * state.pattern.trays);
     set("sTraysBar", sim.stats.crates * state.pattern.trays);
-    set("sPpm", sim.rollingPpm().toFixed(0));
-    set("sCapacity", capacity.toFixed(0));
-    set("sBusy", Math.round(sim.utilisation() * 100) + "%");
-    set("sBlocked", sim.stats.blockedS.toFixed(0) + " s");
     set("sTime", sim.time.toFixed(0) + " s");
-    const over = sim.config.infeedPpm > capacity + 0.5;
-    $("verdict").textContent = over
-      ? `The line brings ${sim.config.infeedPpm} a minute; this setup packs about ${capacity.toFixed(0)}. The belt backs up.`
-      : `Keeps up: ${sim.config.infeedPpm} a minute arriving, room for about ${capacity.toFixed(0)}.`;
-    $("verdict").className = over ? "verdict over" : "verdict ok";
+    // Kept for poking at from the console: the Result tiles left the panel (Chris, 2026-09-22).
+    state.result = { packedPerMin: sim.rollingPpm(), capacityPerMin: capacity, packed: sim.stats.packed,
+      trays: sim.stats.crates * state.pattern.trays, armBusy: sim.utilisation(), beltBackedUpS: sim.stats.blockedS };
   }
 
   // ---------- panel ----------
@@ -774,7 +768,7 @@
     note.textContent = mine.length ? "Tight fit: " + mine.map((q) => q.message.replace(/^tight fit, /, "")).join("; ") : "";
   }
   $("sku").addEventListener("change", () => chooseSku(state.skus[+$("sku").value]));
-  for (const id of ["infeed", "belt", "cycle", "change", "spacing"]) {
+  for (const id of ["infeed", "belt", "spacing"]) {
     $(id).addEventListener("input", () => { showValues(); restart(); });
   }
   for (const button of document.querySelectorAll(".speeds button")) {
@@ -798,12 +792,9 @@
     setRunning(!state.running);
   });
   $("reset").addEventListener("click", restart);
-  $("axes").addEventListener("change", () => { axes.visible = $("axes").checked; });
   function showValues() {
     $("infeedV").textContent = $("infeed").value + " / min";
     $("beltV").textContent = $("belt").value + " mm/s";
-    $("cycleV").textContent = (+$("cycle").value).toFixed(2) + " s";
-    $("changeV").textContent = (+$("change").value).toFixed(1) + " s";
   }
 
   // Upload: the SKU file(s) and the product pictures, all in one go.
@@ -848,6 +839,6 @@
   showValues();
   listSkus();
   chooseSku(state.skus[0]);
-  window.pikpak = Object.assign(state, { setRunning, head, orbit, placeCamera, CELL, advance, showStats });   // for poking at from the console
+  window.pikpak = Object.assign(state, { setRunning, head, orbit, placeCamera, CELL, advance, showStats, axes });   // for poking at from the console
   requestAnimationFrame(frame);
 })();
