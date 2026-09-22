@@ -520,7 +520,7 @@
       q.text.style.opacity = packed && q.image ? 0 : 1;
     }
     $("planNote").textContent = state.sim.crate.changing ? "Tray full: changing trays"
-      : `Packing layer ${layer + 1} of ${pat.layers}. Numbers are the lift that packs each product.`;
+      : `Packing layer ${layer + 1} of ${pat.layers}`;
   }
 
   // ---------- frame loop ----------
