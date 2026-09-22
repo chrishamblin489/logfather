@@ -164,16 +164,15 @@
 <dialog id="contactDialog" aria-labelledby="contactTitle">
   <form method="dialog">
     <h2 id="contactTitle">Contact us</h2>
-    <p class="who"><b id="contactName"></b> <span id="contactRole" class="note"></span><br>
-      <a id="contactEmail" href="#"></a><span id="contactPhone" class="note"></span></p>
     <label for="contactMessage" class="note">Your message</label>
     <textarea id="contactMessage" rows="5" placeholder="Tell us about your product or line, or ask a question"></textarea>
+    <p class="who"><b id="contactName"></b> <span id="contactRole" class="note"></span><br>
+      <a id="contactEmail" href="#"></a><span id="contactPhone" class="note"></span></p>
     <div class="row">
       <button type="button" id="contactSend" class="primary">Send by email</button>
       <button type="button" id="contactCopy">Copy address</button>
       <button value="close">Close</button>
     </div>
-    <p class="note">Send by email opens your own mail program with the message ready to go.</p>
   </form>
 </dialog>
 
@@ -181,7 +180,7 @@
 EXAMPLE-001,Example punnet 250g (replace me),185,115,85,265,example-punnet.jpg,Standard 600x400,600,400,180,3,3,2,3,auto,60,
 EXAMPLE-002,Example tray left blank = 600 x 400,140,140,70,420,example-tub.png,,,,150,2,4,2,,,,
 </script>
-<script id="contact" type="application/json">{"name": "Chris Hamblin", "role": "Leap AI", "email": "chris.hamblin@helloleap.ai", "phone": ""}</script>
+<script id="contact" type="application/json">{"name": "Steve Newman", "role": "Leap AI", "email": "steve.newman@helloleap.ai", "phone": ""}</script>
 <script>console.warn('Scripts "build/three.js" and "build/three.min.js" are deprecated with r150+, and will be removed with r160. Please use ES Modules or alternatives: https://threejs.org/docs/index.html#manual/en/introduction/Installation'),
 /**
  * @license

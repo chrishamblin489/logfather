@@ -229,9 +229,11 @@ Living record of agreed functionality: what is open, and what has shipped
   dialog with the sales rep's name and email (and phone if given) and a
   message box; "Send by email" opens the customer's own mail program with
   the message, the product they were looking at and the address filled in
-  (the file is offline, so nothing can be sent from the page itself);
-  "Copy address" copies the email. Rep set in `build.py` (`DEFAULT_CONTACT`,
-  Chris for now) or per customer in `skus/<list>-contact.json` (out of git).
+  (the file is offline, so nothing can be sent from the page itself; the
+  explanatory line under the buttons was removed at Chris's request);
+  "Copy address" copies the email. The rep's details sit under the message
+  box. Rep set in `build.py` (`DEFAULT_CONTACT`: Steve Newman,
+  steve.newman@helloleap.ai, Chris 2026-09-22) or per customer in `skus/<list>-contact.json` (out of git).
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

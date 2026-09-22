@@ -28,7 +28,7 @@ PARTS = {
 }
 # Who the Contact us button reaches. A customer list may bring its own
 # skus/<list>-contact.json with the same keys.
-DEFAULT_CONTACT = {"name": "Chris Hamblin", "role": "Leap AI", "email": "chris.hamblin@helloleap.ai", "phone": ""}
+DEFAULT_CONTACT = {"name": "Steve Newman", "role": "Leap AI", "email": "steve.newman@helloleap.ai", "phone": ""}
 FONT = HERE / "assets" / "PlusJakartaSans-latin.woff2"   # Plus Jakarta Sans (OFL), as on helloleap.ai
 
 
