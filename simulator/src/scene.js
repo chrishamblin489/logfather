@@ -294,7 +294,7 @@
   const UNIT_PITCH = CELL.station.x - CELL.parkX;   // trays on a lane touch: one 400 tray plus its walls
   const WAIT_X = CELL.station.x + UNIT_PITCH;         // the first empty tray waits hard against the one being filled
   const JOIN_X = CELL.trayIn.x1 - 230;                // where a new empty tray appears at the top of the infeed rollers
-  const TRAIN_SHARE = 0.4;      // the part of the tray change the trays spend moving (Chris: twice as fast as before)
+  const TRAIN_SHARE = 1;        // the tray change IS the trays moving on one place; the arm resumes as soon as they have
 
   // The products a tray holds when it is already packed at the start.
   function fillUnit(unit) {

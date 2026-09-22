@@ -112,8 +112,8 @@
       <input id="belt" type="range" min="100" max="1000" step="10" value="800"></div>
     <div class="control"><label for="cycle">Robot move (pick, place, return)</label><output id="cycleV"></output>
       <input id="cycle" type="range" min="1.2" max="5" step="0.01" value="1.71"></div>
-    <div class="control"><label for="change">Tray change</label><output id="changeV"></output>
-      <input id="change" type="range" min="1" max="15" step="0.5" value="4"></div>
+    <div class="control"><label for="change">Tray change (trays move on one place)</label><output id="changeV"></output>
+      <input id="change" type="range" min="0.5" max="6" step="0.1" value="1.5"></div>
   </section>
 
   <section>
@@ -395,7 +395,9 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
     // A full tray indexes on to the place nearest the arm and waits there while
     // the next one is filled; just before the arm's final lift into that next
     // tray, the ejector pushes the waiting tray sideways onto the outfeed.
-    crateChangeS: 6,          // index the full tray on and bring the next empty one in
+    // The arm only waits for the trays to move on one place: the full tray to
+    // the end stop, the next empty one into its place (Chris, 2026-09-22).
+    crateChangeS: 1.5,
     ejectS: 1.5,              // the sideways push; runs while the arm works, the index waits for it
     perCrate: 12,
     seed: 1,
@@ -1235,7 +1237,7 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
   const UNIT_PITCH = CELL.station.x - CELL.parkX;   // trays on a lane touch: one 400 tray plus its walls
   const WAIT_X = CELL.station.x + UNIT_PITCH;         // the first empty tray waits hard against the one being filled
   const JOIN_X = CELL.trayIn.x1 - 230;                // where a new empty tray appears at the top of the infeed rollers
-  const TRAIN_SHARE = 0.4;      // the part of the tray change the trays spend moving (Chris: twice as fast as before)
+  const TRAIN_SHARE = 1;        // the tray change IS the trays moving on one place; the arm resumes as soon as they have
 
   // The products a tray holds when it is already packed at the start.
   function fillUnit(unit) {

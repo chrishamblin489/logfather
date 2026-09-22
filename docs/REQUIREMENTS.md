@@ -197,6 +197,11 @@ Living record of agreed functionality: what is open, and what has shipped
 - Simulator plan card (Chris, 2026-09-22): the Tray and Layout lines moved from
   the product panel to under the tray plan, shortened to "IFCO 6416 (ID 578 x
   372 x 170 mm)" and "2 x 4".
+- Simulator tray change timing (Chris, 2026-09-22): the arm does not wait a
+  fixed tray change; it waits only for the trays to move on one place (full
+  tray to the end stop, next empty one into its place). The "Tray change"
+  slider is now that move (default 1.5 s, the speed the train already had),
+  the trays move for the whole of it and the arm resumes straight after.
 - Simulator tests live in `simulator/tests/*.test.js`, run under node and
   from pytest (`tests/test_simulator_engine.py`).
 

@@ -216,7 +216,9 @@
     // A full tray indexes on to the place nearest the arm and waits there while
     // the next one is filled; just before the arm's final lift into that next
     // tray, the ejector pushes the waiting tray sideways onto the outfeed.
-    crateChangeS: 6,          // index the full tray on and bring the next empty one in
+    // The arm only waits for the trays to move on one place: the full tray to
+    // the end stop, the next empty one into its place (Chris, 2026-09-22).
+    crateChangeS: 1.5,
     ejectS: 1.5,              // the sideways push; runs while the arm works, the index waits for it
     perCrate: 12,
     seed: 1,
