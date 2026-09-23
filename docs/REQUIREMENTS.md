@@ -35,6 +35,9 @@ Living record of agreed functionality: what is open, and what has shipped
 
 ### 2026-09-23
 
+- Main window: the drag bar between the CCTV and the replay chart is a
+  visible 9 px strip with a grip in the middle, accent-lit on hover
+  (Chris: it was very hard to see). `theme.SPLITTER_HANDLE`.
 - PikPak Replay chart: the horizontal scrollbar is always shown (Chris).
   With "as needed" it stayed hidden after a switch from the overview until
   the window was resized, because the day was fitted while the chart was

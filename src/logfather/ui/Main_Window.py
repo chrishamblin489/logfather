@@ -346,6 +346,9 @@ class MainWindow(QWidget):
         main_splitter.addWidget(self.replay_timeline)
         main_splitter.setStretchFactor(0, 3)
         main_splitter.setStretchFactor(1, 2)
+        # A visible drag bar between the CCTV and the chart (Chris, 2026-09-23).
+        main_splitter.setHandleWidth(theme.SPLITTER_HANDLE_PX)
+        main_splitter.setStyleSheet(theme.SPLITTER_HANDLE)
         self._main_splitter = main_splitter
         # The timeline never takes the whole height: the top pane keeps 1 px.
         self._timeline_anim = PaneAnimator(main_splitter, 1, cap_to_total=True, parent=self)
