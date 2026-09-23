@@ -310,18 +310,13 @@ BUFFER_HEADER = (
     "padding: 6px 8px; font-size: 16px;"
 )
 BUFFER_SCROLL = f"QScrollArea {{ background: {BG}; border: none; }}"
-# The drag bar between the CCTV and the replay chart (Chris, 2026-09-23:
-# it was very hard to see): a raised strip with a short grip in the
-# middle, lit in the accent colour on hover. Used with a handle width of
-# SPLITTER_HANDLE_PX.
-SPLITTER_HANDLE_PX = 9
+# The drag bar between the CCTV and the replay chart: a very thin white
+# line (Chris, 2026-09-23), drawn in the middle of a 5 px handle so it
+# is still easy to grab. Used with a handle width of SPLITTER_HANDLE_PX.
+SPLITTER_HANDLE_PX = 5
 SPLITTER_HANDLE = (
-    f"QSplitter::handle:vertical {{ border-top: 1px solid {BORDER_LIGHT}; border-bottom: 1px solid {BORDER_LIGHT};"
-    f" background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {BORDER}, stop:0.46 {BORDER},"
-    f" stop:0.461 {TEXT_MUTED}, stop:0.539 {TEXT_MUTED}, stop:0.54 {BORDER}, stop:1 {BORDER}); }}"
-    f"QSplitter::handle:vertical:hover {{ border-top: 1px solid {ACCENT}; border-bottom: 1px solid {ACCENT};"
-    f" background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 {ACCENT_BORDER}, stop:0.46 {ACCENT_BORDER},"
-    f" stop:0.461 {TEXT_BRIGHT}, stop:0.539 {TEXT_BRIGHT}, stop:0.54 {ACCENT_BORDER}, stop:1 {ACCENT_BORDER}); }}"
+    f"QSplitter::handle:vertical {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1,"
+    f" stop:0 {BG}, stop:0.4 {BG}, stop:0.41 #ffffff, stop:0.59 #ffffff, stop:0.6 {BG}, stop:1 {BG}); }}"
 )
 BUFFER_BG = f"background: {BG};"
 
