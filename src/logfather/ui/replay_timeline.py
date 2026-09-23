@@ -201,7 +201,10 @@ class ReplayTimeline(QWidget):
         # window); at 260 the view overflowed and its horizontal scrollbar
         # was clipped off the bottom (Chris, 2026-09-10).
         self.view.setMinimumHeight(110)
-        self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # Always on (Chris, 2026-09-23): with "as needed" the bar stayed
+        # hidden after a switch from the overview until the window was
+        # resized, because the fit ran against a stale viewport width.
+        self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.view.setMouseTracking(True)
         self.view.viewport().setMouseTracking(True)
@@ -814,6 +817,14 @@ class ReplayTimeline(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        if self._items and self._current_date:
+            self._resize_redraw_timer.start()
+
+    def showEvent(self, event):
+        # A day loaded while the chart was hidden (a switch from the
+        # overview) was fitted to whatever width the hidden viewport
+        # reported; refit once the chart is actually on screen.
+        super().showEvent(event)
         if self._items and self._current_date:
             self._resize_redraw_timer.start()
 
